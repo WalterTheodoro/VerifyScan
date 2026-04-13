@@ -1,4 +1,3 @@
-# VerifyScan
 
 <div align="center">
 
