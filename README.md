@@ -2,20 +2,15 @@
 
 <div align="center">
 
-# 🔍 VerifyScan
+#  VerifyScan
 
 **Plataforma de detecção de golpes com Inteligência Artificial**
-
-[![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)]()
-[![Versão](https://img.shields.io/badge/versão-1.0-blue)]()
-[![Linha](https://img.shields.io/badge/linha-Web%20%2F%20IA-purple)]()
-[![Faculdade](https://img.shields.io/badge/Católica%20SC-Engenharia%20de%20Software-red)]()
 
 </div>
 
 ---
 
-## 💡 O que é o VerifyScan?
+##  O que é o VerifyScan?
 
 O **VerifyScan** é um SaaS que permite que qualquer pessoa verifique se está diante de um possível golpe digital. O usuário descreve a situação suspeita em linguagem natural, anexa prints, links ou e-mails, e a IA analisa tudo — verificando URLs, consultando bases de reclamações, fóruns e outros indicadores — retornando um parecer claro sobre o nível de risco.
 
@@ -23,22 +18,22 @@ O **VerifyScan** é um SaaS que permite que qualquer pessoa verifique se está d
 
 ---
 
-## 🚨 O Problema
+##  O Problema
 
 O Brasil é um dos países mais afetados por fraudes digitais. Os golpes chegam por WhatsApp, SMS, e-mail, PIX, boletos falsos e lojas online fraudulentas. O problema: a maioria das pessoas não tem como verificar rapidamente se uma situação é segura.
 
 As alternativas atuais são todas **fragmentadas e manuais**:
 
-- 🔎 Pesquisar no Google — lento, exige experiência digital
-- 👥 Perguntar para alguém — nem sempre disponível ou confiável
-- 📋 Consultar o Reclame Aqui — requer saber o que procurar
-- ⚠️ Ignorar o risco — e torcer para não ser golpe
+-  Pesquisar no Google — lento, exige experiência digital
+-  Perguntar para alguém — nem sempre disponível ou confiável
+-  Consultar o Reclame Aqui — requer saber o que procurar
+-  Ignorar o risco — e torcer para não ser golpe
 
 O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## ✨ Como funciona
+##  Como funciona
 
 ```
 1. Usuário descreve a situação (texto livre)
@@ -52,7 +47,7 @@ O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## 🎯 Público-alvo
+##  Público-alvo
 
 | Perfil | Por quê? |
 |--------|----------|
@@ -63,16 +58,16 @@ O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## 💰 Modelo de negócio
+##  Modelo de negócio
 
 | Plano | Descrição |
 |-------|-----------|
-| 🆓 Gratuito | 1 análise por e-mail |
-| 💎 Pago | Análises ilimitadas + funcionalidades extras (a definir) |
+|  Gratuito | 1 análise por e-mail |
+|  Pago | Análises ilimitadas + funcionalidades extras (a definir) |
 
 ---
 
-## 🏗️ Stack (prevista)
+##  Stack (prevista)
 
 > *Em definição. Será atualizado conforme o projeto avança.*
 
@@ -83,7 +78,7 @@ O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## 📊 Benchmarking
+##  Benchmarking
 
 | Solução | Pontos fortes | Limitação vs VerifyScan |
 |---------|--------------|------------------------|
@@ -96,7 +91,7 @@ O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## 🎯 KPIs do projeto
+##  KPIs do projeto
 
 | Métrica | Meta |
 |---------|------|
@@ -108,7 +103,7 @@ O VerifyScan resolve isso com **uma única interface simples e acessível**.
 
 ---
 
-## 📁 Estrutura do repositório
+##  Estrutura do repositório
 
 ```
 verifyscan/
@@ -127,7 +122,7 @@ verifyscan/
 
 ---
 
-## 👤 Autor
+##  Autor
 
 Desenvolvido como projeto de portfólio para o curso de **Engenharia de Software — Católica SC**.
 
