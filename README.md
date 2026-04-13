@@ -124,7 +124,7 @@ verifyscan/
 
 ##  Autor
 
-Desenvolvido como projeto de portfólio para o curso de **Engenharia de Software — Católica SC**.
+Walter Theodoro Butenes Alves
 
 ---
 
