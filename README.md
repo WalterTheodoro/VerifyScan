@@ -117,7 +117,7 @@ verifyscan/
 
 ## 📄 Documentação
 
-- [`docs/RFC_VerifyScan_v1.0.docx`](docs/RFC_VerifyScan_v1.0.docx) — Request for Comments completo (proposta acadêmica)
+- [`docs/RFC_VerifyScan_v1.0.docx`](https://docs.google.com/document/d/1zLehSHH4dv8xWgDv3bsWt2yxZVhKLZamLA01cobgvTU/edit?tab=t.0) — Request for Comments completo (proposta acadêmica)
 
 ---
 
