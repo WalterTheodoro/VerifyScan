@@ -512,7 +512,6 @@ O usuário poderá solicitar a exclusão de sua conta e de todos os seus dados a
 
 ## 8. Referências
 
-- ClearSale. Mapa da Fraude 2023. Disponível em: https://mkt.clear.sale/mapa-da-fraude
 - VirusTotal API Documentation. Disponível em: https://developers.virustotal.com
 - Google Safe Browsing API. Disponível em: https://developers.google.com/safe-browsing
 - Tesseract OCR. Disponível em: https://github.com/tesseract-ocr/tesseract
