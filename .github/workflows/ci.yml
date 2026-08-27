@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Uma execução por branch: push seguido cancela o anterior em vez de enfileirar.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend — ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Instalar dependências
+        # --frozen falha se o uv.lock estiver desatualizado em relação ao pyproject.toml,
+        # em vez de resolver de novo e testar algo diferente do que roda na máquina.
+        run: uv sync --frozen
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: mypy
+        run: uv run mypy app
+
+      - name: pytest
+        # Os testes não tocam em Postgres nem em Redis: as dependências entram por `Depends`
+        # e são substituídas por falsos determinísticos. Por isso o job não sobe serviço.
+        run: uv run pytest -q
+
+  frontend:
+    name: frontend — eslint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
