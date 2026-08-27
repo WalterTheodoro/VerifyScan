@@ -1,0 +1,82 @@
+[project]
+name = "verifyscan-backend"
+version = "0.1.0"
+description = "API do VerifyScan — pipeline heurístico de análise de mensagens suspeitas"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    # psycopg3: fala sync e async com a mesma dependência (ADR-0001)
+    "sqlalchemy[asyncio]>=2.0.36",
+    "psycopg[binary,pool]>=3.2",
+    "alembic>=1.14",
+    "redis>=5.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "ruff>=0.9",
+    "mypy>=1.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ruff — lint + format
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Gerado pelo Alembic; a formatação dele não é nossa e não é interessante revisar.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # regras do próprio ruff
+]
+
+[tool.ruff.lint.per-file-ignores]
+# B008 proíbe chamada de função no default do argumento — que é exatamente como
+# o FastAPI declara dependências (`= Depends(...)`).
+"app/api/*.py" = ["B008"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# mypy
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+# Type hints são obrigatórios no código do domínio (CLAUDE.md §6). O env.py do Alembic
+# é template de terceiro e fica de fora — `uv run mypy app` já não o alcança.
+files = ["app"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# pytest
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers"
