@@ -1,0 +1,55 @@
+# Dependências de infraestrutura do desenvolvimento local.
+# A aplicação (backend e frontend) roda fora do compose, direto na máquina — é o que dá
+# reload rápido no Windows sem sofrer com bind mount.
+#
+#   docker compose up -d
+#   docker compose ps        # esperar STATUS "healthy" nos dois
+#   docker compose down      # para tudo, preservando os volumes
+#   docker compose down -v   # apaga os dados também
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: verifyscan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-verifyscan}
+      # Sem default de propósito: o compose falha na hora se o .env não foi preenchido,
+      # em vez de subir um banco com senha vazia.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-verifyscan}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - verifyscan_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-verifyscan} -d ${POSTGRES_DB:-verifyscan}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: verifyscan-redis
+    restart: unless-stopped
+    # appendonly liga a persistência em disco: o cache de reputação (TTL 24h, Fase 4)
+    # sobrevive a um restart do container e não queima cota da VirusTotal à toa.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - verifyscan_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  verifyscan_postgres_data:
+    name: verifyscan_postgres_data
+  verifyscan_redis_data:
+    name: verifyscan_redis_data
