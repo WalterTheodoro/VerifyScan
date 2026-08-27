@@ -101,8 +101,10 @@ quebrar uma delas, **pare e pergunte**.
 1. **A LLM nunca vê conteúdo bruto do usuário** (RF13). O `AIFormulator` recebe apenas um objeto
    tipado com `score`, `nivel_risco` e `fatores[]`. Garanta isso no *tipo*: a função não deve
    aceitar nenhum parâmetro que contenha texto original, imagem ou e-mail. Existe teste para isso.
-2. **Imagens não são persistidas** (RNF06). Processar em memória, nunca gravar em disco nem em
-   banco. Existe teste que falha se algo for escrito no filesystem durante o upload.
+2. **Nenhuma imagem é persistida além do ciclo de vida da requisição** (RNF06): nunca em banco,
+   nunca em diretório da aplicação, nunca em log. O teste verifica que (a) nada foi escrito na
+   árvore do projeto e (b) o arquivo temporário não sobrevive ao request — redação que mantém
+   `pytesseract` viável (ADR-0006).
 3. **O sistema funciona sem a LLM** (RNF08). Se a API cair ou estourar 5s, retorna score + fatores
    com um flag `explicacao_indisponivel: true`. A análise nunca falha por causa da IA.
 4. **O sistema funciona sem as APIs externas.** VirusTotal e Safe Browsing são *enriquecimento*.
@@ -112,8 +114,9 @@ quebrar uma delas, **pare e pergunte**.
 6. **Todo ponto somado gera um `IndicadorRisco`** persistido (tipo, descrição, peso). Sem isso não
    há auditoria nem recalibração.
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
-8. **Orçamento de tempo** (KPI < 30s): heurísticas locais ≤ 300ms · OCR ≤ 5s · RDAP ≤ 3s ·
-   reputação externa ≤ 5s (todas em paralelo) · LLM ≤ 5s. Todo I/O externo tem timeout explícito.
+8. **Orçamento de tempo** (KPI < 30s): OCR ≤ 5s **em série** (o texto extraído é a entrada das
+   heurísticas) · depois, em paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa
+   ≤ 5s · por fim LLM ≤ 5s. Pior caso ≈ 15s. Todo I/O externo tem timeout explícito (ADR-0002).
 
 ## 6. Convenções de código
 
@@ -167,3 +170,4 @@ Isto é um TCC. A banca vai perguntar **por quê**, não só **o quê**. Portant
   o que deu errado.
 - Números de precisão só valem se vierem do script de avaliação sobre o corpus. Nunca afirme
   precisão sem medição.
+
