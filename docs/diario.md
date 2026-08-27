@@ -89,3 +89,119 @@ de nós, então precisa ser aberta antes do primeiro caso entrar em `corpus/caso
 
 Fase 0 do plano de execução: monorepo, `docker compose`, `/health`, `uv`, `ruff`, `mypy`,
 `pytest`, Alembic (template async, ADR-0001), CI e README de setup para Windows.
+
+---
+
+## 2026-08-27 — Sessão 1: Fase 0, fundação do monorepo
+
+### O que foi feito
+
+- Estrutura da Seção 4 do `CLAUDE.md` criada, com todos os pacotes vazios já carimbados com a fase
+  em que serão preenchidos. Um pacote a mais do que o `CLAUDE.md` prevê: `app/services/`, porque a
+  regra "rotas finas, zero regra de negócio em `api/`" precisa de um lugar para a regra morar.
+- `docker-compose.yml` com Postgres 16 e Redis 7, healthcheck nos dois e volumes nomeados.
+  `POSTGRES_PASSWORD` **sem default de propósito**: o compose falha na hora se o `.env` não foi
+  preenchido, em vez de subir um banco com senha vazia.
+- `GET /health` checando Postgres (`SELECT 1`) e Redis (`PING`) em paralelo, reportando cada um
+  separadamente com latência. 200 quando os dois respondem, 503 quando qualquer um falha — o corpo
+  mantém o mesmo formato nos dois casos, porque é dele que a tela lê.
+- Página no Next.js que consome `/health`. Sem estilo elaborado: é da Fase 1 a acessibilidade real.
+- `.env.example` com todas as variáveis até a Fase 8, agrupadas por fase, sem nenhum valor real.
+- CI no GitHub Actions com dois jobs: backend (`ruff format --check`, `ruff check`, `mypy`,
+  `pytest`) e frontend (`npm ci`, `npm run lint`).
+- README com setup para Windows, incluindo a instalação do Tesseract com o pacote `por` — que só
+  será usado na Fase 5, mas é o passo que mais trava quem tenta rodar o projeto.
+- `corpus/README.md` criado vazio de casos, já com o procedimento de anonimização e o lembrete da
+  pendência do comitê de ética. O diretório existe desde agora para que nenhum caso entre sem
+  proveniência.
+
+### Decisões tomadas no caminho (nenhuma virou ADR — todas são consequência de ADR existente)
+
+- **`/health` devolve 503 quando degradado.** É o que orquestrador e monitoramento esperam. O corpo
+  não muda de formato, então o frontend lê os dois casos com o mesmo código.
+- **Os verificadores entram na rota por `Depends`, atrás de um `Protocol`.** É o que permite o
+  teste sem rede exigido pela Seção 6 do `CLAUDE.md`, e é o mesmo desenho que a Fase 4 vai usar
+  para o `ProvedorReputacao`.
+- **Timeout explícito já em `/health`** (`TIMEOUT_HEALTH_S`, 2s). O ADR-0002 vale desde a Fase 0;
+  não faz sentido abrir exceção justamente na primeira rota.
+- **A URL do banco não fica no `alembic.ini`.** O `env.py` lê `DATABASE_URL` das `Settings`; a linha
+  `sqlalchemy.url` do template ficou comentada, porque o `.ini` é versionado (invariante 7).
+- **O detalhe do erro em `/health` é truncado e só traz a primeira linha da exceção.** Erros de
+  conexão do psycopg trazem host, porta e usuário em várias linhas, e o corpo de `/health` é
+  público.
+
+### Test-first, e onde ele foi de fato aplicado
+
+Os quatro testes de `/health` foram escritos antes do service e da rota, e a primeira execução
+falhou com `ModuleNotFoundError: No module named 'app.main'` — o que é o comportamento pretendido,
+e ficou registrado aqui porque é o tipo de detalhe que o capítulo de metodologia precisa. O resto
+da fase (compose, CI, README) não tem comportamento verificável por teste e foi escrito direto.
+
+O quarto teste é o que menos parece teste e mais importa: ele afirma que, depois de uma requisição
+a `/health`, `app.state` **não** tem `engine` nem `redis`. Como esses dois só nascem no `lifespan`,
+que o transporte em memória não executa, o teste quebra no dia em que alguém abrir conexão dentro
+da rota. É a guarda da regra "teste não faz chamada de rede, nunca".
+
+### O que deu errado
+
+**1. O `readme = "../README.md"` quebrou o `uv sync`.** O hatchling recusa caminho de readme fora
+do diretório do projeto (`Readme path must be within the project directory`). O `pyproject.toml` do
+backend apontava para o README da raiz do monorepo. Removida a linha — o backend não é um pacote
+distribuível, e a descrição do projeto mora no README da raiz de qualquer jeito.
+
+**2. O `create-next-app` gerou código que não passa no próprio lint.** A página inicial usava
+`useEffect` chamando uma função que começa com `setState`, e o `eslint-config-next` reprovou com
+`react-hooks/set-state-in-effect` ("Calling setState synchronously within an effect can trigger
+cascading renders"). Duas tentativas até acertar: mover o `setState` para depois do primeiro
+`await` **não** resolveu — a regra não modela a fronteira do `async`. O que resolveu foi extrair
+`consultarSaude()` como função pura, que só busca e traduz a resposta, e deixar o `setState` dentro
+do callback do `.then()` — que é exatamente o escape documentado pela regra. De quebra, a flag
+`ativo` no cleanup passou a descartar a resposta que chega depois de a página sair da tela.
+A regra não foi desligada.
+
+**3. O `create-next-app` deixou lixo de template.** Ele gera `frontend/CLAUDE.md` e
+`frontend/AGENTS.md` além do `README.md` boilerplate da Vercel. O `CLAUDE.md` aninhado competiria
+com o arquivo de contexto do projeto; os três foram removidos. O `.gitignore` dele também ignora
+`.env*`, o que engoliria o `.env.local.example` — corrigido com uma exceção explícita.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `uv run ruff format --check .` | 25 arquivos já formatados |
+| `uv run ruff check .` | All checks passed |
+| `uv run mypy app` | Success: no issues found in 20 source files |
+| `uv run pytest -q` | 4 passed |
+| `npm run lint` (frontend) | limpo |
+| `npx tsc --noEmit` (frontend) | limpo |
+| `npm run build` (frontend) | compila, 2 rotas estáticas |
+
+### O Gate 0 não fechou — e o motivo
+
+O Gate 0 exige `docker compose up -d` seguido dos comandos do README chegando em `/health` com os
+dois serviços OK. **O Docker Desktop não estava instalado nesta máquina** (nem no `PATH`, nem em
+`C:\Program Files\Docker`), e a instalação exige instalador gráfico e reinício. A parte
+automatizada do Definition of Done fechou; a parte que precisa de infraestrutura real ficou
+pendente e será executada assim que o Docker estiver disponível.
+
+Duas afirmações do README ainda **não** foram verificadas contra serviço real e precisam ser
+conferidas nessa hora:
+
+1. que `uv run alembic upgrade head` termina sem erro com o diretório `versions/` vazio;
+2. que `/health` responde `status: ok` com os dois serviços de pé.
+
+### Pendências abertas
+
+| Pendência | Natureza | Quando trava |
+|---|---|---|
+| **Fechar o Gate 0 com Docker rodando** | ambiente | antes de começar a Fase 1 |
+| **Comitê de ética / consentimento** | externa — coordenação do curso | **bloqueante da Fase 2** |
+| **3.9 — cronograma** | decisão do autor | Fase 0 |
+| **3.10 — deploy** | decisão do autor | Fase 9 |
+
+As pendências 3.9 e 3.10 continuam abertas: são decisões do autor e não foram tomadas por ele.
+
+### Próximo passo
+
+Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
+`ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
