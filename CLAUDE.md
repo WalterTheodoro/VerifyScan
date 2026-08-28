@@ -80,6 +80,7 @@ verifyscan/
 ├─ backend/
 │  └─ app/
 │     ├─ api/              # rotas FastAPI (finas, sem regra de negócio)
+│     ├─ services/         # a regra de negócio mora aqui — é o destino do que api/ não pode ter
 │     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer, EmailAnalyzer
 │     ├─ ocr/              # OCRProcessor
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
