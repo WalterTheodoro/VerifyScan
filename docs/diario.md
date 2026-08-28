@@ -205,3 +205,136 @@ As pendências 3.9 e 3.10 continuam abertas: são decisões do autor e não fora
 
 Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
 `ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
+
+---
+
+## 2026-08-28 — Sessão 2: fechamento do Gate 0
+
+Docker Desktop instalado desde a sessão anterior (`Docker 29.7.2`, `Compose v5.4.0`, `hello-world`
+executou). Esta sessão existe só para rodar contra infraestrutura real o que a sessão 1 não pôde
+rodar — e o Gate encontrou um bug que nenhum teste teria pego.
+
+### O que foi feito
+
+- `app/services/` documentado na Seção 4 do `CLAUDE.md`. O pacote existia no disco desde a sessão
+  1 mas não na estrutura de referência; a regra "rotas finas, zero regra de negócio em `api/`"
+  não dizia para onde a regra deveria ir.
+- Comandos do README executados na ordem exata, do `Copy-Item .env.example .env` ao
+  `npm run dev`.
+- Corrigido `alembic/env.py` (ver abaixo).
+- As duas afirmações não verificadas do README foram conferidas: uma era falsa.
+
+### Afirmação 1 do README — **era falsa**
+
+> "O `alembic upgrade head` termina sem fazer nada nesta fase; rodá-lo serve para provar que a
+> conexão com o banco funciona."
+
+Com Postgres `healthy` e `DATABASE_URL` correta, o comando saiu com código 1:
+
+```
+psycopg.InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode.
+```
+
+**Causa.** No Windows, o event loop padrão do `asyncio` é o `ProactorEventLoop`, e o `psycopg` em
+modo async se recusa a rodar nele — ele precisa do `SelectorEventLoop`. O `env.py` do template
+async do Alembic chama `asyncio.run(...)` cru, então herda o loop padrão da plataforma. Isso não
+tem nada a ver com o `versions/` estar vazio: a conexão morre antes de o Alembic olhar para as
+migrações.
+
+**Correção.** Três linhas em `run_migrations_online()`, com o `loop_factory` do `asyncio.run`
+(Python 3.12+) sob guarda de `sys.platform == "win32"`. Depois disso, `EXIT=0`:
+
+```
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+```
+
+Com isso a afirmação do README passa a ser verdadeira e o texto dele não precisou mudar.
+
+**Não houve teste antes do código, e o motivo importa.** O comportamento verificável aqui é
+"conectar num Postgres real". A Seção 6 do `CLAUDE.md` proíbe teste que faça chamada de rede, então
+não existe teste possível para isso — a verificação é o próprio comando, e é por isso que o Gate 0
+é um passo manual do plano e não um item da suíte. Este bug sobreviveu a `ruff`, `mypy`, `pytest` e
+CI verdes na sessão 1.
+
+### Afirmação 2 do README — **confirmada**
+
+Com o comando documentado (`uv run uvicorn app.main:app --reload --port 8000`):
+
+```
+status postgres                                 redis
+------ --------                                 -----
+ok     @{status=ok; latencia_ms=3,18; detalhe=} @{status=ok; latencia_ms=0,88; detalhe=}
+```
+
+Conferido também o caminho que o navegador de fato usa — `GET /health` com
+`Origin: http://localhost:3000` devolve `200` e `access-control-allow-origin: http://localhost:3000`.
+A página em `localhost:3000` responde `200` e monta; a leitura dos dois serviços acontece no
+cliente, então o HTML servido mostra "Consultando a API…" e não serve como evidência — o que serve
+é a resposta com `Origin` acima.
+
+### Achado colateral: **sem `--reload`, o backend não fala com o Postgres**
+
+Rodando `uv run uvicorn app.main:app --port 8000` (sem `--reload`), `/health` devolve `503`:
+
+```json
+{"status":"degradado","postgres":{"status":"erro","latencia_ms":0.37,
+ "detalhe":"InterfaceError: (psycopg.InterfaceError) Psycopg cannot use the 'ProactorEventLoop'…"},
+ "redis":{"status":"ok","latencia_ms":23.08,"detalhe":null}}
+```
+
+É a mesma causa do bug do Alembic. O `--reload` mascara o problema por acidente: o
+`asyncio_loop_factory` do uvicorn devolve `ProactorEventLoop` no Windows **exceto** quando a
+aplicação roda em subprocesso, que é justamente o modo do `--reload`. Como o README documenta o
+comando com `--reload`, o texto dele está correto — mas o processo de produção da Fase 9 não terá
+`--reload`, e vai bater nisso.
+
+**Não corrigido nesta sessão**, por ser fora do escopo pedido (Seção 7 do `CLAUDE.md`). Fica como
+pendência com prazo: precisa estar resolvido antes da Fase 9.
+
+De quebra, o acidente virou a primeira verificação real do desenho de `/health`: com o Postgres
+inacessível e o Redis de pé, a rota devolveu `503` mantendo o formato do corpo e truncou o detalhe
+do erro na primeira linha, exatamente como projetado na sessão 1.
+
+### Achado colateral: o `frontend/CLAUDE.md` volta sozinho
+
+O `npm run dev` do Next 16 regenera `frontend/CLAUDE.md` e `frontend/AGENTS.md` a cada execução
+(mensagem: *"Generated AGENTS.md and CLAUDE.md for AI agents. Set `agentRules: false` in
+next.config to disable"*). A sessão 1 tinha apagado os dois por competirem com o arquivo de
+contexto do projeto; apagar não resolve, é preciso desligar a flag. Removidos de novo e anotado.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `docker compose up -d` / `ps` | `verifyscan-postgres` e `verifyscan-redis` `Up (healthy)` |
+| `uv sync` | 47 pacotes resolvidos, 46 conferidos |
+| `uv run alembic upgrade head` | **falhou (exit 1)** → corrigido → `EXIT=0` |
+| `Invoke-RestMethod .../health` | `status: ok`, Postgres 3,18 ms, Redis 0,88 ms |
+| `npm install` | 359 pacotes, 0 vulnerabilidades |
+| `npm run dev` | `Ready in 6.0s`, `GET / 200` |
+| `uv run ruff format .` | 25 arquivos já formatados |
+| `uv run ruff check .` | All checks passed |
+| `uv run mypy app alembic` | Success: no issues found in 21 source files |
+| `uv run pytest -q` | 4 passed |
+| `npm run lint` | limpo |
+
+**Gate 0 fechado.** A Fase 0 termina aqui.
+
+### Pendências abertas
+
+| Pendência | Natureza | Quando trava |
+|---|---|---|
+| **`--reload` mascara o event loop do Windows** | técnica — descoberta nesta sessão | **antes da Fase 9 (deploy)** |
+| **`next.config` regenerando `CLAUDE.md`/`AGENTS.md`** | técnica — `agentRules: false` | qualquer hora; incomoda já |
+| **Comitê de ética / consentimento** | externa — coordenação do curso | **bloqueante da Fase 2** |
+| **3.9 — cronograma** | decisão do autor | atrasada: era da Fase 0 |
+| **3.10 — deploy** | decisão do autor | Fase 9 |
+
+A pendência 3.9 era para ter sido decidida na Fase 0 e a Fase 0 acabou. Continua sem decisão do
+autor, e não será decidida por ele aqui.
+
+### Próximo passo
+
+Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
+`ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
