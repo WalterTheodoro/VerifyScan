@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -84,7 +85,13 @@ async def run_async_migrations() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
 
-    asyncio.run(run_async_migrations())
+    # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se
+    # recusa a rodar nele (psycopg.InterfaceError). O Selector é o que a própria mensagem de
+    # erro do psycopg indica. O uvicorn resolve isso por conta própria; o alembic não.
+    if sys.platform == "win32":
+        asyncio.run(run_async_migrations(), loop_factory=asyncio.SelectorEventLoop)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
