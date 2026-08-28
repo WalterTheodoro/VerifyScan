@@ -338,3 +338,106 @@ autor, e não será decidida por ele aqui.
 
 Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
 `ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
+
+---
+
+## 2026-08-28 — Sessão 3: o event loop do Windows como achado de plataforma
+
+Duas correções antes da Fase 1. A primeira mudou de tamanho no meio do caminho e virou o
+`ADR-0007`.
+
+### 1. O bug do Proactor não era pendência de Fase 9 — era o backend não subindo
+
+A sessão 2 tinha classificado "sem `--reload` o backend não fala com o Postgres" como pendência de
+deploy. Classificação errada, e o motivo de estar errada é simples: `--reload` é modo de
+desenvolvimento. Qualquer execução sem ele — teste de carga, demonstração para a banca, contêiner —
+sobe um backend que responde `503` com `postgres: erro`. Corrigido nesta sessão.
+
+**O que se pretendia fazer:** definir `asyncio.WindowsSelectorEventLoopPolicy()` na importação de
+`app/main.py`, sob o mesmo guard `sys.platform == "win32"` do `alembic/env.py`.
+
+**O que a medição mostrou:** isso **sozinho não funciona**. Com a política definida e sem
+`--reload`, `/health` continuou devolvendo `503` com o mesmo `ProactorEventLoop`.
+
+**Por quê.** O uvicorn não consulta a política de event loop do `asyncio`. Ele passa um
+`loop_factory` explícito para o `asyncio.run` (`server.py:77` → `config.py:538`), e o
+`asyncio.Runner` chama esse factory direto — a política nunca é lida. No Windows esse factory
+devolve `ProactorEventLoop`, exceto quando a aplicação roda em subprocesso, que é justamente o
+caso do `--reload`. Era por isso que o `--reload` "funcionava": por acidente, não por desenho.
+
+**O que resolveu:** a política **mais** `--loop none` no comando. Com `--loop none`, o
+`get_loop_factory()` do uvicorn devolve `None`, o `asyncio.run` cai no `new_event_loop()` e aí sim
+a política é consultada. Os dois são necessários e cada um faz uma coisa: a política diz *qual*
+loop; o `--loop none` faz o uvicorn *perguntar* em vez de impor o dele.
+
+| Execução (sem `--reload`, Postgres e Redis reais) | `/health` |
+|---|---|
+| sem a política | 503 — `postgres: erro` |
+| só a política em `main.py` | 503 — `postgres: erro` |
+| política + `--loop none` | **200 — `status: ok`** |
+
+Verificado no fim com o comando como ficou documentado, em porta limpa: PID 5008 rodando
+`uvicorn app.main:app --port 8020 --loop none`, sem `--reload`, `/health` `status: ok` com
+Postgres 51,78 ms e Redis 41,24 ms.
+
+Decisão registrada no `ADR-0007`, incluindo as opções descartadas (driver síncrono só no Alembic;
+entrypoint próprio `python -m app`). `README.md` e `CLAUDE.md` §3 passaram a documentar o comando
+com `--loop none` e sem depender do `--reload`.
+
+### Por que isto é material do capítulo de metodologia
+
+O bug atravessou `ruff`, `mypy`, `pytest` e o CI **todos verdes**. Não foi descuido na revisão:
+nenhum teste da suíte podia pegá-lo. A Seção 6 do `CLAUDE.md` proíbe teste que faça chamada de
+rede, e o sintoma só existe contra um Postgres de verdade — em memória, o `httpx.AsyncClient` roda
+sobre o loop que o `pytest-asyncio` cria, e nunca abre conexão.
+
+É um **achado de plataforma**: não está no código do domínio, não está no RFC, e não é detectável
+por análise estática nem por teste unitário. Ele vive na junção entre três decisões independentes —
+async de ponta a ponta (ADR-0001), Windows como ambiente de desenvolvimento (`CLAUDE.md` §2) e um
+servidor que escolhe o próprio event loop. Cada uma é defensável sozinha; o problema é a
+combinação.
+
+Duas consequências que valem para o resto do trabalho:
+
+1. **Suíte verde não é evidência de sistema funcionando.** É evidência de que as unidades testáveis
+   estão corretas. O que a suíte não toca precisa de um gate manual contra serviço real, e é por
+   isso que o plano tem gates de infraestrutura em vez de só Definition of Done automatizado.
+2. **A primeira classificação do achado estava errada** e ficou registrada assim na sessão 2
+   ("pendência de Fase 9"). O erro foi supor que o modo de execução do desenvolvimento representa
+   os outros. Vale como aviso para o resto do projeto: `--reload`, servidor de desenvolvimento do
+   Next e fakes de rede escondem diferenças que só aparecem no modo real.
+
+### 2. O `frontend/CLAUDE.md` regenerado
+
+O Next 16 tem a flag: `agentRules: false` em `next.config.ts`. Aplicada com um comentário de duas
+linhas dizendo por quê (um `CLAUDE.md` aninhado competiria com o da raiz). Verificado rodando
+`npm run dev` de novo: a mensagem "Generated AGENTS.md and CLAUDE.md" sumiu e nenhum dos dois
+arquivos voltou. Como a flag existe, não foi preciso mexer no `.gitignore`.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `uv run uvicorn app.main:app --port 8020 --loop none` (sem reload) | `/health` `status: ok` |
+| `uv run ruff format .` | 25 arquivos já formatados |
+| `uv run ruff check .` | All checks passed |
+| `uv run mypy app alembic` | Success: no issues found in 21 source files |
+| `uv run pytest -q` | 4 passed |
+| `npm run lint` | limpo |
+| `npx tsc --noEmit` | limpo |
+| `npm run dev` | `Ready in 11.1s`, `GET / 200`, sem regenerar `CLAUDE.md` |
+
+### Pendências abertas
+
+| Pendência | Natureza | Quando trava |
+|---|---|---|
+| **Comitê de ética / consentimento** | externa — coordenação do curso | **bloqueante da Fase 2** |
+| **3.9 — cronograma** | decisão do autor | atrasada: era da Fase 0 |
+| **3.10 — deploy** | decisão do autor | Fase 9 |
+
+As duas pendências técnicas abertas na sessão 2 foram fechadas aqui.
+
+### Próximo passo
+
+Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
+`ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
