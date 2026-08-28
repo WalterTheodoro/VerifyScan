@@ -1,8 +1,10 @@
 """Ponto de entrada da API.
 
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --port 8000 --loop none --reload
 """
 
+import asyncio
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,6 +15,12 @@ from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine
+
+# No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
+# rodar nele. Trocar a política aqui, na importação do módulo, é o que faz qualquer processo que
+# importe a aplicação nascer com o Selector — o mesmo guard do alembic/env.py.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @asynccontextmanager

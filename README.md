@@ -101,7 +101,7 @@ Espere `STATUS` chegar a `healthy` nos dois containers — leva uns 10 segundos.
 Set-Location backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --port 8000 --loop none --reload
 ```
 
 O `uv sync` cria o `.venv` e instala tudo a partir do `uv.lock` — não é preciso ativar o ambiente
@@ -109,6 +109,12 @@ virtual: `uv run` já faz isso.
 
 O `alembic upgrade head` termina sem fazer nada nesta fase (não há tabelas até a Fase 8); rodá-lo
 serve para provar que a conexão com o banco funciona.
+
+O `--loop none` **não é opcional no Windows** e não tem nada a ver com o `--reload`. Ele é o que
+faz o uvicorn usar o event loop que a aplicação escolhe, em vez de impor o dele: sem ele, o
+processo nasce com o `ProactorEventLoop`, o `psycopg` se recusa a rodar nesse loop e `/health`
+responde `503` com `postgres: erro`. Detalhe e medição no `docs/adr/ADR-0007`. O `--reload` é só
+conveniência de desenvolvimento — tire-o para rodar como em produção, mas mantenha o `--loop none`.
 
 Em **outra janela** do PowerShell, confira a saúde:
 

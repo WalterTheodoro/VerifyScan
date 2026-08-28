@@ -45,7 +45,7 @@ docker compose up -d
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --port 8000 --loop none --reload   # --loop none: ver ADR-0007
 
 # qualidade (rodar sempre antes de commitar)
 uv run ruff format .
