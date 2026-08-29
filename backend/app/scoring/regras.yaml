@@ -88,8 +88,8 @@ categorias:
       - 'você foi (selecionado|sorteado|premiado|contemplado)'
       - 'parabéns[,!]? você (ganhou|foi)'
       - 'você (ganhou|acaba de ganhar)'
-      - 'resgate seu (prêmio|benefício|bônus)'
-      - 'retire seu (prêmio|benefício)'
+      - 'resgat(e|ar) seu (prêmio|benefício|bônus)'
+      - 'retir(e|ar) seu (prêmio|benefício)'
       - 'ganhador (do|da) (sorteio|promoção)'
       - 'prêmio de r\$'
 
