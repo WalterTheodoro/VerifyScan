@@ -1,0 +1,121 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# VerifyScan — pesos, padrões e faixas do motor de risco
+#
+# Este arquivo é a fonte única de verdade da pontuação (invariante 5 do CLAUDE.md). Mudar um
+# peso ou acrescentar um padrão NÃO deve exigir mudar código Python.
+#
+# Como escrever um padrão (ADR-0008):
+#   • É uma expressão regular, sempre entre ASPAS SIMPLES — em aspas duplas o YAML processa
+#     as barras invertidas e `\d`, `\b` deixam de chegar inteiros na regex.
+#   • Escreva em português natural, com acento e maiúscula à vontade: o mesmo normalizador que
+#     roda no texto do usuário (minúsculas, sem acento, espaços colapsados) roda no padrão
+#     antes de compilar. `'últimas horas'` casa com `ÚLTIMAS  HORAS`.
+#   • NÃO use classe de regex maiúscula (`\D`, `\S`, `\W`, `\B`): a normalização as
+#     transformaria em `\d`, `\s`, `\w`, `\b`, invertendo o sentido. O carregamento recusa.
+#   • O texto chega em uma linha só, então `.` alcança o que estava depois de uma quebra.
+#
+# Pesos e faixas vêm da §5.4.1 e §5.4.7 do RFC e são HIPÓTESES até a calibração da Fase 2
+# (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+versao: 1
+
+# Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
+# dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
+# automaticamente mais perigoso, e repetir a mesma frase dez vezes mudaria o resultado.
+agregacao: por_categoria
+
+# §5.4.7: 0–30 BAIXO · 31–60 MÉDIO · 61+ ALTO.
+faixas:
+  baixo_ate: 30
+  medio_ate: 60
+
+categorias:
+  # ── §5.4.1, +10 ────────────────────────────────────────────────────────────────────────────
+  - id: urgencia
+    peso: 10
+    descricao: 'A mensagem tenta apressar você, para não dar tempo de pensar.'
+    padroes:
+      - 'clique agora'
+      - 'clica agora'
+      - 'expira em'
+      - 'expira hoje'
+      - 'últimas horas'
+      - 'último dia'
+      - 'prazo vencendo'
+      - 'prazo final'
+      - '\burgente\b'
+      - '\bimediatamente\b'
+      - 'agora mesmo'
+      - 'só até hoje'
+      - 'válido até hoje'
+      - 'não perca tempo'
+
+  # ── §5.4.1, +15 ────────────────────────────────────────────────────────────────────────────
+  - id: personificacao_marca
+    peso: 15
+    descricao: 'A mensagem se apresenta como uma empresa ou órgão conhecido.'
+    padroes:
+      # Marca seguida de verbo institucional. A janela curta entre os dois é o que separa
+      # "Banco do Brasil informa: sua conta..." de "Banco do Brasil: compra aprovada".
+      - '(banco do brasil|bradesco|itaú|caixa|santander|nubank|banco inter|picpay|mercado pago|correios|serasa|receita federal|detran|inss)\b.{0,30}\b(informa|informamos|comunica|comunicamos|avisa|notifica)\b'
+      - 'encomenda (retida|parada|pendente|aguardando)'
+      - 'pacote (retido|parado|pendente)'
+      - 'setor (antifraude|de segurança)'
+      - 'central (antifraude|de segurança)'
+      - 'departamento (antifraude|de segurança)'
+
+  # ── §5.4.1, +15 ────────────────────────────────────────────────────────────────────────────
+  - id: ameaca_bloqueio
+    peso: 15
+    descricao: 'A mensagem ameaça bloquear, suspender ou cancelar alguma coisa sua.'
+    padroes:
+      - '\b(sua conta|seu cadastro|seu acesso|seu benefício|sua chave pix|seu cpf)\b.{0,20}\b(será|vai ser|foi)\b.{0,10}\b(suspens|bloquead|cancelad|desativad|encerrad|inutilizad)'
+      - 'evite o bloqueio'
+      - 'evitar o bloqueio'
+      - 'última notificação'
+      - 'último aviso'
+      - 'sob pena de'
+      - 'seu cpf está (irregular|suspenso|bloqueado|pendente)'
+      - 'nome (será|vai ser) negativado'
+      - 'regularize (para|antes de) (evitar|não perder)'
+
+  # ── §5.4.1, +20 ────────────────────────────────────────────────────────────────────────────
+  - id: premio_falso
+    peso: 20
+    descricao: 'A mensagem oferece prêmio, sorteio ou vantagem que você não pediu.'
+    padroes:
+      - 'você foi (selecionado|sorteado|premiado|contemplado)'
+      - 'parabéns[,!]? você (ganhou|foi)'
+      - 'você (ganhou|acaba de ganhar)'
+      - 'resgate seu (prêmio|benefício|bônus)'
+      - 'retire seu (prêmio|benefício)'
+      - 'ganhador (do|da) (sorteio|promoção)'
+      - 'prêmio de r\$'
+
+  # ── §5.4.1, +25 · a §5.4.7 funde esta com a próxima; a errata (item 3) separa ───────────────
+  - id: solicitacao_financeira
+    peso: 25
+    descricao: 'A mensagem pede um pagamento, transferência ou comprovante.'
+    padroes:
+      - '(faça|faz|realize|envie|efetue) (um |o )?pix'
+      - 'pix de r\$'
+      - 'pagamento (via|por) pix'
+      - '\btransfira\b'
+      - '\bdeposite\b'
+      - 'comprovante de (pagamento|transferência|depósito)'
+      - 'taxa de (liberação|entrega|alfândega|desbloqueio|transferência|regularização)'
+      - '(pague|pagar|pagamento d[ea]) (uma |a |o )?taxa'
+
+  # ── §5.4.1, +25 ────────────────────────────────────────────────────────────────────────────
+  - id: dados_pessoais
+    peso: 25
+    descricao: 'A mensagem pede dados pessoais, senha ou dados do seu cartão.'
+    padroes:
+      # Exige o verbo. "Dados bancários" sozinho aparece em aviso legítimo de banco
+      # ("nunca pedimos seus dados bancários por SMS") e geraria falso positivo.
+      - '(informe|confirme|digite|envie|atualize|valide|cadastre) (o |a |os |as |seu |sua |seus |suas )*(cpf|cnpj|senha|dados bancários|dados da conta|número do cartão|código)'
+      - 'código de (segurança|verificação|acesso)'
+      - 'senha do (aplicativo|banco|cartão|internet banking)'
+      - 'foto (do|de) (documento|rg|cnh)'
+      - 'selfie (com|segurando)'
