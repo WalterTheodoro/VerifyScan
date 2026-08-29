@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Annotated, Literal, Self, get_args
 
 import yaml
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.analyzers.normalizacao import normalizar
 from app.schemas.analise import CategoriaFator, NivelRisco
@@ -76,6 +83,28 @@ class Faixas(BaseModel):
         return "ALTO"
 
 
+class ConfiguracaoURLs(BaseModel):
+    """Configuração da extração de links (§5.4.2). Não tem peso: extrair não pontua.
+
+    `tlds_conhecidos` só governa host escrito sem protocolo. Sem essa lista, qualquer
+    `palavra.palavra` viraria link — "relatorio.final", "Obrigado.Att". Com `http://`
+    explícito não há ambiguidade e a lista não se aplica.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    maximo_por_analise: int = Field(gt=0)
+    tlds_conhecidos: frozenset[str] = Field(min_length=1)
+
+    @field_validator("tlds_conhecidos")
+    @classmethod
+    def _minusculos_e_sem_ponto(cls, tlds: frozenset[str]) -> frozenset[str]:
+        invalidos = sorted(tld for tld in tlds if not tld.isalnum() or tld != tld.lower())
+        if invalidos:
+            raise ValueError(f"TLD deve ser alfanumérico e minúsculo, sem ponto: {invalidos}")
+        return tlds
+
+
 class CategoriaTexto(BaseModel):
     """Uma das seis categorias da §5.4.1: peso, descrição e os padrões que a disparam."""
 
@@ -95,6 +124,7 @@ class Regras(BaseModel):
     versao: int = Field(ge=1, description="Muda a cada recalibração; carimbada no relatório.")
     agregacao: Literal["por_categoria"]
     faixas: Faixas
+    urls: ConfiguracaoURLs
     categorias: tuple[CategoriaTexto, ...]
 
     @model_validator(mode="after")

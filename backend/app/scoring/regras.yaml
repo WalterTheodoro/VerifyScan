@@ -30,6 +30,48 @@ faixas:
   baixo_ate: 30
   medio_ate: 60
 
+# Extração de links (§5.4.2). Não pontua nada — os pesos de URL são das Fases 3 e 4.
+urls:
+  # Teto por análise: limita o trabalho que as Fases 3 e 4 herdam de mensagem cheia de links.
+  maximo_por_analise: 20
+  # Vale só para host escrito SEM protocolo. Com `http://` explícito, qualquer TLD passa.
+  tlds_conhecidos:
+    - com
+    - br
+    - net
+    - org
+    - gov
+    - edu
+    - io
+    - co
+    - me
+    - ly
+    - cc
+    - info
+    - biz
+    - app
+    - dev
+    - link
+    - live
+    - site
+    - online
+    - shop
+    - store
+    - vip
+    - xyz
+    - top
+    - click
+    - tk
+    - pw
+    - icu
+    - fun
+    - work
+    - pt
+    - es
+    - us
+    - uk
+    - ar
+
 categorias:
   # ── §5.4.1, +10 ────────────────────────────────────────────────────────────────────────────
   - id: urgencia

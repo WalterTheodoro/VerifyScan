@@ -127,6 +127,7 @@ def _regras_validas() -> dict[str, object]:
         "versao": 1,
         "agregacao": "por_categoria",
         "faixas": {"baixo_ate": 30, "medio_ate": 60},
+        "urls": {"maximo_por_analise": 20, "tlds_conhecidos": ["com", "br"]},
         "categorias": categorias,
     }
 
