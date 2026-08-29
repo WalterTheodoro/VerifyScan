@@ -11,10 +11,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.analises import router as router_analises
 from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine
+from app.scoring.regras import carregar_regras
 
 # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
 # rodar nele. Trocar a política aqui, na importação do módulo, é o que faz qualquer processo que
@@ -44,6 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def criar_app() -> FastAPI:
     settings = get_settings()
+    # Aqui, e não no `lifespan`: um `regras.yaml` quebrado precisa derrubar o processo na
+    # subida, e não a primeira requisição do usuário. Fica antes de qualquer rota existir.
+    carregar_regras()
     app = FastAPI(
         title="VerifyScan",
         description="Análise de mensagens suspeitas: nível de risco, fatores e recomendação.",
@@ -58,6 +63,7 @@ def criar_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router_health)
+    app.include_router(router_analises)
     return app
 
 

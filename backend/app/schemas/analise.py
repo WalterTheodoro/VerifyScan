@@ -46,3 +46,41 @@ class Fator(BaseModel):
     categoria: CategoriaFator
     descricao: str
     peso: int = Field(gt=0, description="Pontos que este fator soma ao score.")
+
+
+class SolicitacaoAnalise(BaseModel):
+    """Corpo de `POST /api/analises`.
+
+    O tamanho não é limitado aqui, e sim no service: o limite é configurável e a recusa
+    precisa sair com uma frase em pt-BR que o usuário entenda, não com o erro de validação
+    padrão do FastAPI.
+    """
+
+    texto: str = Field(description="A mensagem suspeita, como o usuário a recebeu.")
+
+
+class RespostaAnalise(BaseModel):
+    """O que o usuário recebe: quanto pontuou, em que nível caiu e por quê."""
+
+    score: int
+    nivel_risco: NivelRisco
+    fatores: list[Fator]
+    urls_analisadas: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Links encontrados na mensagem, em forma canônica. Populado desde a Fase 1; "
+            "quem pontua em cima deles são as Fases 3 e 4."
+        ),
+    )
+
+    # As duas flags entram no contrato agora, valendo sempre `false`, para que ligá-las nas
+    # Fases 4 e 7 não seja mudança de contrato. Elas são a face visível das invariantes 3 e 4:
+    # a análise nunca falha por causa da IA nem das APIs externas — degrada e avisa.
+    explicacao_indisponivel: bool = Field(
+        default=False,
+        description="`true` quando a LLM não respondeu a tempo e falta a explicação (RNF08).",
+    )
+    verificacao_externa_indisponivel: bool = Field(
+        default=False,
+        description="`true` quando VirusTotal / Safe Browsing não responderam (RNF09).",
+    )

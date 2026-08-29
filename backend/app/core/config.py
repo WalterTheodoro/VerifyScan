@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://verifyscan:verifyscan@localhost:5432/verifyscan"
     redis_url: str = "redis://localhost:6379/0"
 
+    # Teto da mensagem analisada. Acima disso a análise é recusada, nunca truncada — ver
+    # `ServicoAnalise._validar`. É configuração para a Fase 2 poder ajustar se o corpus
+    # mostrar recusa frequente.
+    texto_max_caracteres: int = 5000
+
     # Timeout das checagens de /health. Todo I/O externo tem timeout explícito (ADR-0002).
     timeout_health_s: float = 2.0
 

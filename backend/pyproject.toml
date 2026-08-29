@@ -64,6 +64,10 @@ select = [
 # B008 proíbe chamada de função no default do argumento — que é exatamente como
 # o FastAPI declara dependências (`= Depends(...)`).
 "app/api/*.py" = ["B008"]
+# N818 quer sufixo "Error" no nome da exceção. O CLAUDE.md §6 manda nomear conceito de
+# domínio em português, e "EntradaInvalidaError" não é português nem inglês. A exceção é
+# regra de negócio (§2.5 do RFC), não erro técnico.
+"app/services/*.py" = ["N818"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mypy
