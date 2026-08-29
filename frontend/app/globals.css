@@ -1,26 +1,96 @@
 @import "tailwindcss";
 
+/* ───────────────────────────────────────────────────────────────────────────────────────────
+   Acessibilidade não é acabamento neste projeto — o público-alvo do RFC inclui idosos e
+   pessoas com baixo letramento digital. As regras abaixo estão no ADR-0010:
+
+   • fonte base 18px
+   • contraste mínimo AA (4.5:1 para texto normal)
+   • alvo de toque mínimo de 44px (WCAG 2.5.5)
+   • o nível de risco NUNCA é comunicado só por cor: sempre cor + ícone + palavra
+
+   Tema claro fixo, de propósito: manter duas paletas significaria verificar contraste duas
+   vezes, e a verificação é o que dá valor ao requisito. Tema escuro, se entrar, é da Fase 9.
+   ─────────────────────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --fundo: #ffffff;
+  --fundo-suave: #f9fafb;
+  --texto: #1f2937; /* 14,6:1 sobre o fundo branco */
+  --texto-secundario: #4b5563; /* 8,0:1 */
+  --borda: #9ca3af;
+  --acao: #1d4ed8; /* 6,7:1 com texto branco */
+  --acao-escura: #1e3a8a;
+  --erro: #b91c1c; /* 6,5:1 com texto branco */
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-fundo: var(--fundo);
+  --color-fundo-suave: var(--fundo-suave);
+  --color-texto: var(--texto);
+  --color-texto-secundario: var(--texto-secundario);
+  --color-borda: var(--borda);
+  --color-acao: var(--acao);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* Base do projeto. Tudo o mais é relativo a ela, então aumentar aqui aumenta a tela inteira. */
+  font-size: 18px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  line-height: 1.6;
+}
+
+/* Foco sempre visível e grosso: quem navega por teclado precisa enxergar onde está. */
+:focus-visible {
+  outline: 3px solid var(--acao);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* WCAG 2.5.5 — alvo de toque de 44px. Aplicado a tudo que se clica. */
+.alvo-de-toque {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── Paleta por nível de risco ──────────────────────────────────────────────────────────────
+   A cor é o terceiro canal, nunca o único: o painel sempre traz também o ícone e a palavra.
+   Cada par abaixo foi conferido contra o branco (crachá) e contra o fundo claro (texto).      */
+
+.painel-risco[data-nivel="BAIXO"] {
+  --risco-forte: #166534; /* 7,0:1 com texto branco */
+  --risco-fundo: #f0fdf4;
+}
+
+.painel-risco[data-nivel="MEDIO"] {
+  --risco-forte: #92400e; /* 7,1:1 */
+  --risco-fundo: #fffbeb;
+}
+
+.painel-risco[data-nivel="ALTO"] {
+  --risco-forte: #b91c1c; /* 6,5:1 */
+  --risco-fundo: #fef2f2;
+}
+
+.painel-risco {
+  background: var(--risco-fundo);
+  border: 2px solid var(--risco-forte);
+  border-left-width: 10px;
+  border-radius: 8px;
+}
+
+.cracha-risco {
+  background: var(--risco-forte);
+  color: #ffffff;
 }

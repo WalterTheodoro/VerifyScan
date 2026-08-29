@@ -10,8 +10,9 @@ transforma o resultado estruturado em texto legível.
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: Fase 0 (fundação).** Existe o esqueleto do monorepo, a infraestrutura local e
-> `GET /health`. Nenhuma análise de risco foi implementada ainda.
+> **Estado atual: Fase 1 (fatia vertical de texto).** Você cola uma mensagem na tela e recebe
+> nível de risco, fatores identificados e o que fazer. Ainda sem OCR, sem consulta a APIs
+> externas, sem explicação por IA e sem login — tudo isso vem nas Fases 4 a 8.
 
 ---
 
@@ -144,8 +145,10 @@ npm install
 npm run dev
 ```
 
-Abra <http://localhost:3000>. A página consulta `/health` e mostra o estado de Postgres e Redis
-separadamente.
+Abra <http://localhost:3000> e cole uma mensagem suspeita para analisar.
+
+Em <http://localhost:3000/status> fica a página de infraestrutura, que consulta `/health` e
+mostra o estado de Postgres e Redis separadamente.
 
 ---
 
