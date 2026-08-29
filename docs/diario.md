@@ -441,3 +441,132 @@ As duas pendências técnicas abertas na sessão 2 foram fechadas aqui.
 
 Fase 1 do plano de execução: `POST /api/analises` com `TextAnalyzer`, `URLExtractor`,
 `ScoringEngine` e `scoring/regras.yaml`, mais as telas de análise e resultado.
+
+---
+
+## 2026-08-29 — Sessão 4: Fase 1, a fatia vertical de texto
+
+**Gate 1 fechado.** Cola-se uma mensagem de golpe de PIX na tela e sai ALTO com os fatores, bem
+abaixo de 1 segundo. Sem OCR, sem API externa, sem IA e sem login.
+
+### O que foi feito
+
+Sete commits, um por unidade lógica:
+
+| Commit | Entrega |
+|---|---|
+| `feat(scoring)` | `regras.yaml` com as seis categorias e as faixas do RFC, validado por Pydantic no boot |
+| `feat(analyzers)` | `TextAnalyzer` — as seis categorias da §5.4.1 |
+| `feat(analyzers)` | `URLExtractor` — as quatro formas da §5.4.2 + forma canônica |
+| `feat(scoring)` | `ScoringEngine` — agregação por categoria e classificação |
+| `feat(api)` | `POST /api/analises` |
+| `feat(frontend)` | telas de análise e resultado |
+| `docs` | ADRs 0008, 0009 e 0010, errata item 8, emenda ao `CLAUDE.md` §6 |
+
+Pesos confirmados por leitura direta do PDF (§5.4.1, p. 22–23): urgência +10, personificação de
+marca +15, ameaça/bloqueio +15, prêmio falso +20, solicitação financeira +25, dados pessoais +25.
+Teto de texto puro: **110**. Faixas 0–30 / 31–60 / 61+ conferem com a §5.4.7 (p. 26).
+
+### Três decisões do Walter que mudaram o plano que eu tinha proposto
+
+Registradas porque o raciocínio delas é material de capítulo, não porque a decisão mudou.
+
+**1. `urls_analisadas` entra no contrato agora.** Eu havia proposto deixar os links fora da
+resposta na Fase 1, já que nada pontua em cima deles até a Fase 3. O argumento contra: acrescentar
+campo na Fase 3 é mudança de contrato, que é exatamente o que a instrução das flags de degradação
+existe para evitar. O argumento sobre a *tela* estava certo (o campo não é exibido); sobre o
+*contrato*, errado. São duas perguntas diferentes e eu as tinha juntado numa só.
+
+**2. Texto acima do limite é recusado, nunca truncado.** Eu tinha escrito "limite de 5.000
+caracteres" sem dizer o que acontece ao ultrapassá-lo — ambiguidade que a implementação resolveria
+sozinha, provavelmente truncando. Truncar significaria pontuar sobre conteúdo parcial: um pedido
+de PIX no fim de uma mensagem longa sumiria e a resposta viria BAIXO. **Falso negativo causado por
+detalhe de implementação é o pior tipo** — o sistema erra e parece confiante. O limite virou
+configuração (`TEXTO_MAX_CARACTERES`) para a Fase 2 poder ajustá-lo contra o corpus. Há dois
+testes para isso, e o segundo existe só para nomear o motivo.
+
+**3. O enum de `IndicadorRisco.tipo` diverge do RFC — e eu não sinalizei.** Propus
+`(texto, dominio, reputacao)` no lugar de `(url, texto, dominio, ocr, email)` da §5.5 tratando
+como detalhe de implementação. Não é: é o enum que vira coluna na Fase 8. Virou o **item 8 da
+errata**, com a justificativa de que `url` funde duas coisas que falham por motivos diferentes
+(domínio não degrada, reputação degrada com a cota da VirusTotal) e `ocr` é origem da entrada, não
+tipo de indicador — informação que `Analise.tipo_input` já carrega. Decidir na Fase 1 evita
+migração retroativa na Fase 8.
+
+*O padrão nos três: eu tratei como detalhe de implementação três coisas que eram decisão de
+contrato.* Vale como aviso para as fases seguintes.
+
+### O falso positivo conhecido virou teste
+
+O achado 1 do `analise-rfc-v1.1.md` diz que o SMS legítimo "Banco do Brasil informa: sua conta
+será suspensa. Clique agora para regularizar" soma 15+15+10 = **40** e cai em MÉDIO — que conta
+como golpe na métrica (ADR-0005) — sem nenhum indicador de fraude.
+
+O pedido da sessão incluía "um teste com uma mensagem legítima de banco que não pode ser
+classificada como golpe". Escrito com *essa* mensagem, o teste falharia por construção: o conserto
+é a calibração da Fase 2, não código da Fase 1. Resolvido com dois testes:
+
+- uma mensagem legítima que de fato não dispara padrão nenhum (fatura, compra aprovada, boleto de
+  condomínio, aviso antifraude do próprio banco) → 0 fatores;
+- o SMS do achado 1 como `xfail(strict=True)`, citando o achado. Ele documenta a pendência dentro
+  da suíte, e o `strict` **avisa quando a Fase 2 a fechar** — se um dia passar, o teste quebra.
+
+### Decisões técnicas que viraram ADR
+
+- **ADR-0008** — formato do `regras.yaml`. O ponto não óbvio: o mesmo normalizador roda no texto e
+  no padrão, o que permite escrever `'últimas horas'` no YAML. Como ele faz `.lower()`, uma classe
+  de regex maiúscula (`\D`, `\S`, `\W`, `\B`) viraria a minúscula — a regex continuaria compilando
+  e passaria a significar **o oposto**. O carregamento recusa, com mensagem explícita. Descoberto
+  escrevendo o ADR, não depurando; teria sido um bug muito caro de achar.
+- **ADR-0009** — forma canônica de URL. A decisão que importa: descartar o `usuario@`.
+  `http://bradesco.com.br@golpe.xyz` tem host real `golpe.xyz`; preservar a forma digitada faria a
+  Fase 3 medir Levenshtein contra o domínio errado e responder "parece legítimo" para um phishing
+  clássico.
+- **ADR-0010** — interface. Reconcilia a "Tela 2" do mockup: estado único na Fase 1 (a análise
+  leva <1 s), etapas de volta na Fase 5 em vocabulário do usuário ("Lendo a imagem…"), e a barra
+  de progresso percentual **não volta em nenhuma fase** — o pipeline não sabe quanto falta, e
+  qualquer porcentagem seria animação arbitrária.
+
+### Desvio deliberado do RFC no `regras.yaml`
+
+A §5.4.1 dá "dados bancários" como exemplo de padrão da categoria de dados pessoais. Solto, ele
+casa com o aviso antifraude legítimo do próprio banco — "nunca pedimos seus dados bancários por
+SMS" — que é um falso positivo particularmente ruim: a mensagem que o produto classificaria como
+golpe é a que ensina a pessoa a não cair em golpe. O padrão passou a exigir verbo
+(`informe|confirme|digite|envie|atualize|valide|cadastre`). Está coberto por teste nomeado.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `uv run ruff format .` / `ruff check .` | All checks passed |
+| `uv run mypy app` | Success: no issues found in 29 source files |
+| `uv run pytest -q` | **87 passed, 1 xfailed** |
+| `npm run lint` / `npx tsc --noEmit` | limpo |
+| `npm run build` | compilado, rotas `/` e `/status` |
+| `POST /api/analises` contra o servidor real | score **75**, `ALTO`, 4 fatores, `urls_analisadas: ["http://bb-regularize.xyz/"]`, ambas as flags `false` |
+
+Susto de leitura durante a verificação: a resposta apareceu como `vocÃª` no terminal. Não era
+mojibake — `python -m json.tool` lê stdin em cp1252 no Windows. Conferido nos codepoints:
+`U+00EA`, correto. **Vale a lição para a Fase 2:** a máquina de medição pode mentir sobre o dado
+antes que o dado esteja errado; verificar o codepoint custa uma linha e evita "consertar" o que
+não está quebrado.
+
+### Pendências abertas
+
+| Pendência | Natureza | Quando trava |
+|---|---|---|
+| **Comitê de ética / consentimento** | externa — coordenação do curso | **bloqueante da Fase 2** |
+| **Corte do `EmailAnalyzer`** | decisão do autor, a formalizar | antes da Fase 2 |
+| **3.9 — cronograma** | decisão do autor | atrasada desde a Fase 0 |
+| **3.10 — deploy** | decisão do autor | Fase 9 |
+
+Nenhum teste automatizado de frontend: a Fase 1 verifica com `lint`, `tsc`, `build` e olho. A
+revisão de acessibilidade com leitor de tela e teclado é entrega da Fase 9, e é conteúdo de
+capítulo — não polimento.
+
+### Próximo passo
+
+Fase 2: corpus rotulado (mínimo 150 casos, 60 negativos), `tools/avaliar_corpus.py`, baseline
+trivial e a primeira rodada de calibração de pesos **e faixas**. É onde o `xfail` acima deve
+fechar. Bloqueada pelo comitê de ética.

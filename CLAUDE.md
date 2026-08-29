@@ -128,6 +128,9 @@ quebrar uma delas, **pare e pergunte**.
   negócio em `api/`.
 - Analisadores são funções/classes puras: entram dados, saem `list[Fator]`. Sem I/O direto, sem
   acesso a banco. Isso é o que os torna testáveis e é o que será medido contra o corpus.
+- **Extrator não é analisador.** Quem só encontra e normaliza — `URLExtractor`, `OCRProcessor` —
+  devolve o próprio tipo (`list[URLExtraida]`, texto), não `list[Fator]`: extrair não pontua, e
+  o peso do que foi extraído pertence a quem analisa depois. Mesma pureza, saída diferente.
 - Todo acesso a rede fica atrás de uma interface com uma implementação *fake* determinística
   usada nos testes. Teste não faz chamada de rede — nunca.
 - Commits em português, imperativo, escopo curto: `feat(scoring): agrega pesos por categoria`.

@@ -16,6 +16,7 @@
 | 5 | §10.1 (estrutura do repositório) | bloco de código atualizado | 12 |
 | 6 | §5.4.3 (DomainAnalyzer) | separar typosquatting de marca embutida | 2 |
 | 7 | §5.6 (tabela de provedores) | tirar nomes de modelos de terceiros | 13 |
+| 8 | §5.5 (modelo de dados) | enum de `IndicadorRisco.tipo` | Fase 1 |
 
 ---
 
@@ -122,3 +123,28 @@ do provedor" — mantendo nomeado apenas o modelo escolhido, **Claude Haiku 4.5*
 **Por quê:** o próprio texto da §5.6 diz que o critério de arquitetura é a categoria de modelo e a
 política de dados, não a versão. Nome de modelo de terceiro envelhece entre a escrita e a defesa e
 vira pergunta fácil da banca sem trazer informação.
+
+### 8 — §5.5, enum de `IndicadorRisco.tipo`
+
+Substituir o domínio do campo `tipo` da entidade `IndicadorRisco`:
+
+> de `(url, texto, dominio, ocr, email)` para **`(texto, dominio, reputacao)`**
+
+**Por quê:** três problemas distintos no mesmo enum.
+
+- **`url` é grosseiro.** Na arquitetura real ele se divide em `dominio` (§5.4.3, heurística
+  própria, Fase 3) e `reputacao` (§5.4.4, consulta a terceiros, Fase 4). Os dois têm origem,
+  peso e regime de falha diferentes — a reputação degrada quando a cota da VirusTotal acaba, o
+  domínio não. Dois indicadores que falham por motivos distintos não devem compartilhar rótulo,
+  ou a recalibração da Fase 9 não consegue separá-los.
+- **`ocr` não é tipo de indicador, é origem da entrada.** Texto extraído de imagem produz fator
+  de *texto*: a §5.4.5 diz isso explicitamente ("o resultado é tratado exatamente como se o
+  usuário tivesse digitado o texto"). Quem registra a procedência é `Analise.tipo_input`, que já
+  existe na mesma seção. Manter `ocr` aqui duplicaria a informação em dois lugares, com o risco
+  usual de os dois discordarem.
+- **`email` sai** porque o `EmailAnalyzer` foi cortado do escopo por decisão de cronograma, a ser
+  formalizada antes da Fase 2.
+
+A decisão é tomada na Fase 1, quando o enum aparece pela primeira vez no código
+(`app/schemas/analise.py`), e não na Fase 8, quando ele viraria coluna no banco: adiar
+significaria migração retroativa e reclassificação dos indicadores já persistidos.
