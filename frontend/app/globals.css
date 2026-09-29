@@ -4,58 +4,126 @@
    Acessibilidade não é acabamento neste projeto — o público-alvo do RFC inclui idosos e
    pessoas com baixo letramento digital. As regras abaixo estão no ADR-0010:
 
-   • fonte base 18px
+   • fonte base 18px, e nenhum texto abaixo disso
    • contraste mínimo AA (4.5:1 para texto normal)
    • alvo de toque mínimo de 44px (WCAG 2.5.5)
    • o nível de risco NUNCA é comunicado só por cor: sempre cor + ícone + palavra
 
    Tema claro fixo, de propósito: manter duas paletas significaria verificar contraste duas
    vezes, e a verificação é o que dá valor ao requisito. Tema escuro, se entrar, é da Fase 9.
+
+   Não há texto cinza: cinza sobre branco é o primeiro texto que um leitor idoso perde. A
+   hierarquia vem de tamanho e peso, nunca de um tom mais claro.
    ─────────────────────────────────────────────────────────────────────────────────────────── */
 
+/* ── Paleta ─────────────────────────────────────────────────────────────────────────────────
+   Marca: anil. Apoio: lavanda. Destaque: rosa-marcador. Nenhuma das três encosta nas cores
+   de risco (verde, âmbar, vermelho): anil e lavanda estão do outro lado do círculo, e o rosa
+   é claro demais para ser lido como o vermelho escuro do risco alto — e só aparece como fundo
+   de marca-texto e na ilustração, nunca como texto nem como sinal de nível.
+   O amarelo de marca-texto do passe anterior saiu justamente por ficar perto do âmbar.
+
+   Contrastes (texto sobre fundo), conferidos por script:
+     tinta   / branco            15,7    branco / anil            8,1
+     tinta   / lavanda-clara     13,8    branco / anil-escuro    10,4
+     tinta   / lavanda (gradiente)12,1   branco / anil-profundo  14,3
+     tinta   / rosa-claro (grad.) 13,1   lavanda / anil-profundo  9,2
+     tinta   / rosa-marcador     10,5    anil   / branco          8,1
+     tinta   / campo             14,8    anil   / lavanda         6,3
+     exemplo / campo              7,3    texto desab. / fundo desab. 7,4                      */
+
 :root {
-  --fundo: #ffffff;
-  --fundo-suave: #f9fafb;
-  --texto: #1f2937; /* 14,6:1 sobre o fundo branco */
-  --texto-secundario: #4b5563; /* 8,0:1 */
-  --borda: #9ca3af;
-  --acao: #1d4ed8; /* 6,7:1 com texto branco */
-  --acao-escura: #1e3a8a;
-  --erro: #b91c1c; /* 6,5:1 com texto branco */
+  --tinta: #1b2430;
+  --papel: #ffffff;
+  --anil: #3538cd; /* marca */
+  --anil-escuro: #2a2ca8; /* hover e pressionado */
+  --anil-profundo: #1c1f6e; /* faixas saturadas e rodapé, com texto claro */
+  --lavanda: #dde1ff; /* apoio */
+  --lavanda-clara: #eef0ff;
+  --rosa-marcador: #ffc2de; /* destaque */
+  --rosa-vivo: #f0509a; /* só na ilustração — nunca texto */
+  --campo: #f7f8ff;
+  --campo-borda: #7479d6; /* 3,9:1 sobre o branco: acima dos 3:1 de componente (WCAG 1.4.11) */
+  --erro: #b91c1c;
+
+  --sombra-cartao: 0 1px 2px rgb(28 31 110 / 0.05), 0 12px 32px rgb(28 31 110 / 0.09);
+  --sombra-cartao-hover: 0 2px 4px rgb(28 31 110 / 0.06), 0 18px 44px rgb(28 31 110 / 0.14);
+
+  /* Movimento: nada acima de 250ms (pedido do passe 5). */
+  --dur-rapida: 150ms;
+  --dur-media: 220ms;
 }
 
 @theme inline {
-  --color-fundo: var(--fundo);
-  --color-fundo-suave: var(--fundo-suave);
-  --color-texto: var(--texto);
-  --color-texto-secundario: var(--texto-secundario);
-  --color-borda: var(--borda);
-  --color-acao: var(--acao);
+  --color-tinta: var(--tinta);
+  --color-papel: var(--papel);
+  --color-anil: var(--anil);
+  --color-anil-escuro: var(--anil-escuro);
+  --color-anil-profundo: var(--anil-profundo);
+  --color-lavanda: var(--lavanda);
+  --color-lavanda-clara: var(--lavanda-clara);
+  --color-rosa-marcador: var(--rosa-marcador);
+  --color-rosa-vivo: var(--rosa-vivo);
+  --color-campo: var(--campo);
+  --color-campo-borda: var(--campo-borda);
+  --font-sans: var(--fonte-texto), system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: var(--fonte-mono), ui-monospace, Consolas, monospace;
+
+  /* Escala de tipo em rem sobre a base de 18px (valor em px ao lado). Nada fica abaixo de 18. */
+  --text-corpo: 1rem; /* 18 */
+  --text-destaque: 1.1111rem; /* 20 */
+  --text-secao: 1.2222rem; /* 22 */
+  --text-secao-lg: 1.3333rem; /* 24 */
+  --text-titulo: 1.4444rem; /* 26 */
+  --text-titulo-lg: 1.7778rem; /* 32 */
+  --text-veredito: 1.8889rem; /* 34 */
+  --text-veredito-lg: 2.4444rem; /* 44 */
+  --text-hero: 1.7778rem; /* 32 */
+  --text-hero-lg: 3.1111rem; /* 56 */
+  --text-numero: 2.6667rem; /* 48 */
+  --text-numero-lg: 3.5556rem; /* 64 */
+
+  /* Escala de espaçamento: respiro grande ENTRE seções, conteúdo apertado DENTRO delas. */
+  --spacing-junto: 0.5rem; /* 9 */
+  --spacing-perto: 1rem; /* 18 */
+  --spacing-bloco: 1.75rem; /* 32 */
+  --spacing-grupo: 3rem; /* 54 */
+  --spacing-secao: 4.5rem; /* 81 */
+  --spacing-secao-lg: 7rem; /* 126 */
 }
 
 html {
   /* Base do projeto. Tudo o mais é relativo a ela, então aumentar aqui aumenta a tela inteira. */
   font-size: 18px;
+  /* As âncoras do cabeçalho rolam suave; `prefers-reduced-motion` desliga lá embaixo. */
+  scroll-behavior: smooth;
+  /* O cabeçalho é fixo: sem isto, o destino de uma âncora ficaria escondido atrás dele. */
+  scroll-padding-top: 6rem;
 }
 
 body {
-  background: var(--fundo);
-  color: var(--texto);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    Arial,
-    sans-serif;
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: var(--font-sans);
   line-height: 1.6;
 }
 
-/* Foco sempre visível e grosso: quem navega por teclado precisa enxergar onde está. */
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+}
+
+/* Foco sempre visível e grosso: quem navega por teclado precisa enxergar onde está. Sem
+   `border-radius` aqui: o contorno acompanha o raio do elemento, inclusive nas pílulas. */
 :focus-visible {
-  outline: 3px solid var(--acao);
+  outline: 3px solid var(--anil);
   outline-offset: 3px;
-  border-radius: 4px;
+}
+
+/* Sobre as faixas em anil-profundo o contorno anil sumiria; lá ele fica branco. */
+.faixa-escura :focus-visible {
+  outline-color: #ffffff;
 }
 
 /* WCAG 2.5.5 — alvo de toque de 44px. Aplicado a tudo que se clica. */
@@ -64,33 +132,232 @@ body {
   min-width: 44px;
 }
 
+/* ── Fundo com profundidade ─────────────────────────────────────────────────────────────── */
+
+/* Hero: dois focos de cor suaves sobre lavanda-clara. O texto fica sempre na metade de
+   baixo do contraste — o pior ponto para a tinta é o pico lavanda, 12,1:1. */
+.fundo-hero {
+  background:
+    radial-gradient(55% 60% at 88% 18%, var(--lavanda) 0%, transparent 70%),
+    radial-gradient(45% 55% at 6% 96%, #ffe4f1 0%, transparent 70%),
+    linear-gradient(180deg, var(--lavanda-clara) 0%, var(--papel) 100%);
+}
+
+.faixa-escura {
+  background: var(--anil-profundo);
+  color: #ffffff;
+}
+
+/* ── Cabeçalho fixo ─────────────────────────────────────────────────────────────────────── */
+
+.cabecalho {
+  background: rgb(255 255 255 / 0.96);
+  border-bottom: 1px solid var(--lavanda);
+}
+
+/* Desfoque só onde o navegador sabe fazer; aí o fundo pode ficar mais transparente. O texto
+   do cabeçalho é tinta/anil sobre, no mínimo, 85% de branco. Pior caso, sobre a faixa
+   anil-profunda: tinta 11,6:1 · anil 6,0:1. */
+@supports (backdrop-filter: blur(12px)) {
+  .cabecalho {
+    background: rgb(255 255 255 / 0.85);
+    backdrop-filter: blur(12px);
+  }
+}
+
+/* ── Cartão ─────────────────────────────────────────────────────────────────────────────── */
+
+.cartao {
+  background: var(--papel);
+  /* Explícito: dentro de uma faixa escura o cartão herdaria texto branco sobre branco. */
+  color: var(--tinta);
+  border-radius: 22px;
+  box-shadow: var(--sombra-cartao);
+}
+
+/* Só os cartões informativos em grade reagem ao hover, e só com sombra e borda — sem
+   levantar. Um cartão que "pula" parece clicável, e estes não são. */
+.cartao-reage {
+  border: 1px solid transparent;
+  transition:
+    box-shadow var(--dur-media) ease-out,
+    border-color var(--dur-media) ease-out;
+}
+
+.cartao-reage:hover {
+  box-shadow: var(--sombra-cartao-hover);
+  border-color: var(--lavanda);
+}
+
+/* ── Campo de colar ─────────────────────────────────────────────────────────────────────── */
+
+.campo-mensagem {
+  background: var(--campo);
+  border: 2px solid var(--campo-borda);
+  border-radius: 18px;
+  transition:
+    border-color var(--dur-rapida) ease-out,
+    box-shadow var(--dur-rapida) ease-out,
+    background-color var(--dur-rapida) ease-out;
+}
+
+.campo-mensagem::placeholder {
+  color: #4a5170; /* 7,3:1 sobre o campo */
+  opacity: 1; /* o Firefox aplica opacidade própria ao placeholder */
+}
+
+.campo-mensagem:hover {
+  border-color: var(--anil);
+}
+
+/* O foco do campo é o anel de marca (borda anil + halo lavanda), além do contorno global. */
+.campo-mensagem:focus {
+  background: var(--papel);
+  border-color: var(--anil);
+  box-shadow: 0 0 0 5px var(--lavanda);
+}
+
+/* ── Botões ─────────────────────────────────────────────────────────────────────────────── */
+
+.botao-principal {
+  background: var(--anil);
+  color: #ffffff;
+  border: 2px solid var(--anil);
+  transition:
+    background-color var(--dur-rapida) ease-out,
+    box-shadow var(--dur-rapida) ease-out;
+}
+
+.botao-principal:hover:not(:disabled) {
+  background: var(--anil-escuro);
+  border-color: var(--anil-escuro);
+  box-shadow: 0 8px 20px rgb(53 56 205 / 0.28);
+}
+
+.botao-principal:active:not(:disabled) {
+  box-shadow: none;
+}
+
+/* Desabilitado = "esperando a mensagem", não "quebrado": fundo lavanda claro, borda
+   tracejada e texto escuro (7,4:1). A frase ao lado do botão diz o que falta. */
+.botao-principal:disabled {
+  background: #e3e5f2;
+  border: 2px dashed var(--campo-borda);
+  color: #3f4566;
+  cursor: not-allowed;
+}
+
+.botao-secundario {
+  background: var(--papel);
+  color: var(--anil);
+  border: 2px solid var(--anil);
+  transition: background-color var(--dur-rapida) ease-out;
+}
+
+.botao-secundario:hover {
+  background: var(--lavanda-clara);
+}
+
+/* ── Movimento ──────────────────────────────────────────────────────────────────────────────
+   Três usos, e só estes: hover (acima), a entrada do resultado, e UMA entrada orquestrada na
+   carga — o hero, em três tempos. Nenhuma seção anima ao rolar.                              */
+
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.entrada-resultado {
+  animation: surgir var(--dur-media) ease-out both;
+}
+
+/* 180ms cada, defasados em 35ms: o último termina em 250ms. */
+.entrada-hero {
+  animation: surgir 180ms ease-out both;
+}
+
+.entrada-hero-2 {
+  animation-delay: 35ms;
+}
+
+.entrada-hero-3 {
+  animation-delay: 70ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 /* ── Paleta por nível de risco ──────────────────────────────────────────────────────────────
-   A cor é o terceiro canal, nunca o único: o painel sempre traz também o ícone e a palavra.
-   Cada par abaixo foi conferido contra o branco (crachá) e contra o fundo claro (texto).      */
+   Não muda. A cor é o terceiro canal, nunca o único: a placa sempre traz ícone e palavra.   */
 
-.painel-risco[data-nivel="BAIXO"] {
-  --risco-forte: #166534; /* 7,0:1 com texto branco */
-  --risco-fundo: #f0fdf4;
+.placa-risco[data-nivel="BAIXO"] {
+  --risco-forte: #166534; /* 7,0:1 com branco */
+  --risco-fundo: #f0fdf4; /* tinta sobre ele: 15,0:1 */
 }
 
-.painel-risco[data-nivel="MEDIO"] {
+.placa-risco[data-nivel="MEDIO"] {
   --risco-forte: #92400e; /* 7,1:1 */
-  --risco-fundo: #fffbeb;
+  --risco-fundo: #fffbeb; /* 15,1:1 */
 }
 
-.painel-risco[data-nivel="ALTO"] {
+.placa-risco[data-nivel="ALTO"] {
   --risco-forte: #b91c1c; /* 6,5:1 */
-  --risco-fundo: #fef2f2;
+  --risco-fundo: #fef2f2; /* 14,3:1 */
 }
 
-.painel-risco {
-  background: var(--risco-fundo);
-  border: 2px solid var(--risco-forte);
-  border-left-width: 10px;
-  border-radius: 8px;
+.placa-risco {
+  overflow: hidden;
 }
 
-.cracha-risco {
+.faixa-risco {
   background: var(--risco-forte);
   color: #ffffff;
+}
+
+/* ── Trechos marcados ───────────────────────────────────────────────────────────────────────
+   Mesma marca no exemplo e em "O que ele procura": diz, sem texto, que são a mesma coisa. */
+
+.trecho-marcado {
+  color: var(--tinta);
+  /* Sem padding vertical: as pontas usam a caixa de padding e o miolo a de conteúdo, e as duas
+     precisam ter a mesma altura para o traço fechar sem degrau. (Caixa de borda nas pontas
+     incluiria os 3px do sublinhado e desceria a ponta em relação ao miolo.) */
+  padding: 0 0.3em;
+  /* O traço de marca-texto em três camadas, uma por peça, desenhadas de novo em cada fragmento
+     de linha (box-decoration-break). As pontas têm largura fixa (0,32em, 0,02em a mais que o
+     padding, para cobrir a emenda); o miolo se repete no meio. Trecho curto e trecho longo
+     recebem as mesmas pontas — nada é comprimido.
+
+     Paths DUPLICADOS de app/_componentes/marca.tsx, nesta ordem:
+       1ª camada = GRIFO_PONTA_ESQUERDA · 2ª = GRIFO_PONTA_DIREITA · 3ª = GRIFO_MIOLO
+     A cor #ffc2de é --rosa-marcador escrita por extenso: variável de CSS não entra em
+     url(data:…). */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 24' preserveAspectRatio='none'%3E%3Cpath fill='%23ffc2de' d='M6 2.6V21.8C4.6 21.9 3.2 22.3 1.9 21.4C0.9 19.6 1.4 17.2 0.7 15C0.3 12.4 1.2 9.8 0.8 7.4C0.6 5.4 1.3 3.6 2.6 2.9C3.7 2.5 4.9 2.6 6 2.6Z'/%3E%3C/svg%3E")
+      left top / 0.32em 100% no-repeat padding-box,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 24' preserveAspectRatio='none'%3E%3Cpath fill='%23ffc2de' d='M0 2.6C1.4 2.5 2.8 2.2 3.9 3.1C5.2 4.6 4.8 7.1 5.3 9.4C5.7 12 4.9 14.6 5.4 17C5.6 19.3 4.9 21 3.6 21.6C2.4 22.1 1.2 21.9 0 21.8Z'/%3E%3C/svg%3E")
+      right top / 0.32em 100% no-repeat padding-box,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 24' preserveAspectRatio='none'%3E%3Cpath fill='%23ffc2de' d='M0 2.6C10 2.3 20 2.2 30 2.6S50 3 60 2.6V21.8C50 22.1 40 22.2 30 21.8S10 21.5 0 21.8Z'/%3E%3C/svg%3E")
+      left top / 2.5em 100% repeat-x content-box content-box;
+  /* O sublinhado é o canal que não depende de cor: o trecho continua marcado para quem não
+     distingue o rosa, e na impressão em preto e branco. */
+  border-bottom: 3px solid var(--tinta);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
