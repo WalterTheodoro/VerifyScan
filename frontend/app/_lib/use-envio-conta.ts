@@ -5,7 +5,7 @@ import { enviarConta } from "./conta";
 
 // Depois disto sem resposta, avisa que o servidor está acordando: no plano gratuito o backend
 // dorme e leva até ~60 s para voltar, e o público não pode achar que a tela travou.
-const ESPERA_ATE_AVISAR_MS = 5000;
+export const ESPERA_ATE_AVISAR_MS = 5000;
 
 /** Envio comum a /entrar e /cadastro: estado de envio, aviso de demora, erro e redirecionamento. */
 export function useEnvioConta(caminho: "/api/auth/cadastro" | "/api/auth/login") {
