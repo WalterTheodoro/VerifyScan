@@ -150,6 +150,10 @@ npm run dev
 
 Abra <http://localhost:3000> e cole uma mensagem suspeita para analisar.
 
+O navegador nunca chama o backend direto: o Next repassa `/api/*` e `/health` para
+`API_URL_INTERNA` (default `http://localhost:8000` fora de produção; ADR-0014). Um
+`npm run build` exige a variável no `.env.local` — sem ela, o build falha de propósito.
+
 Em <http://localhost:3000/status> fica a página de infraestrutura, que consulta `/health` e
 mostra o estado de Postgres e Redis separadamente.
 
@@ -261,6 +265,13 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    `SESSAO_DIAS=7` e `TIMEOUT_AUTENTICACAO_S=5`. As variáveis `JWT_*` que existiam no
    `.env.example` saíram: a sessão é opaca, em banco, e não há segredo de assinatura. Se elas
    estiverem no painel do Render, podem ser apagadas.
+7. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
+   - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
+     `/health`. É lida no build; sem ela, o build falha;
+   - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
+     exclusão da conta. Sem ela, a página diz "contato em configuração".
+
+   **`NEXT_PUBLIC_API_URL` pode sair do painel:** o código não a lê mais.
 
 **Não aponte monitor de uptime nem keep-alive para `/health`**: ele faz `SELECT 1` e manteria o
 compute do Neon ligado o mês inteiro, estourando a cota gratuita (conta no ADR-0011).
@@ -283,8 +294,9 @@ Existe um Postgres instalado direto no Windows. Mude `POSTGRES_PORT` no `.env` (
 
 **A página do frontend mostra "API inalcançável".**
 O backend não está no ar, ou está em outra porta. Confira o `uvicorn` e o valor de
-`NEXT_PUBLIC_API_URL` em `frontend/.env.local`. Mudança nessa variável exige reiniciar o
-`npm run dev` — o Next lê o `.env.local` só na inicialização.
+`API_URL_INTERNA` em `frontend/.env.local`. Mudança nessa variável exige reiniciar o
+`npm run dev` — e, no build de produção, rodar o `npm run build` de novo: as rewrites ficam
+gravadas no build.
 
 **`uv sync` reclama que o `uv.lock` está desatualizado.**
 Alguém mexeu no `pyproject.toml`. Rode `uv lock` e commite o `uv.lock` junto.

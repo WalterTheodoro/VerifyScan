@@ -756,3 +756,200 @@ O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
 
 Fatia 3 da Fase 8: o frontend repassa `/api/*` ao backend, para que o cookie fique first-party, e
 ganha as telas de cadastro e login.
+
+## 2026-10-01 — Fase 8, fatia 3: proxy same-origin e telas de conta
+
+### O que foi feito
+
+O navegador passou a falar só com o frontend, e o Next repassa `/api/*` e `/health` ao backend.
+O cookie `vs_sessao` fica first-party, sem o bloqueio do Safari (ADR-0014). Depois vieram as telas
+de conta. Duas etapas, com parada para revisão entre elas.
+
+- **Etapa A: proxy.**
+  - `rewrites` em `next.config.ts` para `API_URL_INTERNA`, que é variável de servidor lida no build.
+    Build de produção sem ela falha com mensagem.
+  - `experimental.proxyTimeout` de 90 s.
+  - `NEXT_PUBLIC_API_URL` saiu do código e do `.env.local.example`.
+  - No backend, a única mudança: os erros das rotas de conta declarados no OpenAPI (401, 409, 422 e
+    503), com teste. O Swagger mostrava o 409 como "Undocumented".
+- **Etapa B: telas.**
+  - O cabeçalho saiu de `page.tsx` para `_componentes/cabecalho.tsx`, com a área de sessão:
+    "Entrar", ou "Olá, {nome}" e "Sair".
+  - O rodapé virou componente, com link para o aviso de privacidade.
+  - Páginas novas: `/entrar`, `/cadastro` e `/privacidade`.
+  - As chamadas de conta ficam em `_lib/conta.ts`. O envio é um hook comum às duas telas, com aviso
+    de "servidor acordando" depois de 5 s.
+  - A análise anônima não mudou.
+- ADR-0014, README (variáveis do frontend em produção) e CLAUDE.md §4.
+
+### Conferências no código do Next (A2)
+
+Antes de confiar no proxy, conferi no código instalado (Next 16.3.3) duas coisas que o teste em
+localhost não pega:
+
+- **O Host é reescrito para o do destino** (`changeOrigin: true`, `proxy-request.js:33`). Sem
+  isso, o Render mandaria a requisição de volta para o frontend.
+- **O timeout default do proxy é 30 s** (`proxy-request.js:37`). É menos que o despertar do backend
+  gratuito.
+
+Os arquivos e as linhas estão no ADR-0014.
+
+### Decisões do Walter no plano
+
+- **"Sair" só vira "deslogado" quando a resposta comprovadamente veio do backend**: 204, ou erro com
+  `detail` (o 503 do backend limpa o cookie).
+  - Falha de rede, ou 5xx sem JSON (o Next respondendo porque não alcançou o backend), mantém o
+    estado logado e mostra "Não conseguimos sair. Tente de novo."
+  - O plano propunha "qualquer resposta HTTP = saiu". Isso mentiria justamente no caso em que o
+    cookie continua válido. O público divide aparelho com a família, e quem viesse depois entraria
+    na conta.
+- **Commits**: o `page.tsx` inteiro vai no commit das telas. O link para `/privacidade` fica quebrado
+  entre dois commits, e isso foi aceito.
+
+### O que deu errado ou mudou no caminho
+
+1. **O `.env` local não tem `COOKIE_SECURE=false`.** No ensaio pela porta 3000 o cookie saiu com
+   `Secure` em http. Funcionou porque o curl e o Chrome tratam `localhost` como contexto seguro;
+   um navegador que não trate assim não guardaria o cookie. O `.env.example` já documenta o valor
+   local.
+2. **O botão de mostrar a senha ficou sem `aria-pressed`, ao contrário do plano.**
+   - Com `aria-pressed` e um rótulo que troca, o leitor de tela anunciaria "Ocultar senha,
+     pressionado", o que se contradiz.
+   - Ficou só o rótulo que troca ("Mostrar" / "Ocultar"), que é também o que o público entende
+     sem ajuda.
+3. **O logo do cabeçalho virou link para `/`.** Nas páginas novas é o caminho de volta mais
+   esperado. Na home o visual não muda.
+4. **Os fluxos de tela não foram exercitados por mim num navegador.**
+   - O proxy, o cookie e as respostas foram verificados com `curl.exe` pela porta 3000.
+   - As telas foram verificadas por lint, tipos e build.
+   - A conferência visual e de fluxo é a dos prints da revisão de design.
+5. **Depois de entrar ou criar conta, a home abria rolada até o fim.** O mesmo acontecia ao
+   clicar em "Analisar mensagem" a partir de outra página. O Walter achou no teste do build de
+   produção. A causa foi lida no código instalado e tem três peças juntas:
+   - **O tratador de rolagem novo do Next 16**, ligado por padrão (`appNewScrollHandler`, em
+     `client/components/layout-router.js`). Ao navegar, ele mede o Fragment da página inteira, e
+     não mais o primeiro elemento que não seja fixo, como fazia o tratador antigo.
+   - **O Fragment como raiz da página.** O primeiro filho era o cabeçalho sticky, com o topo em 0,
+     e o último era o rodapé.
+   - **O `scroll-padding-top: 6rem` do `html`.**
+
+   Como o topo do cabeçalho (0) fica acima dos 6rem, o Next concluía que a página estava fora
+   da tela mesmo já estando no topo. Então chamava `scrollIntoView()` no Fragment, e o React 19.2
+   rola cada filho do último ao primeiro (`react-dom-client.production.js:16317`). O rodapé
+   levava ao fim, e o cabeçalho sticky não trazia de volta.
+
+   **Correção pela causa:** `_componentes/raiz-da-pagina.tsx`, um elemento único em fluxo na raiz
+   da home, de `/entrar`, `/cadastro` e `/privacidade`.
+   - O Next passa a medir esse elemento.
+   - No topo, o `scroll-padding` ainda dispara um `scrollIntoView`, mas ele não sai do lugar
+     porque a rolagem não fica negativa.
+   - O `scroll-padding` ficou: é ele que mantém o elemento com foco fora de baixo do cabeçalho
+     fixo na navegação por Tab.
+
+   **Lição para a metodologia:** o defeito não aparecia em lint, tipos nem build. Ele só existia
+   na combinação entre uma mudança de comportamento do framework e duas decisões de CSS e
+   estrutura que, sozinhas, estavam certas.
+
+   Junto com a correção:
+   - "Analisar mensagem" fora da home passou a apontar para `/#analisar`, sem dar foco ao campo,
+     porque no celular o foco abriria o teclado sem a pessoa pedir;
+   - na home, o logo rola até o topo, suave só sem `prefers-reduced-motion`.
+6. **"Analisarmensagem" sem espaço no cabeçalho.** O print de `/entrar` e `/cadastro` mostrava o
+   botão do cabeçalho como "Analisarmensagem". Na home ele estava certo: "Analisar mensagem".
+   - **A primeira hipótese estava errada.** Achávamos que o texto tinha quebrado de linha no JSX,
+     que descarta esse espaço. Mas `Analisar<span …> mensagem</span>` já estava numa linha só, com
+     o espaço dentro do span.
+   - **Causa real.** Fora da home o botão vira link, e o link usa `inline-flex`. Num contêiner
+     flex, "Analisar" e o `<span> mensagem</span>` viram itens flex separados, e o espaço do começo
+     do span é descartado. Na home o rótulo fica num `<button>` sem flex, por isso aparecia certo.
+   - **Correção:** o rótulo inteiro dentro de um único `<span>`, que vira um só item flex e mantém
+     o espaço. A varredura dos outros contêineres flex da fatia não achou outro caso.
+   - **Mesmo padrão do item 5:** o defeito passou por lint, tipos e build e só apareceu na tela.
+7. **Cabeçalho quebrado em tela estreita.** Visto no print em ~320 px: "Como funciona" e "O que
+   ele procura" ficavam por cima do logo, "Analisar mensagem" aparecia cortado ("Analisa") e
+   "Entrar" descia desalinhado.
+   - **A origem estava no master.** A classe das âncoras juntava `inline-flex` com
+     `hidden md:inline-flex`. No CSS gerado pelo Tailwind, `.inline-flex` vem depois de `.hidden`
+     e vence: as âncoras nunca sumiam no celular. Esta fatia agravou, porque a área de sessão
+     passou a disputar a mesma linha e a extração reaproveitou a mesma string.
+   - **Primeira correção:**
+     - o `display` das âncoras ficou só em `hidden xl:inline-flex`. Elas aparecem a partir de
+       1280 px porque a linha completa, logada com nome longo, mede ~1.195 px de 1.208 úteis;
+     - a linha passou a quebrar inteira, com o logo à esquerda e a sessão descendo sozinha e
+       alinhada à direita;
+     - abaixo de 640 px o rótulo visível é "Analisar", com `aria-label` para o nome inteiro;
+     - o nome é cortado com reticências: 9rem no celular, 11rem a partir de 768 px e 14rem em
+       1280 px;
+     - o logo ganhou alvo de 44 px.
+   - **Decisão do Walter: não diminuir o logo.** Em 320 px, logado, o cabeçalho tinha 165 px.
+     Fixo, com o `scroll-padding-top` de 108 px, ele escondia parte do formulário na âncora
+     `/#analisar`, podia cobrir o elemento com foco (WCAG 2.4.11) e tomava quase um terço da tela
+     de quem lê o resultado. Ficou assim:
+     - abaixo de 640 px o cabeçalho rola com a página;
+     - o `scroll-padding-top` passou a ser por faixa, com valores medidos:
+
+       | Faixa | Cabeçalho | Altura medida | `scroll-padding-top` |
+       |---|---|---|---|
+       | < 640 px | rola com a página | 116 px deslogado, 165 px logado | 18 px (1rem) |
+       | 640–767 px | fixo | 68 px deslogado, 116 px logado | 126 px (7rem) |
+       | ≥ 768 px | fixo | 68 px | 108 px (6rem), o valor de antes |
+
+   - **Como foi medido.** Um script no scratchpad controla o Chrome headless pelo protocolo de
+     depuração, sem dependência nova. Ele roda em 320, 375, 390, 640, 768, 1024 e 1280 px, em `/` e
+     `/entrar`, deslogado e logado com um nome de 60 caracteres. Em cada largura confere:
+     - rolagem lateral, item fora da tela, sobreposição e alvo menor que 44 px;
+     - depois de clicar em "Analisar mensagem" a partir de `/entrar`, que o topo do formulário
+       fique abaixo do cabeçalho, ou que o cabeçalho já tenha saído da tela;
+     - que o foco não vá para o campo.
+
+     Passou em todas. O script rodou contra uma cópia do frontend na porta 3001 (build com
+     `--webpack`, porque o Turbopack recusa o atalho para o `node_modules`), para não reescrever o
+     `.next` do servidor que estava no ar.
+   - **Sem salto quando `/api/auth/eu` responde.** Abaixo de 768 px a sessão fica sempre na
+     própria linha, nos três estados (carregando, deslogado e logado). Isso substitui a tabela
+     acima: 165 px em 320 px, 116 px de 375 a 767 px e 68 px a partir de 768. Com o mesmo
+     `scroll-padding`, o formulário fica na mesma posição antes e depois da resposta nas 7
+     larguras, medido com a resposta segurada no Chrome. Antes, 6 dos 14 casos saltavam até 49 px.
+   - **Mesmo padrão dos itens 5 e 6:** passou por lint, tipos e build. Aqui, além disso, o defeito
+     já estava no master e só apareceu quando alguém olhou a tela em 320 px.
+
+### Verificação
+
+- Frontend: `npm run lint` e `npx tsc --noEmit` limpos.
+- Build de produção:
+  - sem `API_URL_INTERNA`, falha com a mensagem;
+  - com a variável, limpo;
+  - com `NEXT_PUBLIC_CONTATO_PRIVACIDADE`, o `/privacidade` traz o `mailto:`; sem ela, "contato
+    em configuração".
+- Backend: ruff e mypy limpos. pytest 209 passed, 24 skipped e 1 xfailed, com o teste novo do
+  OpenAPI. Ele falhou antes da mudança.
+- Ensaio pela porta 3000 (`curl.exe`):
+  - cadastro: 201, com `Set-Cookie` sem `Domain`;
+  - `/eu`: 200;
+  - logout: 204;
+  - `/eu` depois do logout: 401;
+  - análise anônima: 200;
+  - `/health`: 200.
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| **Critério final: login no iPhone (Safari e Chrome) em produção** | Walter, depois do deploy |
+| `API_URL_INTERNA` e `NEXT_PUBLIC_CONTATO_PRIVACIDADE` no serviço do frontend no Render; apagar `NEXT_PUBLIC_API_URL` | Walter — README, "Produção", passo 7 |
+| `COOKIE_SECURE=false` no `.env` local | Walter |
+| Revisão de design das telas novas (prints) | Walter |
+| Em 320 px, o campo de senha fica com ~115 px porque divide a linha com o botão "Mostrar" | design, visto no teste manual; não corrigido nesta fatia |
+| **Falso negativo em produção: smishing com link `bit.ly`** | Fase 2/3, vindo da fatia 2 |
+| Rate limit de login | vindo da fatia 2 (ADR-0013) |
+| Exclusão de conta pela tela | por ora pelo contato do aviso de privacidade |
+| Limpeza global das sessões vencidas | sem tarefa agendada |
+| Histórico, `usuario_id` em `analises` e coluna de texto | fatia posterior |
+
+O proxy `/api/*` e a tela de login, pendentes da fatia 2, foram resolvidos aqui.
+
+### Próximo passo
+
+Deploy do frontend com as variáveis novas, teste no iPhone e revisão de design das telas de conta.
