@@ -15,7 +15,7 @@ from app.api.analises import router as router_analises
 from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
-from app.core.db import criar_engine
+from app.core.db import criar_engine, criar_sessionmaker
 from app.scoring.regras import carregar_regras
 
 # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
@@ -31,16 +31,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Nenhum dos dois abre conexão aqui: ambos conectam sob demanda. Quem quiser saber se a
     infraestrutura responde deve chamar /health.
+
+    Sem REDIS_URL o cliente não é criado e `app.state.redis` fica `None`: é o Redis desativado,
+    estado de produção até a Fase 4.
     """
     settings = get_settings()
     engine = criar_engine(settings.database_url)
-    redis = criar_redis(settings.redis_url)
+    redis = criar_redis(settings.redis_url) if settings.redis_url else None
     app.state.engine = engine
+    app.state.fabrica_de_sessoes = criar_sessionmaker(engine)
     app.state.redis = redis
     try:
         yield
     finally:
-        await redis.aclose()
+        if redis is not None:
+            await redis.aclose()
         await engine.dispose()
 
 

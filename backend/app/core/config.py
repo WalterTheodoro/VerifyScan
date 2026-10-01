@@ -2,7 +2,22 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Esquemas que o Neon (e a maioria dos provedores) entrega sem o driver. O SQLAlchemy lê
+# `postgresql://` como psycopg2, que não está instalado; o driver do projeto é o psycopg3
+# (ADR-0001). `postgres://` é o apelido aceito pelo libpq, mas o SQLAlchemy não o reconhece.
+_ESQUEMAS_SEM_DRIVER = ("postgresql://", "postgres://")
+_ESQUEMA_DO_PROJETO = "postgresql+psycopg://"
+
+
+def normalizar_database_url(url: str) -> str:
+    """Troca só o esquema; usuário, host, banco e query (`sslmode`, ...) passam intactos."""
+    for esquema in _ESQUEMAS_SEM_DRIVER:
+        if url.startswith(esquema):
+            return _ESQUEMA_DO_PROJETO + url.removeprefix(esquema)
+    return url
 
 
 class Settings(BaseSettings):
@@ -27,7 +42,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     database_url: str = "postgresql+psycopg://verifyscan:verifyscan@localhost:5432/verifyscan"
-    redis_url: str = "redis://localhost:6379/0"
+    # Ausente ou vazia: Redis desativado — o estado de produção até a Fase 4. O /health
+    # reporta "desativado" sem tocar a rede.
+    redis_url: str | None = None
 
     # Teto da mensagem analisada. Acima disso a análise é recusada, nunca truncada — ver
     # `ServicoAnalise._validar`. É configuração para a Fase 2 poder ajustar se o corpus
@@ -36,6 +53,19 @@ class Settings(BaseSettings):
 
     # Timeout das checagens de /health. Todo I/O externo tem timeout explícito (ADR-0002).
     timeout_health_s: float = 2.0
+
+    # Teto do registro da análise no banco. Estourar não derruba a análise (ADR-0012).
+    timeout_persistencia_s: float = 2.0
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalizar_database_url(cls, valor: str) -> str:
+        return normalizar_database_url(valor)
+
+    @field_validator("redis_url")
+    @classmethod
+    def _redis_vazio_e_desativado(cls, valor: str | None) -> str | None:
+        return valor or None
 
     @property
     def origens_cors(self) -> list[str]:
