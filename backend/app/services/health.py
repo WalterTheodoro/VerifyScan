@@ -92,13 +92,24 @@ class VerificadorRedis:
         await self._redis.ping()
 
 
+class VerificadorDesativado:
+    """Serviço não configurado de propósito. Responde na hora, sem tocar a rede."""
+
+    async def __call__(self) -> SaudeServico:
+        return SaudeServico(status="desativado", latencia_ms=0.0)
+
+
 async def verificar_saude(
     verificar_postgres: VerificadorSaude,
     verificar_redis: VerificadorSaude,
 ) -> RespostaHealth:
-    """Roda as duas checagens em paralelo e agrega o estado geral."""
+    """Roda as duas checagens em paralelo e agrega o estado geral.
+
+    O Postgres é obrigatório. O Redis pode estar desativado sem degradar: até a Fase 4 nada o
+    usa, e em produção ele não existe.
+    """
     postgres, redis = await asyncio.gather(verificar_postgres(), verificar_redis())
-    tudo_ok = postgres.status == "ok" and redis.status == "ok"
+    tudo_ok = postgres.status == "ok" and redis.status in {"ok", "desativado"}
     return RespostaHealth(
         status="ok" if tudo_ok else "degradado",
         postgres=postgres,

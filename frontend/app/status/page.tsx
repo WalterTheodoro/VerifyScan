@@ -9,7 +9,8 @@ import { useEffect, useState } from "react";
 const URL_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type SaudeServico = {
-  status: "ok" | "erro";
+  // "desativado": o serviço não foi configurado de propósito (Redis sem REDIS_URL, até a Fase 4).
+  status: "ok" | "erro" | "desativado";
   latencia_ms: number;
   detalhe: string | null;
 };
@@ -111,6 +112,16 @@ export default function PaginaSaude() {
 function CartaoServico({ nome, saude }: { nome: string; saude: SaudeServico }) {
   // O estado nunca é comunicado só por cor — o texto "ok"/"erro" carrega a informação sozinho.
   // As regras de acessibilidade do ADR-0010 valem para a tela de análise; esta é diagnóstico.
+  if (saude.status === "desativado") {
+    // Tom neutro: desativado é configuração, não falha — o /health continua "ok".
+    return (
+      <li className="border border-current p-4 opacity-70">
+        <p>
+          <strong>{nome}:</strong> desativado até a Fase 4
+        </p>
+      </li>
+    );
+  }
   return (
     <li className="border border-current p-4">
       <p>
