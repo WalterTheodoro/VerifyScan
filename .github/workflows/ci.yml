@@ -16,6 +16,27 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Postgres de teste para os testes marcados `integracao` (CLAUDE.md §6). Mesma versão do
+    # docker compose e do Neon (ADR-0011). Credenciais descartáveis: o banco só existe durante
+    # o job e não é alcançável de fora do runner.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: verifyscan
+          POSTGRES_PASSWORD: verifyscan_ci
+          POSTGRES_DB: verifyscan_teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U verifyscan -d verifyscan_teste"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Sem o driver de propósito, como vem do Neon: exercita a normalização do Settings.
+      DATABASE_URL: postgresql://verifyscan:verifyscan_ci@localhost:5432/verifyscan_teste
+      TEST_DATABASE_URL: postgresql://verifyscan:verifyscan_ci@localhost:5432/verifyscan_teste
     steps:
       - uses: actions/checkout@v4
 
@@ -39,10 +60,20 @@ jobs:
       - name: mypy
         run: uv run mypy app
 
+      - name: alembic upgrade head
+        run: uv run alembic upgrade head
+
+      - name: alembic check
+        # Falha se os modelos e as migrações divergirem: é o que garante "esquema só por
+        # Alembic". Limite conhecido: o autogenerate não compara CHECK constraint.
+        run: uv run alembic check
+
       - name: pytest
-        # Os testes não tocam em Postgres nem em Redis: as dependências entram por `Depends`
-        # e são substituídas por falsos determinísticos. Por isso o job não sobe serviço.
-        run: uv run pytest -q
+        # Os testes unitários não tocam em Postgres nem em Redis: as dependências entram por
+        # `Depends` e são substituídas por falsos determinísticos. Só os marcados `integracao`
+        # falam com o Postgres do serviço acima; eles refazem o esquema pelo Alembic
+        # (downgrade base → upgrade head) e não deixam linha para trás.
+        run: uv run pytest -q -rs
 
   frontend:
     name: frontend — eslint
