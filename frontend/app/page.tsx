@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { Cabecalho } from "./_componentes/cabecalho";
 import { Rodape } from "./_componentes/rodape";
+import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./_componentes/nivel-risco";
 import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
@@ -11,8 +13,6 @@ import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
 // Numa página só, e não em duas rotas, por um motivo de privacidade: passar a mensagem para
 // /resultado exigiria colocá-la na URL ou em storage do navegador. A mensagem do usuário não
 // sai da memória da aba — nem quando ela reaparece citada acima do resultado.
-
-type NivelRisco = "BAIXO" | "MEDIO" | "ALTO";
 
 type Fator = {
   tipo: string;
@@ -28,6 +28,8 @@ type RespostaAnalise = {
   urls_analisadas: string[];
   explicacao_indisponivel: boolean;
   verificacao_externa_indisponivel: boolean;
+  // true só quando o backend gravou a análise ligada à conta (ADR-0015).
+  salva_no_historico: boolean;
 };
 
 type Estado =
@@ -36,14 +38,10 @@ type Estado =
   | { situacao: "concluida"; resultado: RespostaAnalise }
   | { situacao: "falhou"; mensagem: string };
 
-/** Texto exibido para cada nível. Nunca só a cor: a palavra e o ícone carregam o sentido.
+/** Texto exibido para cada nível; a palavra e o ícone vêm de `_componentes/nivel-risco`.
  *  O tom acalma sem minimizar: quem lê isto pode estar com medo de já ter perdido dinheiro. */
-const APRESENTACAO: Record<
-  NivelRisco,
-  { palavra: string; resumo: string; recomendacao: string }
-> = {
+const APRESENTACAO: Record<NivelRisco, { resumo: string; recomendacao: string }> = {
   BAIXO: {
-    palavra: "Risco baixo",
     // A segunda frase é obrigatória: hoje só o texto é analisado (sem conferir o site do
     // link, sem ler imagem, sem consulta externa), então risco baixo quer dizer "não achei
     // sinais conhecidos", nunca "é seguro".
@@ -57,14 +55,12 @@ const APRESENTACAO: Record<
       "aplicativo oficial antes de responder.",
   },
   MEDIO: {
-    palavra: "Risco médio",
     resumo: "Esta mensagem tem sinais que pedem cuidado.",
     recomendacao:
       "Por enquanto, não clique em links e não passe seus dados. Confirme com a empresa, " +
       "pelo telefone ou aplicativo oficial, se a mensagem é verdadeira.",
   },
   ALTO: {
-    palavra: "Risco alto",
     resumo: "Esta mensagem tem sinais fortes de golpe. Você fez bem em conferir antes.",
     recomendacao:
       "Não clique no link, não pague nada e não passe seus dados. Apague a mensagem e " +
@@ -125,6 +121,8 @@ export default function PaginaAnalise() {
   // A entrada orquestrada do hero é só da carga da página; depois de "Analisar outra
   // mensagem" o formulário volta sem animar.
   const [animarEntrada, setAnimarEntrada] = useState(true);
+  // Quem diz se há alguém logado é o cabeçalho, que já consultou /api/auth/eu.
+  const [logado, setLogado] = useState(false);
   const tituloDoResultado = useRef<HTMLHeadingElement>(null);
   const campoMensagem = useRef<HTMLTextAreaElement>(null);
   const botaoRecomecar = useRef<HTMLButtonElement>(null);
@@ -161,7 +159,7 @@ export default function PaginaAnalise() {
 
   return (
     <RaizDaPagina>
-      <Cabecalho aoIrParaAnalise={aoIrParaAnalise} />
+      <Cabecalho aoIrParaAnalise={aoIrParaAnalise} aoMudarSessao={setLogado} />
 
       <main>
         {/* Hero. Depois da análise, o resultado ocupa este mesmo lugar, numa coluna só.
@@ -263,7 +261,13 @@ export default function PaginaAnalise() {
                 )}
 
                 {estado.situacao === "concluida" && (
-                  <Resultado resultado={estado.resultado} tituloRef={tituloDoResultado} />
+                  <>
+                    <Resultado resultado={estado.resultado} tituloRef={tituloDoResultado} />
+                    <AvisoDoHistorico
+                      salva={estado.resultado.salva_no_historico}
+                      logado={logado}
+                    />
+                  </>
                 )}
               </section>
 
@@ -408,7 +412,7 @@ function ExemploNoCelular() {
                   <IconeDeRisco nivel="ALTO" />
                 </span>
                 <p className="text-titulo font-extrabold leading-tight">
-                  {APRESENTACAO.ALTO.palavra}
+                  {PALAVRA_DO_NIVEL.ALTO}
                 </p>
               </div>
               <div className="flex flex-col gap-perto px-4 py-5">
@@ -622,6 +626,26 @@ function OQueEleProcura() {
   );
 }
 
+/** Abaixo do resultado: se a análise foi para o histórico. Deslogado, nada — a análise sem
+ *  conta continua sendo o caminho principal. Logado e não salva (sessão vencida, banco lento),
+ *  diz a verdade em vez de prometer. */
+function AvisoDoHistorico({ salva, logado }: { salva: boolean; logado: boolean }) {
+  if (salva) {
+    return (
+      <p className="text-destaque">
+        Esta análise foi salva no seu histórico por 7 dias.{" "}
+        <Link href="/conta/historico" className="font-bold text-anil underline underline-offset-4">
+          Ver histórico
+        </Link>
+      </p>
+    );
+  }
+  if (logado) {
+    return <p className="text-destaque">Não conseguimos salvar esta análise no seu histórico.</p>;
+  }
+  return null;
+}
+
 function Resultado({
   resultado,
   tituloRef,
@@ -629,7 +653,8 @@ function Resultado({
   resultado: RespostaAnalise;
   tituloRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
-  const { palavra, resumo, recomendacao } = APRESENTACAO[resultado.nivel_risco];
+  const { resumo, recomendacao } = APRESENTACAO[resultado.nivel_risco];
+  const palavra = PALAVRA_DO_NIVEL[resultado.nivel_risco];
   const urls = resultado.urls_analisadas;
 
   return (
@@ -703,44 +728,6 @@ function Resultado({
         )}
       </div>
     </div>
-  );
-}
-
-function IconeDeRisco({ nivel }: { nivel: NivelRisco }) {
-  const comum = {
-    width: 44,
-    height: 44,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 2.5,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-
-  if (nivel === "BAIXO") {
-    return (
-      <svg {...comum}>
-        <circle cx="12" cy="12" r="9.5" />
-        <path d="m7.5 12 3 3 6-6" />
-      </svg>
-    );
-  }
-  if (nivel === "MEDIO") {
-    return (
-      <svg {...comum}>
-        <path d="M12 3 2 20h20L12 3Z" />
-        <path d="M12 10v4" />
-        <path d="M12 17.5v.01" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...comum}>
-      <circle cx="12" cy="12" r="9.5" />
-      <path d="m15 9-6 6" />
-      <path d="m9 9 6 6" />
-    </svg>
   );
 }
 
