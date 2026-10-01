@@ -26,7 +26,13 @@ function aoClicarLogoNaHome(evento: React.MouseEvent<HTMLAnchorElement>) {
  *
  *  Na home, `aoIrParaAnalise` rola até o campo sem sair da página. Nas outras páginas ele não
  *  vem, e os mesmos itens viram links para a home — mesmo visual, outro destino. */
-export function Cabecalho({ aoIrParaAnalise }: { aoIrParaAnalise?: () => void }) {
+export function Cabecalho({
+  aoIrParaAnalise,
+  aoMudarSessao,
+}: {
+  aoIrParaAnalise?: () => void;
+  aoMudarSessao?: (logado: boolean) => void;
+}) {
   const naHome = aoIrParaAnalise !== undefined;
   // Abaixo de 640 px o rótulo visível é só "Analisar"; o nome acessível continua inteiro, pelo
   // `aria-label`. O <span> de fora é necessário: no link (inline-flex), "Analisar" e o span
@@ -87,7 +93,7 @@ export function Cabecalho({ aoIrParaAnalise }: { aoIrParaAnalise?: () => void })
             e a página não salta quando ela chega. A partir de 768 px os três estados cabem na
             primeira linha. */}
         <div className="min-w-0 basis-full md:ml-2 md:basis-auto">
-          <AreaSessao />
+          <AreaSessao aoMudarSessao={aoMudarSessao} />
         </div>
       </div>
     </header>

@@ -4,7 +4,7 @@ Postgres e um falso em memória nos testes.
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Protocol
 
 import psycopg
@@ -43,6 +43,15 @@ class CredenciaisArmazenadas:
     senha_hash: str
 
 
+@dataclass(frozen=True)
+class DadosConta:
+    """O que a seção "Meus dados" mostra. Sem id e sem hash de senha."""
+
+    nome: str
+    email: str
+    criado_em: datetime
+
+
 class RepositorioUsuarios(Protocol):
     async def criar_com_sessao(
         self, nome: str, email: str, senha_hash: str, token_hash: str, validade: timedelta
@@ -51,6 +60,8 @@ class RepositorioUsuarios(Protocol):
     async def buscar_credenciais(self, email: str) -> CredenciaisArmazenadas | None: ...
 
     async def atualizar_senha_hash(self, usuario_id: uuid.UUID, senha_hash: str) -> None: ...
+
+    async def buscar_conta(self, usuario_id: uuid.UUID) -> DadosConta | None: ...
 
 
 class RepositorioUsuariosPostgres:
@@ -102,6 +113,19 @@ class RepositorioUsuariosPostgres:
             await sessao.execute(
                 update(Usuario).where(Usuario.id == usuario_id).values(senha_hash=senha_hash)
             )
+
+    async def buscar_conta(self, usuario_id: uuid.UUID) -> DadosConta | None:
+        async with self._fabrica_de_sessoes() as sessao:
+            linha = (
+                await sessao.execute(
+                    select(Usuario.nome_exibicao, Usuario.email, Usuario.created_at).where(
+                        Usuario.id == usuario_id
+                    )
+                )
+            ).one_or_none()
+        if linha is None:
+            return None
+        return DadosConta(nome=linha.nome_exibicao, email=linha.email, criado_em=linha.created_at)
 
 
 def _constraint_violada(erro: IntegrityError) -> str | None:

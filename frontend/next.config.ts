@@ -29,6 +29,14 @@ const nextConfig: NextConfig = {
   // aninhado competiria com o arquivo de contexto do projeto, que é o da raiz do monorepo.
   agentRules: false,
 
+  // /conta não tem conteúdo próprio: a seção de entrada é o histórico (ADR-0016). Redirecionar
+  // aqui, e não com `redirect()` numa página, porque a página seria pré-renderizada estática e
+  // deixaria o redirecionamento para o JavaScript do navegador — medido: aberta direto, ficava
+  // em /conta. Pelo config é um 307 do servidor.
+  async redirects() {
+    return [{ source: "/conta", destination: "/conta/historico", permanent: false }];
+  },
+
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${API_URL_INTERNA}/api/:path*` },

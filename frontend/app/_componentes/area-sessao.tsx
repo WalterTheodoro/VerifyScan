@@ -13,8 +13,11 @@ type Sessao =
 const BOTAO =
   "botao-secundario alvo-de-toque inline-flex items-center rounded-full px-4 font-bold";
 
-/** "Entrar", ou "Olá, {nome}" e "Sair". O estado vem de GET /api/auth/eu; 401 é "deslogado". */
-export function AreaSessao() {
+/** "Entrar", ou "Olá, {nome}" e "Sair". O estado vem de GET /api/auth/eu; 401 é "deslogado".
+ *
+ *  `aoMudarSessao` conta à página se há alguém logado — a home usa isso para o aviso do
+ *  histórico, sem consultar /eu uma segunda vez. */
+export function AreaSessao({ aoMudarSessao }: { aoMudarSessao?: (logado: boolean) => void }) {
   const [sessao, setSessao] = useState<Sessao>({ situacao: "carregando" });
   const [saindo, setSaindo] = useState(false);
   const [erroAoSair, setErroAoSair] = useState("");
@@ -26,11 +29,14 @@ export function AreaSessao() {
     void consultarSessao().then((usuario) => {
       if (ativo) {
         setSessao(usuario ? { situacao: "logado", usuario } : { situacao: "deslogado" });
+        aoMudarSessao?.(usuario !== null);
       }
     });
     return () => {
       ativo = false;
     };
+    // Uma consulta por montagem: o callback novo a cada renderização da página não a repete.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function aoSair() {
@@ -40,6 +46,7 @@ export function AreaSessao() {
       setSaindo(false);
       if (saiu) {
         setSessao({ situacao: "deslogado" });
+        aoMudarSessao?.(false);
       } else {
         // Continua logado na tela porque continua logado de verdade: o cookie não foi limpo.
         setErroAoSair("Não conseguimos sair. Tente de novo.");
@@ -61,13 +68,13 @@ export function AreaSessao() {
 
       {sessao.situacao === "logado" && (
         <>
-          {/* O nome tem até 60 caracteres e é cortado com reticências. Medido no navegador
-              (rem de 18 px): 9rem cabe com "Sair" em 320 px; 11rem deixa a sessão na mesma
-              linha em 768 px, com 18 px de folga; 14rem é o desktop, igual ao de antes. */}
-          <span className="max-w-[9rem] truncate font-semibold md:max-w-[11rem]
-            xl:max-w-[14rem]">
-            Olá, {sessao.usuario.nome}
-          </span>
+          {/* Leva à área "Minha conta" (ADR-0016), com o visual de contorno do "Sair". O nome
+              tem até 60 caracteres e é cortado com reticências no <span> de dentro: no link
+              (inline-flex) o `truncate` precisa de um filho que possa encolher. */}
+          <Link href="/conta" className={`${BOTAO} max-w-[9rem] md:max-w-[11rem]
+            xl:max-w-[14rem]`}>
+            <span className="truncate">Olá, {sessao.usuario.nome}</span>
+          </Link>
           <button type="button" onClick={aoSair} disabled={saindo} className={BOTAO}>
             {saindo ? "Saindo…" : "Sair"}
           </button>

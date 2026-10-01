@@ -19,7 +19,11 @@ from typing import NoReturn
 from app.core.seguranca import HasherSenha
 from app.services.analise import EntradaInvalida
 from app.services.repositorio_sessoes import RepositorioSessoes
-from app.services.repositorio_usuarios import RepositorioUsuarios, UsuarioAutenticado
+from app.services.repositorio_usuarios import (
+    DadosConta,
+    RepositorioUsuarios,
+    UsuarioAutenticado,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +122,11 @@ class ServicoAutenticacao:
             return None
         async with self._banco():
             return await self._sessoes.buscar_usuario(hash_do_token(token))
+
+    async def dados_da_conta(self, usuario: UsuarioAutenticado) -> DadosConta | None:
+        """`None` se a conta sumiu entre a checagem da sessão e esta consulta."""
+        async with self._banco():
+            return await self._usuarios.buscar_conta(usuario.id)
 
     async def sair(self, token: str) -> None:
         if not token:

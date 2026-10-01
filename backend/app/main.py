@@ -13,12 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.analises import router as router_analises
 from app.api.autenticacao import router as router_autenticacao
+from app.api.conta import router as router_conta
 from app.api.deps import obter_hasher
 from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine, criar_sessionmaker
 from app.scoring.regras import carregar_regras
+from app.services.historico import desvincular_vencidas
+from app.services.repositorio_historico import RepositorioHistoricoPostgres
 
 # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
 # rodar nele. Trocar a política aqui, na importação do módulo, é o que faz qualquer processo que
@@ -36,6 +39,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Sem REDIS_URL o cliente não é criado e `app.state.redis` fica `None`: é o Redis desativado,
     estado de produção até a Fase 4.
+
+    A única I/O da subida é a desvinculação do histórico vencido (ADR-0015): oportunista, com
+    o teto do registro, e nunca derruba o processo — se o banco estiver fora, só loga.
     """
     settings = get_settings()
     engine = criar_engine(settings.database_url)
@@ -43,6 +49,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.fabrica_de_sessoes = criar_sessionmaker(engine)
     app.state.redis = redis
+    await desvincular_vencidas(
+        RepositorioHistoricoPostgres(app.state.fabrica_de_sessoes),
+        settings.historico_dias,
+        settings.timeout_persistencia_s,
+    )
     try:
         yield
     finally:
@@ -75,6 +86,7 @@ def criar_app() -> FastAPI:
     app.include_router(router_health)
     app.include_router(router_analises)
     app.include_router(router_autenticacao)
+    app.include_router(router_conta)
     return app
 
 

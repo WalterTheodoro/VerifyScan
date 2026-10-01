@@ -3,12 +3,11 @@
 O que é desta camada é o HTTP: status, mensagem em `detail` e o cookie `vs_sessao` (ADR-0013).
 """
 
-from typing import Any
-
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.deps import NOME_DO_COOKIE, obter_servico_autenticacao, obter_usuario_atual
+from app.api.erros import ERRO_401, ERRO_401_LOGIN, ERRO_409, ERRO_422, ERRO_503
 from app.core.config import Settings, get_settings
 from app.schemas.autenticacao import RespostaUsuario, SolicitacaoCadastro, SolicitacaoLogin
 from app.services.analise import EntradaInvalida
@@ -28,31 +27,6 @@ _STATUS_DO_ERRO: dict[type[Exception], int] = {
     ServicoIndisponivel: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 _ERROS_DO_SERVICO = tuple(_STATUS_DO_ERRO)
-
-# Erros declarados no OpenAPI, no padrão de POST /api/analises. Sem isto o Swagger mostra o 409
-# como "Undocumented". Em todos, `detail` é a frase em pt-BR para o usuário.
-_ERRO_401: dict[int | str, dict[str, Any]] = {
-    status.HTTP_401_UNAUTHORIZED: {"description": "Sem sessão válida. `detail` diz o que fazer."}
-}
-_ERRO_401_LOGIN: dict[int | str, dict[str, Any]] = {
-    status.HTTP_401_UNAUTHORIZED: {
-        "description": "E-mail ou senha incorretos, com o mesmo `detail` para os dois casos."
-    }
-}
-_ERRO_409: dict[int | str, dict[str, Any]] = {
-    status.HTTP_409_CONFLICT: {"description": "Já existe conta com este e-mail. `detail` diz isso."}
-}
-_ERRO_422: dict[int | str, dict[str, Any]] = {
-    status.HTTP_422_UNPROCESSABLE_CONTENT: {
-        "description": "Dado recusado. `detail` é a frase em pt-BR. Corpo que não é JSON válido "
-        "mantém o formato padrão do FastAPI (`detail` em lista)."
-    }
-}
-_ERRO_503: dict[int | str, dict[str, Any]] = {
-    status.HTTP_503_SERVICE_UNAVAILABLE: {
-        "description": "Banco fora ou lento demais. `detail` pede para tentar de novo."
-    }
-}
 
 
 def _http(erro: Exception) -> HTTPException:
@@ -98,7 +72,7 @@ def _resposta(usuario: UsuarioAutenticado) -> RespostaUsuario:
     response_model=RespostaUsuario,
     status_code=status.HTTP_201_CREATED,
     summary="Cria a conta e já entra nela",
-    responses={**_ERRO_409, **_ERRO_422, **_ERRO_503},
+    responses={**ERRO_409, **ERRO_422, **ERRO_503},
 )
 async def cadastrar(
     solicitacao: SolicitacaoCadastro,
@@ -118,7 +92,7 @@ async def cadastrar(
     "/login",
     response_model=RespostaUsuario,
     summary="Entra na conta",
-    responses={**_ERRO_401_LOGIN, **_ERRO_422, **_ERRO_503},
+    responses={**ERRO_401_LOGIN, **ERRO_422, **ERRO_503},
 )
 async def entrar(
     solicitacao: SolicitacaoLogin,
@@ -171,7 +145,7 @@ async def sair(
     "/eu",
     response_model=RespostaUsuario,
     summary="Quem está logado",
-    responses={**_ERRO_401, **_ERRO_503},
+    responses={**ERRO_401, **ERRO_503},
 )
 async def eu(usuario: UsuarioAutenticado = Depends(obter_usuario_atual)) -> RespostaUsuario:
     return _resposta(usuario)

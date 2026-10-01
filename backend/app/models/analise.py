@@ -1,8 +1,11 @@
-"""Tabelas da análise anônima: `analises` e `indicadores_risco` (§5.5 do RFC, ADR-0012).
+"""Tabelas da análise: `analises` e `indicadores_risco` (§5.5 do RFC, ADR-0012).
+
+`usuario_id` liga a análise feita logado à conta, por `HISTORICO_DIAS` (ADR-0015). Anônima, ou
+depois da janela, fica `NULL` — e então é idêntica a uma análise anônima do ADR-0006.
 
 O que NÃO está aqui, de propósito:
-- texto da mensagem e `usuario_id`: dependem do ADR de privacidade do usuário autenticado, ainda
-  não aceito; entram por migração própria (ADR-0006, ADR-0012);
+- texto da mensagem, nem trecho dele, para nenhum usuário: o histórico se reconhece pela data,
+  pelo nível e pelos fatores (ADR-0006, ADR-0015);
 - `urls_analisadas`: a forma canônica preserva a query string (ADR-0009), que pode carregar
   e-mail ou token da vítima;
 - `resultado` (§5.5): o RFC não define o conteúdo; o único uso ligado a persistência é a Tela 5,
@@ -13,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import get_args
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -33,6 +36,9 @@ class Analise(Base):
     __table_args__ = (
         CheckConstraint(_check_valores("nivel_risco", get_args(NivelRisco)), name="nivel_risco"),
         CheckConstraint(_check_valores("tipo_input", get_args(TipoInput)), name="tipo_input"),
+        # A listagem filtra pelo dono e pela janela e ordena por data: um índice serve às duas
+        # coisas, e com `usuario_id` na frente também cobre a FK no CASCADE (ADR-0015).
+        Index("ix_analises_usuario_id_created_at", "usuario_id", "created_at"),
     )
 
     # UUID gerado em Python: o id vai aparecer em /api/historico/{id}, e inteiro sequencial é
@@ -42,6 +48,10 @@ class Analise(Base):
     nivel_risco: Mapped[str] = mapped_column(String(10))
     tipo_input: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # ON DELETE CASCADE: apagar a conta apaga as análises ainda ligadas a ela (ADR-0015).
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE")
+    )
 
     # lazy="raise": acessar sem `selectinload` explícito levanta erro em vez de disparar I/O
     # escondido. É a regra 2 do ADR-0001 garantida pelo ORM, não pela memória.

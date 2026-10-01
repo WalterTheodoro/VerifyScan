@@ -3,7 +3,8 @@
 Diverge da §5.5 do RFC (errata, item 11): entra `nome_exibicao`, com a finalidade de saudação na
 interface — não é "nome completo" —, e não entra `plano`.
 
-O que NÃO está aqui: vínculo de `analises` ao usuário e histórico (fatia posterior).
+O vínculo da análise à conta mora em `analises.usuario_id` (ADR-0015), com ON DELETE CASCADE:
+apagar a conta apaga as análises ainda ligadas a ela, sem relação no ORM — quem apaga é o banco.
 """
 
 import uuid

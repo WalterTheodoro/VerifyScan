@@ -47,6 +47,13 @@ async def test_flags_de_degradacao_existem_e_sao_falsas(cliente: AsyncClient) ->
     assert corpo["verificacao_externa_indisponivel"] is False
 
 
+async def test_sem_conta_a_analise_nao_vai_para_o_historico(cliente: AsyncClient) -> None:
+    """Campo aditivo do ADR-0015: true só quando a análise foi gravada ligada a uma conta."""
+    corpo = (await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
+
+    assert corpo["salva_no_historico"] is False
+
+
 async def test_mensagem_legitima_da_baixo(cliente: AsyncClient) -> None:
     texto = (
         "Sua fatura do cartão final 1234 fecha em 05/09 e vence em 12/09. "

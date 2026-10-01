@@ -15,7 +15,7 @@ export const MENSAGEM_SEM_SERVIDOR =
 const MENSAGEM_CONFIRA = "Confira os dados e tente de novo.";
 
 /** O `detail` do corpo de erro do backend, se houver. */
-function lerDetail(corpo: unknown): unknown {
+export function lerDetail(corpo: unknown): unknown {
   return corpo && typeof corpo === "object" && "detail" in corpo ? corpo.detail : undefined;
 }
 
@@ -69,6 +69,21 @@ export async function consultarSessao(): Promise<Usuario | null> {
     return resposta.ok && ehUsuario(dados) ? dados : null;
   } catch {
     return null;
+  }
+}
+
+/** Como `consultarSessao`, mas separando "deslogado" (401) de "não deu para saber". A área da
+ *  conta precisa da diferença: só o 401 justifica dizer "Entre na sua conta". */
+export async function verificarSessao(): Promise<"logado" | "deslogado" | "erro"> {
+  try {
+    const resposta = await fetch("/api/auth/eu", { cache: "no-store" });
+    if (resposta.status === 401) {
+      return "deslogado";
+    }
+    const dados: unknown = await resposta.json().catch(() => null);
+    return resposta.ok && ehUsuario(dados) ? "logado" : "erro";
+  } catch {
+    return "erro";
   }
 }
 

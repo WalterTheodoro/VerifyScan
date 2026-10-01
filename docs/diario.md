@@ -953,3 +953,138 @@ O proxy `/api/*` e a tela de login, pendentes da fatia 2, foram resolvidos aqui.
 ### Próximo passo
 
 Deploy do frontend com as variáveis novas, teste no iPhone e revisão de design das telas de conta.
+
+## 2026-10-01 — Fase 8, fatia 4: "Minha conta" e histórico de 7 dias (RF12)
+
+### O que foi feito
+
+- **Backend.**
+  - A migração `0003` acrescenta `analises.usuario_id` (FK com CASCADE e índice `(usuario_id,
+    created_at)`).
+  - Rotas novas: `GET/DELETE /api/historico`, `DELETE /api/historico/{id}` e `GET /api/conta`.
+  - A desvinculação das análises vencidas roda na subida e a cada listagem.
+  - `POST /api/analises` ganhou o campo aditivo `salva_no_historico`.
+  - Decisões no ADR-0015.
+- **Frontend.**
+  - Área "Minha conta" em rotas aninhadas, com layout e menu em pílulas: `/conta/historico`,
+    `/conta/dados` e `/conta/privacidade` (ADR-0016).
+  - No cabeçalho, "Olá, {nome}" virou link.
+  - O aviso de privacidade virou um componente só, usado pela página pública e pela conta, e passou
+    a cobrir o art. 9º da LGPD.
+  - A home mostra se a análise foi salva no histórico.
+- **Documentação.** Achado 9 RESOLVIDO; errata, item 12; ADR-0006 complementado.
+
+### Decisões do Walter no plano
+
+1. **A consulta da sessão foi para dentro do registro.** Eu tinha proposto uma dependência com 2 s
+   próprios antes da análise, o que levaria o pior caso a ≈ 19 s e mudaria a invariante 8.
+   - O Walter pediu que a rota só lesse o cookie e que o orquestrador resolvesse o dono depois do
+     resultado, no mesmo teto do registro.
+   - A invariante 8 não mudou.
+2. **`salva_no_historico` é campo no corpo, e não cabeçalho HTTP nem consulta a `/eu`.** A frase
+   "foi salva no seu histórico" só aparece quando o backend confirma que gravou com dono.
+
+### O que deu errado ou mudou no caminho
+
+1. **`git add -N` numa sessão que proibia `git add`.** Usei para o `git diff --stat` mostrar os
+   arquivos novos e desfiz com `git rm --cached`. O índice voltou vazio e os arquivos ficaram
+   intactos.
+2. **`/conta` com `redirect()` não redirecionava quando aberta direto.**
+   - O Next pré-renderizou a página como estática: ela respondia 200 e deixava o redirecionamento
+     para o JavaScript do cliente.
+   - Medido no Chrome headless: aberta direto, ficava em `/conta`; pelo link do cabeçalho
+     funcionava.
+   - Correção: `redirects()` no `next.config.ts`, um 307 do servidor, e a página saiu.
+   - **Mesmo padrão da fatia 3:** passou por lint, tipos e build e só apareceu no navegador.
+3. **Vão grande entre o texto do topo e a lista.** A região `aria-live`, vazia, contava como item do
+   flex. Ela foi para o grupo do título, que tem espaçamento curto. Visto nos prints.
+4. **Nome visível no cabeçalho.**
+   - O teto de largura passou a valer para o link inteiro, com padding e borda. O texto do nome
+     ficou com 122 px no celular (antes, 162), 158 px a partir de 768 e 212 px em 1280.
+   - O nome continua cortado com reticências, e o botão coube em 320 px sem mudar as alturas.
+5. **`TEST_DATABASE_URL` não está no `.env` local.** Os testes de integração rodaram com a variável
+   montada só no comando.
+6. **Ambiente de medição.** O `ln -s` do Git Bash copiou o `node_modules` em vez de criar um link.
+   O build de medição foi para uma pasta nova com junção do Windows.
+
+### Verificação
+
+- Backend:
+  - ruff e mypy limpos;
+  - pytest: 235 unitários passaram, com 1 xfailed (o achado 1), e 37 de integração passaram contra
+    `verifyscan_teste`;
+  - são 39 testes novos;
+  - `alembic upgrade head` e `alembic check` limpos;
+  - o lifespan sobe com o banco fora, com um WARNING `TimeoutError`.
+- Frontend:
+  - `npm run lint` e `npx tsc --noEmit` limpos;
+  - build de produção feito numa cópia no scratchpad, na porta 3001, contra um backend da árvore de
+    trabalho na 8001. O `.next` da pasta `frontend/` não foi tocado.
+- Ensaio pelo proxy (`curl`):
+  - análise logada com `salva_no_historico` true;
+  - análise anônima com false;
+  - DELETE de uma: 204, e de novo 404;
+  - id malformado: 404;
+  - DELETE de todas: 204;
+  - `/conta`: 307.
+- Medição do cabeçalho e do menu (script da fatia 3, ampliado):
+  - 320, 375, 390, 640, 768, 1024 e 1280 px, em `/`, `/entrar` e `/conta/historico`, deslogado e
+    com um nome de 60 caracteres: 56 casos, nenhuma falha;
+  - alturas: 165, 116 e 68 px, iguais à fatia 3;
+  - o menu tem 133 px por coluna em 320 px e 252 px (14rem) a partir de 768.
+- Fluxo no Chrome headless:
+  - "Olá" leva a `/conta/historico`;
+  - o menu e o voltar funcionam;
+  - a análise logada mostra o aviso e entra no histórico;
+  - apagar uma e apagar todas, com a confirmação na linha, o foco em "Cancelar" e os anúncios
+    "Análise apagada." e "Histórico apagado.";
+  - deslogado aparece "Entre na sua conta para ver esta página.".
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Revisão de design e prints da área da conta no computador e em 320 px | Walter |
+| `TEST_DATABASE_URL` no `.env` local | Walter |
+| O caso "logado e não salvo" na home só foi testado na API, não no navegador | teste manual |
+| Excluir conta e trocar senha pela tela; tirar a linha "veja a seção Privacidade" de Meus dados | fatia 5 |
+| Trecho do texto com opt-in, mascarado, por 30 dias | evolução registrada no ADR-0015, fora do escopo |
+| Paginação e filtro por nível no histórico | fora do escopo |
+| Critério final de login no iPhone, rate limit de login e limpeza global das sessões vencidas | vindas das fatias 2 e 3 |
+
+### Próximo passo
+
+Commitar a fatia nos 7 commits abaixo, fazer o deploy (a `0003` roda no build do Render) e conferir no
+iPhone.
+
+### Commits
+
+1. `refactor(api): extrai as respostas de erro do OpenAPI para um módulo compartilhado`
+2. `feat(historico): liga a análise à conta e cria o histórico de 7 dias`
+3. `feat(frontend): cria o nível de risco compartilhado e as chamadas da conta e do histórico`
+4. `feat(frontend): reescreve o aviso de privacidade como componente compartilhado, com o art. 9º da LGPD`
+5. `feat(frontend): cria a área Minha conta com rotas aninhadas`
+6. `feat(frontend): avisa na home se a análise foi salva no histórico`
+7. `docs: registra os ADR-0015 e 0016 e a fatia 4 da Fase 8`
+
+Nenhum arquivo aparece em dois commits.
+
+Cada estado intermediário foi simulado numa cópia, a partir do `HEAD`, e passou isolado:
+- backend: ruff, mypy, pytest unitário e de integração, e `alembic check` num banco descartável
+  montado do zero;
+- frontend: lint, build e tsc.
+
+**A primeira proposta tinha 53 commits**, por um mal-entendido da regra. Li "cada arquivo em um
+commit só" como "um arquivo por commit", e a regra era "nenhum arquivo em dois commits". Aquela
+lista deixava vários estados quebrados:
+- mypy no commit do orquestrador;
+- testes vermelhos do registro até o commit dos testes;
+- 404 em `/conta` até o commit do redirecionamento.
+
+O Walter corrigiu antes de qualquer commit.
+
+As partes "vínculo" e "histórico" do backend ficaram num commit só. Não dá para separá-las sem
+deixar código sem teste: `api/deps.py`, `tests/conftest.py` e `tests/integracao/test_historico.py`
+servem às duas.

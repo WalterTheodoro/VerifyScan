@@ -14,18 +14,22 @@ from app.schemas.analise import Fator, NivelRisco, RespostaAnalise, TipoInput
 
 @dataclass(frozen=True)
 class RegistroAnalise:
-    """Tudo o que o banco recebe de uma análise anônima — e nada além disso.
+    """Tudo o que o banco recebe de uma análise — e nada além disso.
 
     Não há campo para o texto (ADR-0006) nem para as URLs (ADR-0009 preserva a query, que pode
     carregar e-mail ou token da vítima). A regra fica no tipo: o repositório não tem por onde
     receber esses dados, do mesmo jeito que o AIFormulator não tem por onde receber a mensagem
     (invariante 1).
+
+    `usuario_id` é o dono, quando a análise foi feita logado (ADR-0015): um id, não conteúdo.
+    Quem o preenche é o orquestrador, depois de resolver a sessão.
     """
 
     score: int
     nivel_risco: NivelRisco
     tipo_input: TipoInput
     fatores: tuple[Fator, ...]
+    usuario_id: uuid.UUID | None = None
 
     @classmethod
     def da_resposta(cls, resposta: RespostaAnalise, tipo_input: TipoInput) -> "RegistroAnalise":
@@ -55,6 +59,7 @@ class RepositorioAnalisesPostgres:
             score_risco=registro.score,
             nivel_risco=registro.nivel_risco,
             tipo_input=registro.tipo_input,
+            usuario_id=registro.usuario_id,
             indicadores=[
                 IndicadorRisco(
                     tipo=fator.tipo,
