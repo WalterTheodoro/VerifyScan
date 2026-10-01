@@ -1,6 +1,6 @@
 # ADR-0006 — Privacidade, persistência e o corpus
 
-**Data:** 2026-08-27 · **Status:** aceito · **Fases:** 2, 5, 8
+**Data:** 2026-08-27 · **Status:** aceito, complementado pelo ADR-0015 · **Fases:** 2, 5, 8
 
 ## Contexto
 

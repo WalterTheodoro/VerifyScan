@@ -265,6 +265,8 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    `SESSAO_DIAS=7` e `TIMEOUT_AUTENTICACAO_S=5`. As variáveis `JWT_*` que existiam no
    `.env.example` saíram: a sessão é opaca, em banco, e não há segredo de assinatura. Se elas
    estiverem no painel do Render, podem ser apagadas.
+   O histórico (ADR-0015) também já vem no default de produção: `HISTORICO_DIAS=7`, por quantos
+   dias a análise feita logado fica ligada à conta. A migração `0003` roda sozinha no build.
 7. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;

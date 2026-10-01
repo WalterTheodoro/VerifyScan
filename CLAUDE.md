@@ -95,7 +95,8 @@ verifyscan/
 │     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario
 │     ├─ schemas/          # Pydantic (contrato da API)
 │     └─ core/             # config, segurança (hash Argon2id), cache, timeouts
-│  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões); esquema só por aqui
+│  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
+│  │                       #   análise→conta); esquema só por aqui
 │  ├─ tools/               # scripts (avaliar_corpus, etc.)
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
@@ -104,11 +105,14 @@ verifyscan/
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010)
       ├─ entrar/ cadastro/ # telas de conta (página de servidor + formulario.tsx cliente)
-      ├─ privacidade/      # aviso de privacidade, estático
+      ├─ conta/            # "Minha conta": layout com menu + historico/ dados/ privacidade/
+      │                    #   (rotas aninhadas, ADR-0016)
+      ├─ privacidade/      # aviso de privacidade público (mesmo componente da conta)
       ├─ status/           # diagnóstico de infraestrutura, não é tela de usuário
       ├─ _componentes/     # cabeçalho, área de sessão, rodapé, campo de senha, avisos do envio,
-      │                    #   raiz-da-pagina (elemento único na raiz; rolagem do Next 16)
-      └─ _lib/             # chamadas de conta ao backend (conta.ts) e o hook de envio
+      │                    #   raiz-da-pagina (elemento único na raiz; rolagem do Next 16),
+      │                    #   nivel-risco (palavra + ícone), aviso-privacidade
+      └─ _lib/             # chamadas ao backend (conta.ts, historico.ts) e os hooks de envio e carga
 ```
 
 ## 5. Invariantes — nunca violar

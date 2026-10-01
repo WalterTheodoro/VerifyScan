@@ -20,6 +20,7 @@
 | 9 | §2.4 (tabela RNF), RNF03 | "criptografada (bcrypt)" → "com hash Argon2id" | Fase 8 |
 | 10 | §7 (segurança) | "tokens de sessão JWT" → sessão opaca em banco, cookie HttpOnly | Fase 8 |
 | 11 | §5.5 (modelo de dados) | `Usuario`: + `nome_exibicao`, − `plano` | Fase 8 |
+| 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → não armazenado; histórico de 7 dias | 9 |
 
 ---
 
@@ -178,3 +179,15 @@ não é "nome completo") e remover **`plano`** (gratuito/pago).
 **Por quê:** a interface cumprimenta a pessoa pelo nome que ela escolheu, e chamar o campo de
 "nome completo" coletaria mais dado pessoal do que a finalidade pede (LGPD, minimização). Não há
 plano pago no escopo do TCC; um campo sem uso é dado sem finalidade.
+
+### 12 — §7.1, linha "Texto enviado"
+
+Na tabela da §7.1, trocar a coluna Armazenamento da linha "Texto enviado":
+
+> de **"Permanente (somente usuários autenticados)"** para **"Não armazenado; o histórico guarda
+> nível, pontuação, fatores e data, ligados à conta por 7 dias"**
+
+**Por quê:** toda mensagem suspeita contém dado de terceiro (remetente, telefone, valor, número de
+conta), e a §2.6 promete não armazenar conteúdo de terceiros. A pessoa reconhece a análise pela
+data, pelo nível e pelos fatores. Depois de 7 dias, a análise deixa de ficar ligada à conta e fica
+idêntica a uma anônima (ADR-0006, ADR-0015).
