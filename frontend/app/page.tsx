@@ -2,15 +2,15 @@
 
 import { useRef, useState } from "react";
 
-import { Logo } from "./_componentes/logo";
+import { Cabecalho } from "./_componentes/cabecalho";
+import { Rodape } from "./_componentes/rodape";
+import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
 //
 // Numa página só, e não em duas rotas, por um motivo de privacidade: passar a mensagem para
 // /resultado exigiria colocá-la na URL ou em storage do navegador. A mensagem do usuário não
 // sai da memória da aba — nem quando ela reaparece citada acima do resultado.
-
-const URL_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type NivelRisco = "BAIXO" | "MEDIO" | "ALTO";
 
@@ -76,7 +76,7 @@ const APRESENTACAO: Record<
 /** Manda o texto para a API e traduz qualquer falha em uma frase que o usuário entenda. */
 async function analisar(texto: string): Promise<Estado> {
   try {
-    const resposta = await fetch(`${URL_API}/api/analises`, {
+    const resposta = await fetch("/api/analises", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto }),
@@ -160,7 +160,7 @@ export default function PaginaAnalise() {
     animarEntrada ? `entrada-hero ${tempo}` : "";
 
   return (
-    <>
+    <RaizDaPagina>
       <Cabecalho aoIrParaAnalise={aoIrParaAnalise} />
 
       <main>
@@ -207,7 +207,10 @@ export default function PaginaAnalise() {
                       fazer agora. Não precisa criar conta.
                     </p>
                   </div>
+                  {/* `id="analisar"`: destino do "Analisar mensagem" vindo de outra página. O
+                      `scroll-padding-top` do html deixa o formulário abaixo do cabeçalho fixo. */}
                   <form
+                    id="analisar"
                     onSubmit={aoEnviar}
                     className={`cartao flex flex-col gap-perto p-5 sm:p-bloco ${entrada("entrada-hero-2")}`}
                   >
@@ -294,43 +297,8 @@ export default function PaginaAnalise() {
         <OQueEleProcura />
       </main>
 
-      <footer className="faixa-escura px-5 py-bloco text-center">
-        Trabalho de conclusão de curso de Engenharia de Software, Católica SC.
-      </footer>
-    </>
-  );
-}
-
-/** Fixo no topo. Só o que existe: o nome, duas âncoras para seções desta página e o atalho
- *  para o campo. Sem menu, sem "Entrar": essas telas não existem. */
-function Cabecalho({ aoIrParaAnalise }: { aoIrParaAnalise: () => void }) {
-  const ancora =
-    "alvo-de-toque inline-flex items-center rounded-full px-4 font-semibold " +
-    "transition-colors duration-150 hover:bg-lavanda-clara";
-
-  return (
-    <header className="cabecalho sticky top-0 z-50">
-      <div className="mx-auto flex w-full max-w-[72rem] items-center justify-between gap-perto
-        px-5 py-2.5 lg:px-8">
-        <Logo />
-        <nav aria-label="Nesta página" className="flex items-center gap-1">
-          <a href="#como-funciona" className={`${ancora} hidden md:inline-flex`}>
-            Como funciona
-          </a>
-          <a href="#o-que-procura" className={`${ancora} hidden md:inline-flex`}>
-            O que ele procura
-          </a>
-          <button
-            type="button"
-            onClick={aoIrParaAnalise}
-            className="botao-principal alvo-de-toque ml-2 rounded-full px-5 font-bold"
-          >
-            {/* No celular não cabe o nome e o rótulo inteiro na mesma linha. */}
-            Analisar<span className="hidden sm:inline"> mensagem</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+      <Rodape />
+    </RaizDaPagina>
   );
 }
 
