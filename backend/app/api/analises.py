@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import obter_orquestrador
+from app.api.deps import ler_token_de_sessao, obter_orquestrador
 from app.schemas.analise import RespostaAnalise, SolicitacaoAnalise
 from app.services.analise import EntradaInvalida
 from app.services.orquestrador import OrquestradorAnalise
@@ -23,11 +23,13 @@ router = APIRouter(prefix="/api", tags=["análise"])
 async def criar_analise(
     solicitacao: SolicitacaoAnalise,
     orquestrador: OrquestradorAnalise = Depends(obter_orquestrador),
+    token: str | None = Depends(ler_token_de_sessao),
 ) -> RespostaAnalise:
     # A análise em si é síncrona e só CPU (orçamento de 300ms, ADR-0002); o orquestrador
-    # acrescenta o registro no banco, que tem timeout próprio e nunca derruba a resposta.
+    # acrescenta o registro no banco, que tem timeout próprio e nunca derruba a resposta. O
+    # token só serve ao registro, para ligar a análise à conta (ADR-0015).
     try:
-        return await orquestrador.analisar(solicitacao.texto)
+        return await orquestrador.analisar(solicitacao.texto, token)
     except EntradaInvalida as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)

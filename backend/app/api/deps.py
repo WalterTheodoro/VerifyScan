@@ -24,8 +24,10 @@ from app.services.health import (
     VerificadorRedis,
     VerificadorSaude,
 )
+from app.services.historico import ServicoHistorico
 from app.services.orquestrador import OrquestradorAnalise
 from app.services.repositorio_analises import RepositorioAnalises, RepositorioAnalisesPostgres
+from app.services.repositorio_historico import RepositorioHistorico, RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoes, RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import (
     RepositorioUsuarios,
@@ -71,13 +73,6 @@ def obter_servico_analise() -> ServicoAnalise:
     )
 
 
-def obter_orquestrador(
-    servico: ServicoAnalise = Depends(obter_servico_analise),
-    repositorio: RepositorioAnalises = Depends(obter_repositorio_analises),
-) -> OrquestradorAnalise:
-    return OrquestradorAnalise(servico, repositorio, get_settings().timeout_persistencia_s)
-
-
 def obter_repositorio_usuarios(request: Request) -> RepositorioUsuarios:
     fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
     return RepositorioUsuariosPostgres(fabrica)
@@ -86,6 +81,30 @@ def obter_repositorio_usuarios(request: Request) -> RepositorioUsuarios:
 def obter_repositorio_sessoes(request: Request) -> RepositorioSessoes:
     fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
     return RepositorioSessoesPostgres(fabrica)
+
+
+def obter_repositorio_historico(request: Request) -> RepositorioHistorico:
+    fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
+    return RepositorioHistoricoPostgres(fabrica)
+
+
+def obter_orquestrador(
+    servico: ServicoAnalise = Depends(obter_servico_analise),
+    repositorio: RepositorioAnalises = Depends(obter_repositorio_analises),
+    sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
+) -> OrquestradorAnalise:
+    return OrquestradorAnalise(servico, repositorio, sessoes, get_settings().timeout_persistencia_s)
+
+
+def ler_token_de_sessao(
+    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
+) -> str | None:
+    """Só lê o cookie, sem consultar o banco.
+
+    A análise não depende da conta: quem resolve o dono é o orquestrador, depois do resultado e
+    dentro do teto do registro (ADR-0015). Por isso não há `obter_usuario_opcional`.
+    """
+    return token
 
 
 @lru_cache
@@ -109,6 +128,18 @@ def obter_servico_autenticacao(
         hasher=hasher,
         sessao_dias=settings.sessao_dias,
         timeout_s=settings.timeout_autenticacao_s,
+    )
+
+
+def obter_servico_historico(
+    repositorio: RepositorioHistorico = Depends(obter_repositorio_historico),
+    settings: Settings = Depends(get_settings),
+) -> ServicoHistorico:
+    return ServicoHistorico(
+        repositorio=repositorio,
+        historico_dias=settings.historico_dias,
+        timeout_s=settings.timeout_autenticacao_s,
+        timeout_desvinculacao_s=settings.timeout_persistencia_s,
     )
 
 

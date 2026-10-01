@@ -11,6 +11,7 @@ from app.models import Analise, IndicadorRisco
 from app.schemas.analise import Fator
 from app.services.orquestrador import OrquestradorAnalise
 from app.services.repositorio_analises import RegistroAnalise, RepositorioAnalisesPostgres
+from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 
 pytestmark = pytest.mark.integracao
 
@@ -121,6 +122,7 @@ async def test_texto_de_entrada_nao_aparece_em_nenhuma_coluna_de_texto(
     orquestrador = OrquestradorAnalise(
         servico=obter_servico_analise(),
         repositorio=RepositorioAnalisesPostgres(fabrica_de_sessoes),
+        sessoes=RepositorioSessoesPostgres(fabrica_de_sessoes),
         timeout_s=5.0,
     )
 

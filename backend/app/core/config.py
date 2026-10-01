@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     # Validade absoluta da sessão, em dias. É também o Max-Age do cookie.
     sessao_dias: int = Field(default=7, gt=0)
 
+    # Por quantos dias a análise feita logado fica ligada à conta (ADR-0015). Depois disso ela é
+    # desvinculada e vira idêntica a uma anônima. A listagem nunca mostra nada fora da janela.
+    historico_dias: int = Field(default=7, gt=0)
+
     # Atributo Secure do cookie de sessão. O default é o de produção: esquecer a variável no
     # Render não manda a sessão por HTTP. Só o `.env` local desliga (HTTP em localhost).
     cookie_secure: bool = True

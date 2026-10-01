@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
     obter_repositorio_analises,
+    obter_repositorio_historico,
     obter_repositorio_sessoes,
     obter_repositorio_usuarios,
 )
@@ -24,8 +25,10 @@ from app.main import criar_app
 from app.schemas.health import SaudeServico
 from app.services.health import VerificadorSaude
 from app.services.repositorio_analises import RegistroAnalise
+from app.services.repositorio_historico import AnaliseDoHistorico
 from app.services.repositorio_usuarios import (
     CredenciaisArmazenadas,
+    DadosConta,
     EmailJaCadastrado,
     UsuarioAutenticado,
 )
@@ -110,6 +113,7 @@ class RepositorioUsuariosEmMemoria:
     def __init__(self, sessoes: RepositorioSessoesEmMemoria) -> None:
         self.sessoes = sessoes
         self.credenciais: dict[str, CredenciaisArmazenadas] = {}
+        self.criados_em: dict[uuid.UUID, datetime] = {}
 
     async def criar_com_sessao(
         self, nome: str, email: str, senha_hash: str, token_hash: str, validade: timedelta
@@ -118,6 +122,7 @@ class RepositorioUsuariosEmMemoria:
             raise EmailJaCadastrado()
         usuario = UsuarioAutenticado(id=uuid.uuid4(), nome=nome, email=email)
         self.credenciais[email] = CredenciaisArmazenadas(usuario, senha_hash)
+        self.criados_em[usuario.id] = self.sessoes.relogio()
         self.sessoes.usuarios[usuario.id] = usuario
         await self.sessoes.criar(usuario.id, token_hash, validade)
         return usuario
@@ -129,6 +134,77 @@ class RepositorioUsuariosEmMemoria:
         for email, atual in self.credenciais.items():
             if atual.usuario.id == usuario_id:
                 self.credenciais[email] = CredenciaisArmazenadas(atual.usuario, senha_hash)
+
+    async def buscar_conta(self, usuario_id: uuid.UUID) -> DadosConta | None:
+        for atual in self.credenciais.values():
+            if atual.usuario.id == usuario_id:
+                return DadosConta(
+                    nome=atual.usuario.nome,
+                    email=atual.usuario.email,
+                    criado_em=self.criados_em[usuario_id],
+                )
+        return None
+
+
+@dataclass
+class AnaliseVinculada:
+    """Uma linha de `analises` no falso: o dono pode virar `None` (desvinculação)."""
+
+    dono: uuid.UUID | None
+    analise: AnaliseDoHistorico
+
+
+class RepositorioHistoricoEmMemoria:
+    """Falso determinístico de `RepositorioHistorico`, com a janela medida pelo relógio falso.
+
+    As regras de janela e de dono valem aqui como no SQL; quem prova o SQL de verdade são os
+    testes de `tests/integracao/test_historico.py`.
+    """
+
+    def __init__(self, relogio: RelogioFalso) -> None:
+        self.relogio = relogio
+        self.linhas: list[AnaliseVinculada] = []
+        self.desvinculacoes = 0
+
+    def adicionar(self, dono: uuid.UUID | None, analise: AnaliseDoHistorico) -> None:
+        self.linhas.append(AnaliseVinculada(dono, analise))
+
+    async def listar(
+        self, usuario_id: uuid.UUID, janela: timedelta, limite: int
+    ) -> list[AnaliseDoHistorico]:
+        limite_da_janela = self.relogio() - janela
+        dentro = [
+            linha.analise
+            for linha in self.linhas
+            if linha.dono == usuario_id and linha.analise.criada_em > limite_da_janela
+        ]
+        return sorted(dentro, key=lambda analise: analise.criada_em, reverse=True)[:limite]
+
+    async def apagar(self, usuario_id: uuid.UUID, analise_id: uuid.UUID) -> bool:
+        antes = len(self.linhas)
+        self.linhas = [
+            linha
+            for linha in self.linhas
+            if not (linha.dono == usuario_id and linha.analise.id == analise_id)
+        ]
+        return len(self.linhas) < antes
+
+    async def apagar_todas(self, usuario_id: uuid.UUID) -> int:
+        antes = len(self.linhas)
+        self.linhas = [linha for linha in self.linhas if linha.dono != usuario_id]
+        return antes - len(self.linhas)
+
+    async def desvincular_vencidas(self, janela: timedelta) -> int:
+        self.desvinculacoes += 1
+        limite_da_janela = self.relogio() - janela
+        vencidas = [
+            linha
+            for linha in self.linhas
+            if linha.dono is not None and linha.analise.criada_em <= limite_da_janela
+        ]
+        for linha in vencidas:
+            linha.dono = None
+        return len(vencidas)
 
 
 @pytest.fixture
@@ -151,6 +227,11 @@ def usuarios(sessoes: RepositorioSessoesEmMemoria) -> RepositorioUsuariosEmMemor
     return RepositorioUsuariosEmMemoria(sessoes)
 
 
+@pytest.fixture
+def historico(relogio: RelogioFalso) -> RepositorioHistoricoEmMemoria:
+    return RepositorioHistoricoEmMemoria(relogio)
+
+
 def settings_de_teste(**valores: object) -> Settings:
     """Settings sem o `.env`: o COOKIE_SECURE=false do `.env` local não decide o teste."""
     return Settings(_env_file=None, **valores)  # type: ignore[call-arg]
@@ -161,6 +242,7 @@ def app(
     repositorio: RepositorioAnalisesEmMemoria,
     usuarios: RepositorioUsuariosEmMemoria,
     sessoes: RepositorioSessoesEmMemoria,
+    historico: RepositorioHistoricoEmMemoria,
 ) -> FastAPI:
     """Uma instância nova por teste, para que os overrides não vazem entre casos.
 
@@ -171,6 +253,7 @@ def app(
     app.dependency_overrides[obter_repositorio_analises] = lambda: repositorio
     app.dependency_overrides[obter_repositorio_usuarios] = lambda: usuarios
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: sessoes
+    app.dependency_overrides[obter_repositorio_historico] = lambda: historico
     # Lambda, e não a função direto: o FastAPI lê a assinatura do override, e o `**valores`
     # viraria parâmetro da requisição (422 em toda rota — aconteceu).
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()

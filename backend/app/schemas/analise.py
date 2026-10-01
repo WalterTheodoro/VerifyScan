@@ -90,3 +90,13 @@ class RespostaAnalise(BaseModel):
         default=False,
         description="`true` quando VirusTotal / Safe Browsing não responderam (RNF09).",
     )
+
+    # Campo aditivo da fatia 4 (ADR-0015): quem não o conhece, ignora. Diz à tela se pode
+    # afirmar "foi salva no seu histórico" — a frase só é verdade quando o registro gravou o dono.
+    salva_no_historico: bool = Field(
+        default=False,
+        description=(
+            "`true` só quando a análise foi gravada ligada à conta de quem está logado. Sem "
+            "sessão, com sessão vencida ou com o registro descartado, `false`."
+        ),
+    )
