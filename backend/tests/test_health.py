@@ -1,10 +1,10 @@
 """GET /health — checa Postgres e Redis e reporta cada um separadamente."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from httpx import AsyncClient
 
 from app.api.deps import obter_verificador_postgres, obter_verificador_redis
-from tests.conftest import SERVICO_FORA, SERVICO_OK, verificador_falso
+from tests.conftest import SERVICO_DESATIVADO, SERVICO_FORA, SERVICO_OK, verificador_falso
 
 
 async def test_health_com_tudo_no_ar(app: FastAPI, cliente: AsyncClient) -> None:
@@ -49,6 +49,44 @@ async def test_health_com_postgres_fora(app: FastAPI, cliente: AsyncClient) -> N
     assert corpo["postgres"]["status"] == "erro"
     assert corpo["postgres"]["detalhe"] is not None
     assert corpo["redis"]["status"] == "ok"
+
+
+async def test_health_com_redis_desativado_e_ok(app: FastAPI, cliente: AsyncClient) -> None:
+    """Sem REDIS_URL é o estado de produção até a Fase 4 — não é degradação."""
+    app.dependency_overrides[obter_verificador_postgres] = verificador_falso(SERVICO_OK)
+    app.dependency_overrides[obter_verificador_redis] = verificador_falso(SERVICO_DESATIVADO)
+
+    resposta = await cliente.get("/health")
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["status"] == "ok"
+    assert corpo["redis"]["status"] == "desativado"
+    assert corpo["redis"]["detalhe"] is None
+
+
+async def test_health_com_redis_desativado_e_postgres_fora(
+    app: FastAPI, cliente: AsyncClient
+) -> None:
+    """'desativado' só absolve o Redis; o Postgres continua obrigatório."""
+    app.dependency_overrides[obter_verificador_postgres] = verificador_falso(SERVICO_FORA)
+    app.dependency_overrides[obter_verificador_redis] = verificador_falso(SERVICO_DESATIVADO)
+
+    resposta = await cliente.get("/health")
+
+    assert resposta.status_code == 503
+    assert resposta.json()["status"] == "degradado"
+
+
+async def test_redis_sem_url_vira_verificador_desativado(app: FastAPI) -> None:
+    """Com `app.state.redis = None` (sem REDIS_URL), a dependência real não toca a rede."""
+    app.state.redis = None
+    requisicao = Request({"type": "http", "app": app})
+
+    saude = await obter_verificador_redis(requisicao)()
+
+    assert saude.status == "desativado"
+    assert saude.latencia_ms == 0.0
 
 
 async def test_health_nao_abre_conexao_real(app: FastAPI, cliente: AsyncClient) -> None:

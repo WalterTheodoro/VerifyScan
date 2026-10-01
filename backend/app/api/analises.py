@@ -2,9 +2,10 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import obter_servico_analise
+from app.api.deps import obter_orquestrador
 from app.schemas.analise import RespostaAnalise, SolicitacaoAnalise
-from app.services.analise import EntradaInvalida, ServicoAnalise
+from app.services.analise import EntradaInvalida
+from app.services.orquestrador import OrquestradorAnalise
 
 router = APIRouter(prefix="/api", tags=["análise"])
 
@@ -21,12 +22,12 @@ router = APIRouter(prefix="/api", tags=["análise"])
 )
 async def criar_analise(
     solicitacao: SolicitacaoAnalise,
-    servico: ServicoAnalise = Depends(obter_servico_analise),
+    orquestrador: OrquestradorAnalise = Depends(obter_orquestrador),
 ) -> RespostaAnalise:
-    # O serviço é síncrono de propósito: nesta fase o pipeline é só CPU, com orçamento de
-    # 300ms (ADR-0002), e não há I/O para aguardar. As chamadas externas chegam na Fase 4.
+    # A análise em si é síncrona e só CPU (orçamento de 300ms, ADR-0002); o orquestrador
+    # acrescenta o registro no banco, que tem timeout próprio e nunca derruba a resposta.
     try:
-        return servico.analisar(solicitacao.texto)
+        return await orquestrador.analisar(solicitacao.texto)
     except EntradaInvalida as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
