@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 // alcança Postgres e Redis. Saiu de `/` na Fase 1, para dar lugar à tela de análise, e ficou
 // em `/status` porque o gate continua valendo — não é tela de usuário final.
 
-const URL_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 type SaudeServico = {
   // "desativado": o serviço não foi configurado de propósito (Redis sem REDIS_URL, até a Fase 4).
   status: "ok" | "erro" | "desativado";
@@ -30,8 +28,9 @@ type Estado =
 async function consultarSaude(): Promise<Estado> {
   try {
     // A API responde 503 quando algum serviço está fora, mas o corpo tem o mesmo formato —
-    // por isso lemos o JSON sem checar o status code.
-    const resposta = await fetch(`${URL_API}/health`, { cache: "no-store" });
+    // por isso lemos o JSON sem checar o status code. Caminho relativo: o Next repassa /health
+    // ao backend (ADR-0014).
+    const resposta = await fetch("/health", { cache: "no-store" });
     const dados = (await resposta.json()) as RespostaHealth;
     return { situacao: "carregado", dados };
   } catch (erro) {
@@ -70,7 +69,7 @@ export default function PaginaSaude() {
       <header>
         <h1 className="text-2xl font-bold">VerifyScan — estado da infraestrutura</h1>
         <p className="text-sm opacity-70">
-          Consultando <code>{URL_API}/health</code>
+          Consultando <code>/health</code> (repassado ao backend)
         </p>
       </header>
 

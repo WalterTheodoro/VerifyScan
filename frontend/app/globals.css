@@ -97,8 +97,25 @@ html {
   font-size: 18px;
   /* As âncoras do cabeçalho rolam suave; `prefers-reduced-motion` desliga lá embaixo. */
   scroll-behavior: smooth;
-  /* O cabeçalho é fixo: sem isto, o destino de uma âncora ficaria escondido atrás dele. */
-  scroll-padding-top: 6rem;
+  /* Folga no topo para o destino de uma âncora e para o elemento com foco (WCAG 2.4.11). Abaixo
+     de 640 px o cabeçalho rola junto com a página e não cobre nada, então basta um respiro. */
+  scroll-padding-top: 1rem; /* 18px */
+}
+
+/* A partir de 640 px o cabeçalho é fixo; o valor precisa ser >= a altura real dele, medida no
+   navegador: até 116px em 640–767 (a sessão desce para a 2ª linha) e 68px a partir de 768.
+   Media query em rem usa os 16px do navegador, não a base de 18 — 40rem e 48rem são os mesmos
+   640 e 768 do `sm` e do `md` do Tailwind. */
+@media (min-width: 40rem) {
+  html {
+    scroll-padding-top: 7rem; /* 126px */
+  }
+}
+
+@media (min-width: 48rem) {
+  html {
+    scroll-padding-top: 6rem; /* 108px, o valor de antes */
+  }
 }
 
 body {
@@ -190,8 +207,10 @@ h3 {
 }
 
 /* ── Campo de colar ─────────────────────────────────────────────────────────────────────── */
+/* `.campo` é o mesmo visual para os campos das telas de conta. */
 
-.campo-mensagem {
+.campo-mensagem,
+.campo {
   background: var(--campo);
   border: 2px solid var(--campo-borda);
   border-radius: 18px;
@@ -206,12 +225,14 @@ h3 {
   opacity: 1; /* o Firefox aplica opacidade própria ao placeholder */
 }
 
-.campo-mensagem:hover {
+.campo-mensagem:hover,
+.campo:hover {
   border-color: var(--anil);
 }
 
 /* O foco do campo é o anel de marca (borda anil + halo lavanda), além do contorno global. */
-.campo-mensagem:focus {
+.campo-mensagem:focus,
+.campo:focus {
   background: var(--papel);
   border-color: var(--anil);
   box-shadow: 0 0 0 5px var(--lavanda);

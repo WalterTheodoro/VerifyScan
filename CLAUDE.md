@@ -100,6 +100,15 @@ verifyscan/
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
+   ├─ next.config.ts       # proxy /api/* e /health → API_URL_INTERNA (ADR-0014)
+   └─ app/
+      ├─ page.tsx          # análise e resultado na mesma página (ADR-0010)
+      ├─ entrar/ cadastro/ # telas de conta (página de servidor + formulario.tsx cliente)
+      ├─ privacidade/      # aviso de privacidade, estático
+      ├─ status/           # diagnóstico de infraestrutura, não é tela de usuário
+      ├─ _componentes/     # cabeçalho, área de sessão, rodapé, campo de senha, avisos do envio,
+      │                    #   raiz-da-pagina (elemento único na raiz; rolagem do Next 16)
+      └─ _lib/             # chamadas de conta ao backend (conta.ts) e o hook de envio
 ```
 
 ## 5. Invariantes — nunca violar
