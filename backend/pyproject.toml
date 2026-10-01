@@ -89,3 +89,6 @@ files = ["app"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--strict-markers"
+markers = [
+    "integracao: fala com o Postgres de TEST_DATABASE_URL (local ou CI, nunca o Neon). Pulado sem a variável.",
+]

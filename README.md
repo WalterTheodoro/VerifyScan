@@ -10,8 +10,9 @@ transforma o resultado estruturado em texto legível.
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: Fase 1 (fatia vertical de texto).** Você cola uma mensagem na tela e recebe
-> nível de risco, fatores identificados e o que fazer. Ainda sem OCR, sem consulta a APIs
+> **Estado atual: Fase 8, fatia 1 (fundação de dados).** Você cola uma mensagem na tela e recebe
+> nível de risco, fatores identificados e o que fazer; a análise fica registrada no banco, sem o
+> texto da mensagem. Ainda sem OCR, sem consulta a APIs
 > externas, sem explicação por IA e sem login — tudo isso vem nas Fases 4 a 8.
 
 ---
@@ -108,8 +109,9 @@ uv run uvicorn app.main:app --port 8000 --loop none --reload
 O `uv sync` cria o `.venv` e instala tudo a partir do `uv.lock` — não é preciso ativar o ambiente
 virtual: `uv run` já faz isso.
 
-O `alembic upgrade head` termina sem fazer nada nesta fase (não há tabelas até a Fase 8); rodá-lo
-serve para provar que a conexão com o banco funciona.
+O `alembic upgrade head` aplica as migrações que faltam no banco do `docker compose`. Rode-o
+depois de todo `docker compose up` com volume novo e sempre que puxar uma migração nova — o
+esquema só muda por migração, nunca à mão.
 
 O `--loop none` **não é opcional no Windows** e não tem nada a ver com o `--reload`. Ele é o que
 faz o uvicorn usar o event loop que a aplicação escolhe, em vez de impor o dele: sem ele, o
@@ -170,7 +172,27 @@ npm run lint
 ```
 
 O CI roda exatamente isso a cada push (`.github/workflows/ci.yml`), com `ruff format --check` no
-lugar do `ruff format`.
+lugar do `ruff format`, mais `alembic upgrade head` e `alembic check` contra um Postgres de teste.
+
+### Banco de teste (testes de integração)
+
+Os testes marcados `integracao` falam com um Postgres **de teste** — nunca com o de produção. Sem
+`TEST_DATABASE_URL` eles são pulados e o resto da suíte roda normalmente.
+
+Crie o banco uma vez, com o `docker compose` de pé:
+
+```powershell
+docker compose exec postgres createdb -U verifyscan verifyscan_teste
+```
+
+Depois aponte `TEST_DATABASE_URL` no `.env` para ele — igual à `DATABASE_URL`, trocando o nome do
+banco para `verifyscan_teste`. O nome **precisa** terminar em `_teste`: a sessão de testes refaz o
+esquema do zero pelo Alembic (`downgrade base` → `upgrade head`) e recusa qualquer outro banco.
+
+```powershell
+uv run pytest -q -m integracao        # só integração
+uv run pytest -q -m "not integracao"  # só unitários, sem banco
+```
 
 ### Infraestrutura
 
@@ -197,17 +219,45 @@ VerifyScan/
 │  │  ├─ reputation/   URLChecker e provedores externos (Fase 4)
 │  │  ├─ scoring/      ScoringEngine e regras.yaml (Fase 1)
 │  │  ├─ formulator/   AIFormulator (Fase 7)
-│  │  ├─ models/       SQLAlchemy (Fase 8)
+│  │  ├─ models/       SQLAlchemy: Analise, IndicadorRisco (Fase 8)
 │  │  ├─ schemas/      Pydantic — o contrato da API
 │  │  └─ core/         config, banco, cache, timeouts
-│  ├─ alembic/         migrações (nenhuma ainda)
+│  ├─ alembic/         migrações — o esquema só muda por elas
 │  ├─ tools/           scripts, incluindo avaliar_corpus (Fase 2)
-│  └─ tests/
+│  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
 ├─ corpus/             base rotulada para medir o motor de risco (Fase 2)
 ├─ docs/               RFC, plano de execução, ADRs e diário de bordo
 └─ docker-compose.yml  Postgres 16 e Redis 7
 ```
+
+---
+
+## Produção
+
+Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos no
+`docs/adr/ADR-0011`). Estes passos são manuais, feitos uma vez, nos painéis:
+
+1. **Criar o projeto no Neon** na região **AWS us-west-2** (a mesma do Render em Oregon), com
+   **Postgres 16** — igual ao `docker compose` e ao CI.
+2. **Copiar a connection string com "Connection pooling" DESLIGADO.** O host não pode ter
+   `-pooler`: a API é um processo de longa duração com pool próprio, e a migração precisa da
+   conexão direta. Cole como vem (`postgresql://...?sslmode=require&channel_binding=require`) — a
+   aplicação troca o dialeto para `postgresql+psycopg://` sozinha.
+3. **No Render, colocar essa string em `DATABASE_URL`.** A mesma variável serve à API e ao Alembic.
+4. **Trocar o build command do Render** para:
+
+   ```
+   pip install uv && uv sync --frozen && uv run --frozen alembic upgrade head
+   ```
+
+   A migração roda no build porque o *pre-deploy command* do Render é só dos planos pagos. Por
+   isso toda migração precisa ser aditiva; remover ou renomear coluna leva dois deploys.
+5. **Deixar `REDIS_URL` sem valor.** O Redis fica desativado até a Fase 4, e o `/health` responde
+   `redis: desativado` com status `ok`.
+
+**Não aponte monitor de uptime nem keep-alive para `/health`**: ele faz `SELECT 1` e manteria o
+compute do Neon ligado o mês inteiro, estourando a cota gratuita (conta no ADR-0011).
 
 ---
 

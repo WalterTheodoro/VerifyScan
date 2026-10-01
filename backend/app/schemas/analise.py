@@ -21,6 +21,12 @@ de indicador — texto extraído de imagem produz fator de texto, e quem registr
 `Analise.tipo_input`. `email` sai com o EmailAnalyzer, cortado do escopo.
 """
 
+TipoInput = Literal["texto"]
+"""Como a mensagem chegou: é a procedência que a errata (item 8) tirou de `TipoFator`.
+
+Hoje só texto. `imagem` entra com o OCR (Fase 5), por migração que amplia o CHECK.
+"""
+
 CategoriaFator = Literal[
     "urgencia",
     "personificacao_marca",

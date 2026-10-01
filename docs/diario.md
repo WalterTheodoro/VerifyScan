@@ -570,3 +570,87 @@ capítulo — não polimento.
 Fase 2: corpus rotulado (mínimo 150 casos, 60 negativos), `tools/avaliar_corpus.py`, baseline
 trivial e a primeira rodada de calibração de pesos **e faixas**. É onde o `xfail` acima deve
 fechar. Bloqueada pelo comitê de ética.
+
+---
+
+## 2026-10-01 — Fase 8, fatia 1: fundação de dados
+
+### O que foi feito
+
+A Fase 8 voltou ao escopo, recortada: esta fatia põe o banco no ar e cumpre a invariante 6, que
+estava violada em produção — nada persistia. Sem usuário, login nem histórico. Duas etapas, com
+parada para revisão entre elas.
+
+- **Etapa A — infraestrutura.** `DATABASE_URL` aceita a string do Neon como vem e troca o dialeto
+  para `postgresql+psycopg://`; `REDIS_URL` virou opcional (ausente = "desativado", 200 no
+  `/health`, tom neutro em `/status`); `timeout_persistencia_s`. O `alembic/env.py` importa os
+  modelos, escapa `%` e aceita a URL de teste sem ler o `.env`. Testes marcados `integracao`
+  contra Postgres de teste (docker compose / serviço do CI), esquema pelo Alembic, nenhuma linha
+  deixada para trás; no CI, sem `TEST_DATABASE_URL`, a coleta falha.
+- **Etapa B — esquema e persistência anônima.** Convenções (naming_convention, UUID, VARCHAR +
+  CHECK, `timestamptz`, `lazy="raise"`), migração `0001` revisada à mão, `RepositorioAnalises`
+  com implementação Postgres e falso em memória, `OrquestradorAnalise` async por cima do
+  `ServicoAnalise` síncrono. Falha ou timeout ao registrar: a resposta sai idêntica e vira WARNING.
+- **ADR-0011** (Neon, conexão direta, migração no build do Render) e **ADR-0012** (esquema,
+  persistência, testes contra Postgres). Invariante 6 reescrita no `CLAUDE.md`; achado 9 da
+  análise do RFC passou de RESOLVIDO para PARCIAL.
+
+### Decisões do Walter no plano
+
+- **A invariante 6 contradizia a regra "falha ao registrar não derruba a análise".** Apontado no
+  plano, antes de qualquer código. Nova redação: toda análise registrada grava todos os
+  indicadores na mesma transação; falha descarta a transação inteira. Ganhou teste de integração
+  próprio — indicador inválido no meio não deixa linha em `analises`.
+- **`Analise.resultado` (§5.5) não foi criada.** A §5.5 lista o campo sem definir o conteúdo; o
+  único uso ligado a persistência é a Tela 5, onde "resultado" é o nível de risco.
+- **Teste de CHECK, um caso por constraint, com SQL cru**, porque o autogenerate do Alembic não
+  compara CHECK — o `alembic check` do CI fica verde com um CHECK divergente.
+
+### O que deu errado
+
+1. **O teste de integração passou no Windows por acidente.** Medido fora do projeto: o
+   pytest-asyncio 1.4 cria `ProactorEventLoop`, que o psycopg async recusa. Dentro do projeto
+   passava porque o `conftest.py` raiz importa `app.main`, que define a política de event loop na
+   importação. É o mesmo padrão do `--reload` do ADR-0007 — funcionar pelo motivo errado. Virou o
+   hook `pytest_asyncio_loop_factories` → `SelectorEventLoop` e um teste que reprova o Proactor.
+2. **O `fileConfig` do Alembic desliga os loggers existentes** quando a migração é chamada por
+   código dentro do pytest — calaria o WARNING que o teste de registro verifica. O `env.py` aceita
+   `configure_logger=False` (cookbook do Alembic).
+3. **Relatório da etapa A com duas omissões**, pegas na revisão: (a) não dizia que o CI define
+   `TEST_DATABASE_URL` — e não havia regra impedindo o CI de ficar verde com os testes de banco
+   pulados; virou "CI=true sem a variável reprova a coleta", com teste; (b) a tabela mostrou
+   "131 passed, 2 skipped" sem o "1 xfailed" que estava na saída. Relatório é medição: copiar a
+   saída, não resumi-la.
+4. **No Windows, com o Postgres parado, a análise leva 2,2 s.** A conexão recusada a `localhost`
+   não falha na hora; quem encerra é o `timeout_persistencia_s`. A análise sai 200, correta, mas
+   2 s mais lenta — registrado no ADR-0012.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `ruff format --check .` / `ruff check .` | limpos |
+| `mypy app` | Success: no issues found in 32 source files |
+| `pytest -m "not integracao"` | **138 passed, 1 xfailed** |
+| `pytest -m integracao` (Windows, Postgres do compose) | **11 passed** |
+| `alembic upgrade head` / `alembic check` (Postgres local) | migração 0001 aplicada / No new upgrade operations detected |
+| servidor real (`--loop none`, sem Redis) | `/health` 200 com `redis: desativado`; POST gravou 1 análise + 4 indicadores somando 75 |
+| servidor real com o Postgres parado | POST 200 em 2,2 s, WARNING `TimeoutError`, `/health` 503 |
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Passos manuais de produção (Neon, `DATABASE_URL` e build command no Render, `REDIS_URL` vazia) | Walter — README, seção "Produção" |
+| Primeira execução do CI com o serviço Postgres | conferir o run do PR |
+| `known-third-party = ["alembic"]` no ruff: a pasta local `backend/alembic/` faz o ruff tratar `alembic` como do projeto e separar `from alembic.config` de `from alembic import command` no mesmo arquivo | registrada, não feita |
+| Invariante 8 do `CLAUDE.md` dizia "pior caso ≈ 15 s" | resolvida: registro ≤ 2 s em série, por último; ≈ 17 s |
+| README dizia "Estado atual: Fase 1" | resolvida: "Fase 8, fatia 1" |
+| Texto da mensagem e `usuario_id` | fatia posterior, depende do ADR de privacidade do autenticado |
+
+### Próximo passo
+
+Fatia seguinte da Fase 8: ADR de privacidade do usuário autenticado, que destrava `usuario_id`,
+a coluna de texto e o histórico.

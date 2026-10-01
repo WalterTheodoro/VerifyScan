@@ -51,7 +51,13 @@ uv run uvicorn app.main:app --port 8000 --loop none --reload   # --loop none: ve
 uv run ruff format .
 uv run ruff check . --fix
 uv run mypy app
-uv run pytest -q
+uv run pytest -q                       # integração pulada sem TEST_DATABASE_URL
+uv run pytest -q -m integracao         # só os que falam com o Postgres de teste
+uv run pytest -q -m "not integracao"   # só unitários, sem banco
+
+# banco de teste (uma vez) e conferência de esquema
+docker compose exec postgres createdb -U verifyscan verifyscan_teste
+uv run alembic check                   # falha se modelo e migração divergirem
 
 # avaliação do motor de risco contra o corpus rotulado
 uv run python -m tools.avaliar_corpus
@@ -86,11 +92,13 @@ verifyscan/
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
 │     ├─ scoring/          # ScoringEngine + regras.yaml
 │     ├─ formulator/       # AIFormulator (LLM)
-│     ├─ models/           # SQLAlchemy: Usuario, Analise, IndicadorRisco
+│     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco (Usuario: fatia posterior)
 │     ├─ schemas/          # Pydantic (contrato da API)
 │     └─ core/             # config, segurança, cache, timeouts
+│  ├─ alembic/versions/    # migrações (0001 = esquema inicial); esquema só muda por aqui
 │  ├─ tools/               # scripts (avaliar_corpus, etc.)
 │  └─ tests/
+│     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
 ```
 
@@ -112,12 +120,15 @@ quebrar uma delas, **pare e pergunte**.
    Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`.
 5. **Pesos e padrões vivem em `scoring/regras.yaml`**, versionado — nunca espalhados como números
    mágicos no código. Mudar peso não pode exigir mudar código.
-6. **Todo ponto somado gera um `IndicadorRisco`** persistido (tipo, descrição, peso). Sem isso não
-   há auditoria nem recalibração.
+6. **Toda análise registrada grava todos os seus `IndicadorRisco` na mesma transação** (tipo,
+   descrição, peso): nunca análise sem indicador nem conjunto parcial. Sem isso não há auditoria
+   nem recalibração. Falha ao registrar não derruba a análise: a transação inteira é descartada,
+   vira WARNING sem conteúdo da mensagem e a resposta sai igual (ADR-0012).
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
 8. **Orçamento de tempo** (KPI < 30s): OCR ≤ 5s **em série** (o texto extraído é a entrada das
    heurísticas) · depois, em paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa
-   ≤ 5s · por fim LLM ≤ 5s. Pior caso ≈ 15s. Todo I/O externo tem timeout explícito (ADR-0002).
+   ≤ 5s · por fim LLM ≤ 5s · registro ≤ 2 s, em série, por último (ADR-0012). Pior caso ≈ 17 s.
+   Todo I/O externo tem timeout explícito (ADR-0002).
 
 ## 6. Convenções de código
 
@@ -132,7 +143,10 @@ quebrar uma delas, **pare e pergunte**.
   devolve o próprio tipo (`list[URLExtraida]`, texto), não `list[Fator]`: extrair não pontua, e
   o peso do que foi extraído pertence a quem analisa depois. Mesma pureza, saída diferente.
 - Todo acesso a rede fica atrás de uma interface com uma implementação *fake* determinística
-  usada nos testes. Teste não faz chamada de rede — nunca.
+  usada nos testes. Teste não faz chamada de rede — nunca. **Única exceção:** testes marcados
+  `integracao` (em `tests/integracao/`) falam com um Postgres de teste — o do docker compose ou o
+  serviço do CI, via `TEST_DATABASE_URL` —, **nunca com o Neon**. Esquema só pelo Alembic, nenhuma
+  linha deixada para trás. Motivo: o bug do ADR-0007 só apareceu contra Postgres real.
 - Commits em português, imperativo, escopo curto: `feat(scoring): agrega pesos por categoria`.
   Um commit por unidade lógica. Nada de commit gigante de fim de sessão.
 - Mensagens ao usuário final em pt-BR, tom direto e não alarmista, sem jargão técnico.
