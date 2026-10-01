@@ -17,6 +17,9 @@
 | 6 | §5.4.3 (DomainAnalyzer) | separar typosquatting de marca embutida | 2 |
 | 7 | §5.6 (tabela de provedores) | tirar nomes de modelos de terceiros | 13 |
 | 8 | §5.5 (modelo de dados) | enum de `IndicadorRisco.tipo` | Fase 1 |
+| 9 | §2.4 (tabela RNF), RNF03 | "criptografada (bcrypt)" → "com hash Argon2id" | Fase 8 |
+| 10 | §7 (segurança) | "tokens de sessão JWT" → sessão opaca em banco, cookie HttpOnly | Fase 8 |
+| 11 | §5.5 (modelo de dados) | `Usuario`: + `nome_exibicao`, − `plano` | Fase 8 |
 
 ---
 
@@ -148,3 +151,30 @@ Substituir o domínio do campo `tipo` da entidade `IndicadorRisco`:
 A decisão é tomada na Fase 1, quando o enum aparece pela primeira vez no código
 (`app/schemas/analise.py`), e não na Fase 8, quando ele viraria coluna no banco: adiar
 significaria migração retroativa e reclassificação dos indicadores já persistidos.
+
+### 9 — §2.4, RNF03
+
+Trocar **"senha criptografada (bcrypt)"** por **"senha armazenada com hash Argon2id"**.
+
+**Por quê:** dois erros num termo só. Hash não é criptografia: criptografia se desfaz com a chave,
+e hash de senha não se desfaz — escrever "criptografada" promete uma propriedade que o sistema não
+deve ter. E o algoritmo mudou: bcrypt custo 12 levou 301,7 ms por hash em 1 vCPU, contra 23,6 ms
+do Argon2id nos parâmetros mínimos da OWASP, num plano gratuito de 0,1 CPU (ADR-0013).
+
+### 10 — §7, segurança
+
+Trocar **"tokens de sessão JWT"** por **"sessão opaca registrada no banco, entregue em cookie
+HttpOnly; o banco guarda só o hash do token"**.
+
+**Por quê:** um JWT continua válido até expirar, e a exclusão de conta precisa encerrar as sessões
+na hora. A sessão em banco morre com a linha (`ON DELETE CASCADE`). Guardar só o hash faz um
+vazamento do banco não entregar sessão válida (ADR-0013).
+
+### 11 — §5.5, entidade `Usuario`
+
+Acrescentar **`nome_exibicao`** (até 60 caracteres, com a finalidade de saudação na interface —
+não é "nome completo") e remover **`plano`** (gratuito/pago).
+
+**Por quê:** a interface cumprimenta a pessoa pelo nome que ela escolheu, e chamar o campo de
+"nome completo" coletaria mais dado pessoal do que a finalidade pede (LGPD, minimização). Não há
+plano pago no escopo do TCC; um campo sem uso é dado sem finalidade.

@@ -654,3 +654,105 @@ O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
 
 Fatia seguinte da Fase 8: ADR de privacidade do usuário autenticado, que destrava `usuario_id`,
 a coluna de texto e o histórico.
+
+## 2026-10-01 — Fase 8, fatia 2: autenticação no backend
+
+### O que foi feito
+
+Cadastro, login, logout e `GET /api/auth/eu` no backend, com sessão opaca em banco e cookie
+`vs_sessao`. Sem tela (fatia 3), sem histórico e sem vínculo de análise a usuário. `POST
+/api/analises` não mudou e continua funcionando sem cookie. Duas etapas, com parada para revisão
+entre elas.
+
+- **Etapa A — dados e service.**
+  - `argon2-cffi`; `HasherSenha` em `core/seguranca.py`, com Argon2id nos parâmetros da OWASP,
+    numa thread, e o hash de mentira para conta inexistente.
+  - Modelos `Usuario` e `SessaoUsuario` e a migração `0002`, revisada à mão.
+  - `RepositorioUsuarios` e `RepositorioSessoes`, cada um com implementação Postgres e falso em
+    memória.
+  - `ServicoAutenticacao`, com validação e mensagens em pt-BR.
+- **Etapa B — HTTP e documentação.**
+  - Rotas finas em `api/autenticacao.py`; `obter_usuario_atual` em `deps.py`, pronto para as rotas
+    protegidas das próximas fatias.
+  - Cookie HttpOnly, SameSite=Lax, Path=/, sem Domain, com Secure controlado pela configuração.
+  - ADR-0013, errata itens 9 a 11, `.env.example` sem o bloco JWT, README e CLAUDE.md §4.
+
+### Decisões do Walter no plano
+
+- **`TIMEOUT_AUTENTICACAO_S` (5 s), separado de `TIMEOUT_PERSISTENCIA_S`.** O plano não tinha
+  timeout para o I/O de banco da autenticação, o que violaria a invariante 8.
+  - Os dois falham de jeitos opostos: a persistência descarta em silêncio; a autenticação devolve
+    503.
+  - O timeout envolve só o banco, nunca o Argon2.
+  - Eu tinha sugerido reaproveitar os 2 s da persistência. Com o Neon acordando, isso daria 503
+    no primeiro login depois de ociosidade.
+- **Cadastro numa transação só** (`criar_com_sessao`). O plano propunha duas transações, uma por
+  repositório, e aceitava como consequência que uma falha na sessão deixasse a conta criada. O
+  Walter apontou a sequência que isso produz no cenário exato do timeout: 503 "tente de novo" e,
+  na nova tentativa, 409 "já existe uma conta". Para o público do produto, é incompreensível.
+  Virou decisão do ADR-0013, com teste de integração do tudo ou nada.
+
+### O que deu errado
+
+1. **Hash corrompido com acento virava 500.** O teste "hash corrompido é recusa, não exceção" usou
+   um texto com "ã" e falhou: o argon2-cffi codifica o hash em ASCII antes de verificar, e o
+   `UnicodeEncodeError` escapava das exceções do próprio argon2 (`VerificationError`,
+   `InvalidHashError`). Num banco com um hash adulterado, o login daria 500 em vez de 401. Agora
+   o `UnicodeEncodeError` também vira recusa, com comentário no código. O teste foi escrito antes
+   do código e pegou o caso — é o argumento a favor do TDD que entra na metodologia.
+2. **O override de `get_settings` deu 422 em todas as rotas.** O FastAPI lê a assinatura do
+   override, e o `**valores` da função `settings_de_teste` virou parâmetro obrigatório da
+   requisição. A correção foi um `lambda:`, com comentário no `conftest.py`.
+3. **Relatório da etapa A com uma soma errada.** Descrevi `test_autenticacao.py` como "40 testes"
+   sem contar; a coleta dá 36, e 6 + 36 + 1 bate com os +43 unitários. O Walter pegou a
+   divergência. Mesma lição da fatia 1: número de relatório vem da saída do comando, não de
+   estimativa.
+4. **`TEST_DATABASE_URL` não estava no `.env` local.** O `pytest -m integracao` deu "19 skipped" na
+   primeira execução. A URL foi montada só no shell, a partir da `DATABASE_URL`; o `.env` não foi
+   tocado.
+5. **Corpo da análise em Latin-1 dá 400 em inglês.** Visto no teste com servidor real: o Git Bash
+   mandou "faça" fora de UTF-8, e o FastAPI respondeu `There was an error parsing the body`. O
+   comportamento já existia e não é desta fatia; o navegador sempre manda UTF-8.
+
+### Verificação
+
+| Comando | Resultado |
+|---|---|
+| `ruff format --check .` / `ruff check .` | 64 files already formatted / All checks passed! |
+| `mypy app` | Success: no issues found in 39 source files |
+| `pytest -m "not integracao"` | **205 passed, 1 xfailed** (eram 138) |
+| `pytest -m integracao` (Windows, Postgres do compose) | **24 passed** (eram 11) |
+| `alembic upgrade head` / `alembic check` (Postgres local) | `0002 (head)` / No new upgrade operations detected |
+| `alembic downgrade 0001` → `upgrade head` | sem erro |
+| servidor real (`--loop none`, `COOKIE_SECURE=false`) | cadastro 201 com `Set-Cookie` HttpOnly, Max-Age=604800, Path=/, SameSite=lax, sem Domain; `/eu` 200; login errado e e-mail inexistente com o mesmo 401; e-mail em maiúsculas 409; logout 204; `/eu` 401 depois; análise sem cookie 200 |
+
+Testes novos, por arquivo (contagem da coleta do pytest):
+
+| Arquivo | Tipo | Testes |
+|---|---|---|
+| `tests/test_seguranca.py` | unitário | 6 |
+| `tests/test_autenticacao.py` | unitário | 36 |
+| `tests/test_api_autenticacao.py` | unitário | 24 |
+| `tests/test_config.py` | unitário | +1 (8 → 9) |
+| `tests/integracao/test_autenticacao.py` | integração | 8 |
+| `tests/integracao/test_api_autenticacao.py` | integração | 5 |
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica a esta fatia.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| **Falso negativo em produção: smishing com link `bit.ly`** (visto em produção, não medido no corpus) | Fase 2/3 — calibração e `DomainAnalyzer` (encurtador); fora do escopo desta fatia |
+| Rate limit de login: sem Redis, o próprio Argon2 limita a cerca de 4 tentativas/s por processo (estimativa), e esse custo é vetor de negação de serviço | próxima fatia (ADR-0013) |
+| Exclusão de conta pela tela | por ora pelo contato do aviso de privacidade; o CASCADE já está no banco |
+| Limpeza global das sessões vencidas de quem não volta mais | sem tarefa agendada; o índice em `expira_em` já existe |
+| Apagar `JWT_*` do painel do Render, se estiverem lá | Walter — README, seção "Produção" |
+| `TEST_DATABASE_URL` no `.env` local | Walter — o `.env.example` já documenta |
+| Proxy `/api/*` no frontend e tela de login | fatia 3 |
+| Histórico, `usuario_id` em `analises` e coluna de texto | fatia posterior, depende do ADR de privacidade do autenticado |
+
+### Próximo passo
+
+Fatia 3 da Fase 8: o frontend repassa `/api/*` ao backend, para que o cookie fique first-party, e
+ganha as telas de cadastro e login.

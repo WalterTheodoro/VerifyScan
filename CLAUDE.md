@@ -92,10 +92,10 @@ verifyscan/
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
 │     ├─ scoring/          # ScoringEngine + regras.yaml
 │     ├─ formulator/       # AIFormulator (LLM)
-│     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco (Usuario: fatia posterior)
+│     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario
 │     ├─ schemas/          # Pydantic (contrato da API)
-│     └─ core/             # config, segurança, cache, timeouts
-│  ├─ alembic/versions/    # migrações (0001 = esquema inicial); esquema só muda por aqui
+│     └─ core/             # config, segurança (hash Argon2id), cache, timeouts
+│  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões); esquema só por aqui
 │  ├─ tools/               # scripts (avaliar_corpus, etc.)
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
