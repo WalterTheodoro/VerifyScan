@@ -12,6 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.analises import router as router_analises
+from app.api.autenticacao import router as router_autenticacao
+from app.api.deps import obter_hasher
 from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
@@ -54,6 +56,9 @@ def criar_app() -> FastAPI:
     # Aqui, e não no `lifespan`: um `regras.yaml` quebrado precisa derrubar o processo na
     # subida, e não a primeira requisição do usuário. Fica antes de qualquer rota existir.
     carregar_regras()
+    # O hash de mentira do login (ADR-0013) nasce aqui, uma vez por processo: no primeiro login,
+    # aquela resposta pagaria o custo e sairia mais lenta que as outras.
+    obter_hasher()
     app = FastAPI(
         title="VerifyScan",
         description="Análise de mensagens suspeitas: nível de risco, fatores e recomendação.",
@@ -69,6 +74,7 @@ def criar_app() -> FastAPI:
     )
     app.include_router(router_health)
     app.include_router(router_analises)
+    app.include_router(router_autenticacao)
     return app
 
 

@@ -10,10 +10,11 @@ transforma o resultado estruturado em texto legível.
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: Fase 8, fatia 1 (fundação de dados).** Você cola uma mensagem na tela e recebe
-> nível de risco, fatores identificados e o que fazer; a análise fica registrada no banco, sem o
-> texto da mensagem. Ainda sem OCR, sem consulta a APIs
-> externas, sem explicação por IA e sem login — tudo isso vem nas Fases 4 a 8.
+> **Estado atual: Fase 8, fatia 2 (autenticação no backend).** Você cola uma mensagem na tela e
+> recebe nível de risco, fatores identificados e o que fazer; a análise fica registrada no banco,
+> sem o texto da mensagem. O backend já tem cadastro, login, logout e `/api/auth/eu`, com sessão
+> em cookie; a tela de login é a fatia 3. Ainda sem OCR, sem consulta a APIs externas, sem
+> explicação por IA e sem histórico — isso vem nas Fases 4 a 8.
 
 ---
 
@@ -219,9 +220,9 @@ VerifyScan/
 │  │  ├─ reputation/   URLChecker e provedores externos (Fase 4)
 │  │  ├─ scoring/      ScoringEngine e regras.yaml (Fase 1)
 │  │  ├─ formulator/   AIFormulator (Fase 7)
-│  │  ├─ models/       SQLAlchemy: Analise, IndicadorRisco (Fase 8)
+│  │  ├─ models/       SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario (Fase 8)
 │  │  ├─ schemas/      Pydantic — o contrato da API
-│  │  └─ core/         config, banco, cache, timeouts
+│  │  └─ core/         config, banco, cache, hash de senha, timeouts
 │  ├─ alembic/         migrações — o esquema só muda por elas
 │  ├─ tools/           scripts, incluindo avaliar_corpus (Fase 2)
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
@@ -255,6 +256,11 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    isso toda migração precisa ser aditiva; remover ou renomear coluna leva dois deploys.
 5. **Deixar `REDIS_URL` sem valor.** O Redis fica desativado até a Fase 4, e o `/health` responde
    `redis: desativado` com status `ok`.
+6. **Autenticação (ADR-0013): nada a definir.** Os defaults já são os de produção:
+   `COOKIE_SECURE=true` (não precisa ser definida — e nunca deve ir como `false` no Render),
+   `SESSAO_DIAS=7` e `TIMEOUT_AUTENTICACAO_S=5`. As variáveis `JWT_*` que existiam no
+   `.env.example` saíram: a sessão é opaca, em banco, e não há segredo de assinatura. Se elas
+   estiverem no painel do Render, podem ser apagadas.
 
 **Não aponte monitor de uptime nem keep-alive para `/health`**: ele faz `SELECT 1` e manteria o
 compute do Neon ligado o mês inteiro, estourando a cota gratuita (conta no ADR-0011).
