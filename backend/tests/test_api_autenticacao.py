@@ -295,3 +295,26 @@ async def test_analise_continua_funcionando_sem_cookie(navegador: AsyncClient) -
     assert resposta.status_code == 200
     assert resposta.json()["nivel_risco"] == "ALTO"
     assert "vs_sessao" not in navegador.cookies
+
+
+# ─── contrato no OpenAPI ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("metodo", "caminho", "esperados"),
+    [
+        ("post", "/api/auth/cadastro", {"409", "422", "503"}),
+        ("post", "/api/auth/login", {"401", "422", "503"}),
+        ("post", "/api/auth/logout", {"503"}),
+        ("get", "/api/auth/eu", {"401", "503"}),
+    ],
+)
+def test_openapi_declara_os_erros_de_cada_rota(
+    app: FastAPI, metodo: str, caminho: str, esperados: set[str]
+) -> None:
+    """O frontend trata cada um destes; sem declaração, o Swagger os mostra "Undocumented"."""
+    respostas = app.openapi()["paths"][caminho][metodo]["responses"]
+
+    for codigo in esperados:
+        assert codigo in respostas, f"{metodo.upper()} {caminho} não declara {codigo}"
+        assert "`detail`" in respostas[codigo]["description"]
