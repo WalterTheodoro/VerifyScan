@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Esquemas que o Neon (e a maioria dos provedores) entrega sem o driver. O SQLAlchemy lê
@@ -56,6 +56,18 @@ class Settings(BaseSettings):
 
     # Teto do registro da análise no banco. Estourar não derruba a análise (ADR-0012).
     timeout_persistencia_s: float = 2.0
+
+    # Teto do I/O de banco da autenticação — consultas e commit, nunca o hash do Argon2.
+    # Separado do de cima porque os dois falham de jeitos opostos: estourar a persistência
+    # descarta o registro em silêncio; estourar este devolve 503 ao usuário (ADR-0013).
+    timeout_autenticacao_s: float = 5.0
+
+    # Validade absoluta da sessão, em dias. É também o Max-Age do cookie.
+    sessao_dias: int = Field(default=7, gt=0)
+
+    # Atributo Secure do cookie de sessão. O default é o de produção: esquecer a variável no
+    # Render não manda a sessão por HTTP. Só o `.env` local desliga (HTTP em localhost).
+    cookie_secure: bool = True
 
     @field_validator("database_url")
     @classmethod

@@ -58,3 +58,13 @@ def test_timeout_de_persistencia_tem_default() -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.timeout_persistencia_s == 2.0
+
+
+def test_autenticacao_tem_defaults_seguros() -> None:
+    """Sem nada configurado, o cookie sai com Secure: esquecer a variável em produção não abre
+    a sessão para HTTP. Quem desliga é o `.env` local."""
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.sessao_dias == 7
+    assert settings.cookie_secure is True
+    assert settings.timeout_autenticacao_s == 5.0

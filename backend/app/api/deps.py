@@ -6,16 +6,18 @@ Engine, fábrica de sessões e cliente Redis vêm de `app.state`, onde o `lifesp
 
 from functools import lru_cache
 
-from fastapi import Depends, Request
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.core.seguranca import HasherSenha
 from app.scoring.motor import ScoringEngine
 from app.scoring.regras import carregar_regras
 from app.services.analise import ServicoAnalise
+from app.services.autenticacao import ServicoAutenticacao, ServicoIndisponivel
 from app.services.health import (
     VerificadorDesativado,
     VerificadorPostgres,
@@ -24,6 +26,15 @@ from app.services.health import (
 )
 from app.services.orquestrador import OrquestradorAnalise
 from app.services.repositorio_analises import RepositorioAnalises, RepositorioAnalisesPostgres
+from app.services.repositorio_sessoes import RepositorioSessoes, RepositorioSessoesPostgres
+from app.services.repositorio_usuarios import (
+    RepositorioUsuarios,
+    RepositorioUsuariosPostgres,
+    UsuarioAutenticado,
+)
+
+# Cookie da sessão opaca (ADR-0013). A rota de logout também o lê.
+NOME_DO_COOKIE = "vs_sessao"
 
 
 def obter_verificador_postgres(request: Request) -> VerificadorSaude:
@@ -65,3 +76,60 @@ def obter_orquestrador(
     repositorio: RepositorioAnalises = Depends(obter_repositorio_analises),
 ) -> OrquestradorAnalise:
     return OrquestradorAnalise(servico, repositorio, get_settings().timeout_persistencia_s)
+
+
+def obter_repositorio_usuarios(request: Request) -> RepositorioUsuarios:
+    fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
+    return RepositorioUsuariosPostgres(fabrica)
+
+
+def obter_repositorio_sessoes(request: Request) -> RepositorioSessoes:
+    fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
+    return RepositorioSessoesPostgres(fabrica)
+
+
+@lru_cache
+def obter_hasher() -> HasherSenha:
+    """Uma instância por processo: o hash de mentira do login é gerado uma vez só.
+
+    `criar_app` chama esta função na subida, para que o primeiro login não pague esse custo.
+    """
+    return HasherSenha()
+
+
+def obter_servico_autenticacao(
+    usuarios: RepositorioUsuarios = Depends(obter_repositorio_usuarios),
+    sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
+    hasher: HasherSenha = Depends(obter_hasher),
+    settings: Settings = Depends(get_settings),
+) -> ServicoAutenticacao:
+    return ServicoAutenticacao(
+        usuarios=usuarios,
+        sessoes=sessoes,
+        hasher=hasher,
+        sessao_dias=settings.sessao_dias,
+        timeout_s=settings.timeout_autenticacao_s,
+    )
+
+
+async def obter_usuario_atual(
+    servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
+    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
+) -> UsuarioAutenticado:
+    """Quem está logado, ou 401.
+
+    Ponto único das rotas protegidas das próximas fatias, e substituível nos testes por
+    `dependency_overrides`.
+    """
+    try:
+        usuario = await servico.usuario_da_sessao(token or "")
+    except ServicoIndisponivel as erro:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(erro)
+        ) from erro
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Você precisa entrar na sua conta.",
+        )
+    return usuario
