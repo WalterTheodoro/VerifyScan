@@ -148,7 +148,8 @@ O texto do usuário é guardado indefinidamente, e ele contém, por definição,
 nome de remetente, telefone, valor, número de conta. Falta regra explícita do que se guarda —
 íntegra, trecho ou nada.
 
-→ **RESOLVIDO (ADR-0006)**
+→ **PARCIAL** — o ADR-0006 resolveu o anônimo e o OCR; o usuário autenticado, que é exatamente a
+linha "Texto enviado" da §7.1, segue em aberto
 
 **10. O KPI de precisão não define métrica.** §1.6 ("Precisão na identificação de golpes > 85% em
 testes com casos reais").
