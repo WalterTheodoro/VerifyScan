@@ -8,8 +8,11 @@ import { afterEach, beforeEach, describe, mock, test } from "node:test";
 
 import {
   aquecer,
+  despertar,
   enviarUmaVez,
+  esperarPeloBackend,
   esquecerBackend,
+  INTERVALO_DESPERTAR_MS,
   JANELA_ACORDADO_MS,
   LIMITE_ESPERA_MS,
   lerComRepeticao,
@@ -17,14 +20,26 @@ import {
   pedir,
 } from "./servidor.ts";
 
-type Chamada = { caminho: string; metodo: string };
+type Chamada = {
+  caminho: string;
+  metodo: string;
+  modo?: RequestMode;
+  credenciais?: RequestCredentials;
+  instante: number;
+};
 
 let chamadas: Chamada[] = [];
 
 /** Troca o `fetch` global por um que responde conforme `responder`. Lançar = falha de rede. */
 function fingirFetch(responder: (chamada: Chamada, ordem: number) => Response) {
   globalThis.fetch = async (entrada: string | URL | Request, init?: RequestInit) => {
-    const chamada = { caminho: String(entrada), metodo: init?.method ?? "GET" };
+    const chamada = {
+      caminho: String(entrada),
+      metodo: init?.method ?? "GET",
+      modo: init?.mode,
+      credenciais: init?.credentials,
+      instante: Date.now(),
+    };
     chamadas.push(chamada);
     return responder(chamada, chamadas.length);
   };
@@ -264,5 +279,89 @@ describe("aquecimento", () => {
     await enviarUmaVez("/api/analises", { method: "POST" });
     assert.equal(aoCaminho("/health"), 1);
     assert.equal(metodo("POST"), 1);
+  });
+});
+
+describe("despertar direto", () => {
+  // O proxy recebe 502 do Render sem acordar o backend; um GET direto ao endereço público acorda.
+  const URL_DESPERTAR = "https://backend.exemplo/health";
+  const despertares = () => chamadas.filter((c) => c.caminho === URL_DESPERTAR);
+
+  beforeEach(() => {
+    // Com barra no fim, para conferir que ela sai.
+    process.env.NEXT_PUBLIC_URL_DESPERTAR = "https://backend.exemplo/";
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_URL_DESPERTAR;
+  });
+
+  test("chama o /health do endereço público sem cookie", () => {
+    fingirFetch(() => new Response(null, { status: 200 }));
+    despertar();
+    assert.equal(chamadas.length, 1);
+    assert.equal(chamadas[0].caminho, URL_DESPERTAR);
+    assert.equal(chamadas[0].modo, "no-cors");
+    assert.equal(chamadas[0].credenciais, "omit");
+  });
+
+  test("sem a variável, não faz nada", () => {
+    delete process.env.NEXT_PUBLIC_URL_DESPERTAR;
+    fingirFetch(() => json(200, {}));
+    despertar();
+    assert.equal(chamadas.length, 0);
+  });
+
+  test("esperar pelo backend velho desperta uma vez; recente, não desperta", async () => {
+    fingirFetch(() => json(200, { status: "ok" }));
+    assert.equal(await esperarPeloBackend(), true);
+    assert.equal(despertares().length, 1, "sem resposta anterior");
+
+    esquecerBackend();
+    chamadas = [];
+    await pedir("/api/auth/eu");
+    assert.equal(await esperarPeloBackend(), true);
+    assert.equal(despertares().length, 0, "com resposta recente");
+  });
+
+  test("dois despertares em menos de 10 s viram um só", async () => {
+    fingirFetch(() => new Response(null, { status: 200 }));
+    despertar();
+    despertar();
+    await avancar(INTERVALO_DESPERTAR_MS - 1000);
+    despertar();
+    assert.equal(despertares().length, 1);
+    await avancar(1000);
+    despertar();
+    assert.equal(despertares().length, 2);
+  });
+
+  test("fetch que rejeita no despertar não quebra a espera", async () => {
+    fingirFetch((chamada) => (chamada.caminho === URL_DESPERTAR ? semRede() : json(200, {})));
+    assert.equal(await esperarPeloBackend(), true);
+    assert.equal(despertares().length, 1);
+  });
+
+  test("fetch que lança na hora no despertar não quebra a espera", async () => {
+    globalThis.fetch = ((entrada: string | URL | Request) => {
+      if (String(entrada) === URL_DESPERTAR) {
+        throw new TypeError("bloqueado");
+      }
+      return Promise.resolve(json(200, {}));
+    }) as typeof fetch;
+    assert.equal(await esperarPeloBackend(), true);
+  });
+
+  test("leitura sem backend desperta a cada repetição, nunca dois em menos de 10 s", async () => {
+    fingirFetch(() => html(502));
+    void lerComRepeticao("/api/historico");
+    await avancar(LIMITE_ESPERA_MS + 5000);
+
+    // Repetições em 2, 5, 10, 15… 90 s; com o limite de 10 s, despertam em 2, 15, 25… 85 s.
+    const instantes = despertares().map((c) => c.instante);
+    assert.equal(instantes.length, 9);
+    for (let i = 1; i < instantes.length; i++) {
+      assert.ok(instantes[i] - instantes[i - 1] >= INTERVALO_DESPERTAR_MS);
+    }
   });
 });

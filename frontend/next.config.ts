@@ -4,7 +4,8 @@ import type { NextConfig } from "next";
 // Assim o cookie de sessão fica first-party no domínio do frontend: onrender.com está na Public
 // Suffix List, e um cookie do backend seria de terceiro — o Safari bloqueia (ADR-0013).
 //
-// Variável de servidor, sem NEXT_PUBLIC_: o navegador nunca precisa saber onde o backend mora.
+// Variável de servidor, sem NEXT_PUBLIC_: o navegador nunca precisa saber onde o backend mora
+// (exceto o despertar direto, ADR-0017).
 // As rewrites são gravadas no build, então é no build que ela tem de existir.
 const API_URL_INTERNA = obterApiUrlInterna();
 
