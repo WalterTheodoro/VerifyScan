@@ -1088,3 +1088,102 @@ O Walter corrigiu antes de qualquer commit.
 As partes "vínculo" e "histórico" do backend ficaram num commit só. Não dá para separá-las sem
 deixar código sem teste: `api/deps.py`, `tests/conftest.py` e `tests/integracao/test_historico.py`
 servem às duas.
+
+## 2026-10-26 — Correção: primeiro acesso com o backend dormindo
+
+### O problema
+
+Em produção, no primeiro acesso depois de o backend do Render dormir, o `fetch` recebia uma página
+HTML de erro em vez do JSON do backend. O defeito era reproduzível, não intermitente:
+- o `/status` mostrava "API inalcançável — Unexpected token '<'";
+- quem estava logado via "Entrar", porque a área de sessão tratava 503 e falha de rede como
+  "deslogado";
+- análise, login e cadastro falhavam na primeira tentativa.
+
+Abrir o `/health` do backend direto antes resolvia tudo.
+
+**A causa exata do HTML no proxy de produção não foi isolada.** Não dá para reproduzir o Render
+dormindo localmente. A solução não depende dela: trata como "não veio do backend" qualquer
+resposta sem corpo JSON. Localmente, com o backend parado, o proxy do `next start` responde `500`
+com `Internal Server Error` em texto, e cai no mesmo caso.
+
+### O que foi feito
+
+- **`frontend/app/_lib/servidor.ts`**, módulo novo, sem nenhum import.
+  - Uma só classificação: é do backend toda resposta com corpo JSON, e o 204.
+  - Leituras repetem sozinhas (2, 3, 5 s e depois a cada 5 s, até 90 s).
+  - Envios esperam o backend e saem uma vez só.
+  - Há um aquecimento, um GET silencioso a `/health` por carregamento de página.
+- **As telas passaram a usar o módulo:**
+  - conta, histórico e dados repetem as leituras;
+  - a área de sessão fica em "carregando" durante as tentativas, e só o 401 vira "deslogado";
+  - a home mostra "O servidor está acordando" enquanto espera o backend antes de analisar;
+  - o `/status` mostra frases legíveis e a dica de comando do Windows (`--loop none`).
+- **Primeiros testes do frontend.**
+  - `servidor.test.ts`, com `node:test` e relógio falso (`mock.timers`), sem dependência nova:
+    21 casos.
+  - Novo script `npm test`, e um passo no CI (job "frontend — eslint, testes").
+  - Para o `tsc` aceitar o import com extensão, `allowImportingTsExtensions` no tsconfig.
+- **Documentação.** ADR-0017; README, "Problemas comuns".
+
+### Decisões do Walter no plano
+
+1. **Testes no `node:test` e no CI**, com as condições de rodar no Node direto:
+   - `servidor.ts` sem import;
+   - o teste importa `./servidor.ts` com extensão;
+   - o script tem caminho explícito, sem glob, por causa do cmd.exe.
+2. **A flag "o backend já respondeu neste carregamento" virou um instante.** Eu tinha proposto a
+   flag, valendo para a aba inteira. O Walter apontou que o Render volta a dormir 15 min depois da
+   última requisição, mesmo com a aba aberta: quem abre o site, sai 20 min e volta mandaria o envio
+   direto para o backend dormindo, e veria o erro de hoje.
+   - Agora vale a última resposta do backend, com janela de 10 min (`JANELA_ACORDADO_MS`).
+   - O custo é um `/health` a mais antes de um envio feito depois de 10 min parado.
+   - O caso tem teste: 9 min não consulta o `/health`; 11 min consulta.
+3. A mensagem do commit 1 é `feat`, e não `test`: o commit cria o módulo.
+
+### O que deu errado ou mudou no caminho
+
+1. **Os testes falharam primeiro pelo motivo certo.** Com um esqueleto que só exportava a
+   interface, os 21 falharam. Implementado o módulo, 2 ainda falharam, e **os dois erros estavam no
+   teste**:
+   - o `avancar()` do relógio falso andava em passos fixos de 500 ms, e `avancar(1999)` andava
+     2000;
+   - no teste da janela, o próprio POST dos 9 min respondia JSON e renovava a janela, que é o
+     comportamento pedido. O POST do teste passou a responder HTML, para a janela contar desde a
+     primeira resposta.
+2. **Na home, o aviso "servidor acordando" continua na tela depois que o `/health` responde**, até
+   o resultado da análise chegar. É uma diferença de segundos, com o backend recém-acordado. Não
+   criei um segundo callback para desligar o aviso.
+
+### Verificação
+
+- Frontend: `npm test` 21/21, `npm run lint`, `npx tsc --noEmit` e `npm run build` limpos.
+- Backend intocado: ruff e mypy limpos, `pytest -q` com 272 passando e 1 xfail.
+- **O roteiro no navegador, itens (a) a (e), fica para o Walter**, no build de produção na porta
+  3000, com o backend parado e depois de pé. Ele confere:
+  - o cabeçalho sem "Entrar" durante a espera;
+  - a contagem de `analises` subindo exatamente 1;
+  - o cadastro com 201 e sem 409;
+  - o `/status`;
+  - as mensagens finais depois de 90 s.
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Roteiro (a)–(e) no navegador, pelo build de produção | Walter |
+| Conferir em produção, no Render, o primeiro acesso depois de 15 min parado | Walter |
+| **5 sessões vencidas encontradas no Neon em 26/10.** Hoje elas só são apagadas quando a própria pessoa entra de novo (ADR-0013); falta a limpeza global | fatia 5 |
+| Excluir conta e trocar senha pela tela; tirar a linha "veja a seção Privacidade" de Meus dados | fatia 5 |
+| Critério final de login no iPhone e rate limit de login | vindas das fatias 2 e 3 |
+
+### Commits
+
+1. `feat(frontend): cria a espera pelo backend, com testes no node:test`
+2. `fix(frontend): repete as leituras e espera o backend antes dos envios`
+3. `fix(frontend): troca o erro técnico do /status por frase legível e a dica do Windows`
+4. `docs: registra o ADR-0017 e a correção do primeiro acesso`
+
+Nenhum arquivo aparece em dois commits.
