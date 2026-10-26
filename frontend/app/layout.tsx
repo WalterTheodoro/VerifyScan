@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from "next/font/google";
+import { Aquecimento } from "./_componentes/aquecimento";
 import "./globals.css";
 
 // Atkinson Hyperlegible foi desenhada pelo Braille Institute para leitores com baixa visão:
@@ -27,7 +28,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${textoLegivel.variable} ${monoLegivel.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Aquecimento />
+        {children}
+      </body>
     </html>
   );
 }

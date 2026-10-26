@@ -76,7 +76,7 @@ jobs:
         run: uv run pytest -q -rs
 
   frontend:
-    name: frontend — eslint
+    name: frontend — eslint, testes
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -95,3 +95,6 @@ jobs:
 
       - name: eslint
         run: npm run lint
+
+      - name: testes
+        run: npm test

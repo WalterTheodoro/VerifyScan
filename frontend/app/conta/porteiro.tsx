@@ -3,15 +3,16 @@
 import { useRef, type ReactNode } from "react";
 
 import { AvisosDoEnvio } from "../_componentes/avisos-do-envio";
-import { MENSAGEM_SEM_SERVIDOR, verificarSessao } from "../_lib/conta";
+import { consultarSessao, MENSAGEM_SEM_SERVIDOR } from "../_lib/conta";
 import type { Resultado } from "../_lib/historico";
+import type { OpcoesDeEspera } from "../_lib/servidor";
 import { useCarga } from "../_lib/use-carga";
 import { AvisoEntrar } from "./aviso-entrar";
 
-/** `verificarSessao` no formato de `Resultado`, para reaproveitar o `useCarga`. De módulo, para
- *  ser estável entre renderizações. */
-async function sessao(): Promise<Resultado<true>> {
-  const situacao = await verificarSessao();
+/** `consultarSessao` no formato de `Resultado`, para reaproveitar o `useCarga`. De módulo, para
+ *  ser estável entre renderizações. Só o 401 justifica dizer "Entre na sua conta". */
+async function sessao(opcoes: OpcoesDeEspera): Promise<Resultado<true>> {
+  const { situacao } = await consultarSessao(opcoes);
   if (situacao === "logado") {
     return { situacao: "ok", dados: true };
   }

@@ -294,11 +294,19 @@ porta de `POSTGRES_PORT`.
 Existe um Postgres instalado direto no Windows. Mude `POSTGRES_PORT` no `.env` (por exemplo,
 `5433`), ajuste a porta dentro de `DATABASE_URL` também, e suba de novo.
 
-**A página do frontend mostra "API inalcançável".**
-O backend não está no ar, ou está em outra porta. Confira o `uvicorn` e o valor de
-`API_URL_INTERNA` em `frontend/.env.local`. Mudança nessa variável exige reiniciar o
-`npm run dev` — e, no build de produção, rodar o `npm run build` de novo: as rewrites ficam
-gravadas no build.
+**O `/status` mostra "Não conseguimos falar com o servidor."**
+O backend não está no ar, ou está em outra porta. Suba com
+`uv run uvicorn app.main:app --port 8000 --loop none` (o `--loop none` é do Windows, ADR-0007) e
+confira o valor de `API_URL_INTERNA` em `frontend/.env.local`. Mudança nessa variável exige
+reiniciar o `npm run dev` — e, no build de produção, rodar o `npm run build` de novo: as rewrites
+ficam gravadas no build.
+
+**Em produção, o primeiro acesso mostra "O servidor está acordando".**
+É o esperado no plano gratuito: o backend do Render dorme depois de 15 min sem uso e leva até
+~60 s para acordar. A tela tenta de novo sozinha por até 90 s; envios (análise, entrar, cadastro)
+esperam o backend responder e saem uma vez só (ADR-0017). Se passar de 90 s, confira no painel do
+Render se o serviço do backend subiu. Não crie monitor nem keep-alive para evitar a espera: as
+cotas gratuitas não comportam (ADR-0011).
 
 **`uv sync` reclama que o `uv.lock` está desatualizado.**
 Alguém mexeu no `pyproject.toml`. Rode `uv lock` e commite o `uv.lock` junto.
