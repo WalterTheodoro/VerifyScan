@@ -271,7 +271,11 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;
    - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
-     exclusão da conta. Sem ela, a página diz "contato em configuração".
+     exclusão da conta. Sem ela, a página diz "contato em configuração";
+   - `NEXT_PUBLIC_URL_DESPERTAR=https://verifyscan.onrender.com` — o endereço público do
+     backend. O navegador faz um GET direto a `/health` nele, só para acordá-lo: pelo proxy, o
+     Render responde 502 e não acorda o backend (adendo do ADR-0017). Também é lida no build. Sem
+     ela, o build passa, mas o primeiro acesso em produção não acorda o backend.
 
    **`NEXT_PUBLIC_API_URL` pode sair do painel:** o código não a lê mais.
 
@@ -305,7 +309,8 @@ ficam gravadas no build.
 É o esperado no plano gratuito: o backend do Render dorme depois de 15 min sem uso e leva até
 ~60 s para acordar. A tela tenta de novo sozinha por até 90 s; envios (análise, entrar, cadastro)
 esperam o backend responder e saem uma vez só (ADR-0017). Se passar de 90 s, confira no painel do
-Render se o serviço do backend subiu. Não crie monitor nem keep-alive para evitar a espera: as
+Render se o serviço do backend subiu e se `NEXT_PUBLIC_URL_DESPERTAR` está definida no frontend:
+sem ela, ninguém acorda o backend. Não crie monitor nem keep-alive para evitar a espera: as
 cotas gratuitas não comportam (ADR-0011).
 
 **`uv sync` reclama que o `uv.lock` está desatualizado.**

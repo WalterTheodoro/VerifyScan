@@ -86,3 +86,55 @@ CU-h/mês do Neon. Esta solução **só acorda o backend quando alguém usa o si
 - **A lógica nova tem testes** (`frontend/app/_lib/servidor.test.ts`, `node:test`, sem
   dependência nova), que rodam no CI. São os primeiros testes do frontend. Por isso
   `servidor.ts` não importa nada: o Node roda o `.ts` direto e não lê o tsconfig.
+
+## Adendo — 26/10: despertar direto
+
+**Medição em produção, depois do PR #8.** Os dois serviços ficaram 20 min sem requisição.
+- Todas as chamadas pelo proxy do Next (`/health` e `/api/auth/eu`) receberam **HTTP 502 por
+  3 min seguidos**, das 19:13:24 às 19:16:22, e o backend não acordou.
+- Depois disso, **um** GET direto em `https://verifyscan.onrender.com/health` acordou o backend em
+  **31,9 s**. Em seguida, o `/health` pelo proxy respondeu 200 em **0,4 s**.
+- No log do backend no Render, o processo subiu uma vez só, e o primeiro pedido recebido foi esse
+  GET direto, vindo de fora do Render. Nenhum pedido do proxy chegou antes.
+
+**Hipótese (comportamento observado, sem documentação oficial).** O Render responde 502 na hora
+aos pedidos que vêm de outro serviço do Render, em vez de acordar o destino. Já o pedido do
+navegador ao endereço público acorda. Outro projeto com a mesma arquitetura descreveu o mesmo
+comportamento (github.com/BUMETCS673/CS673OLF26P2/pull/86). O teste local do PR #8 não tinha como
+pegar isso, porque localmente o proxy alcança o backend sem passar pelo Render.
+
+**Decisão.** A lógica acima continua. O que muda é quem **acorda** o backend.
+1. **Variável de build `NEXT_PUBLIC_URL_DESPERTAR`** (em produção,
+   `https://verifyscan.onrender.com`).
+   - Sem ela, o despertar não acontece e tudo segue como antes.
+   - O build não falha por falta dela: localmente o proxy acorda o backend.
+2. **`despertar()`** (em `servidor.ts`) faz um `fetch` a `${NEXT_PUBLIC_URL_DESPERTAR}/health` com
+   `mode: "no-cors"`, `credentials: "omit"` e `cache: "no-store"`.
+   - Não lê a resposta e ignora qualquer erro.
+   - Nunca lança e nunca é aguardado.
+3. **Onde é chamado:**
+   - no `aquecer()`, junto do `/health` pelo proxy;
+   - no início do `esperarPeloBackend()`, quando a última resposta do backend é mais velha que
+     `JANELA_ACORDADO_MS` ou não existe;
+   - em **toda** repetição de uma leitura que não veio do backend (`lerComRepeticao`).
+
+   Nunca sai mais de um a cada 10 s (`INTERVALO_DESPERTAR_MS`), o que dá no máximo ~9 em 90 s.
+4. **Por que repetir, e não despertar uma vez só por espera.** Se esse único pedido se perder (rede
+   instável no celular), ninguém acorda o backend nos 90 s seguintes. A espera termina em erro, que
+   é justamente a falha medida. O intervalo de 10 s é o que impede a rajada.
+5. **A confirmação de que o backend está de pé continua sendo uma resposta JSON pelo proxy.** O
+   despertar não conta como resposta, até porque, em `no-cors`, a resposta é opaca.
+
+**ADR-0014.** Esta é a **única exceção** a "todo `fetch` do navegador é relativo". O motivo do
+ADR-0014 não se aplica: o cookie de terceiro bloqueado pelo Safari só importa quando o pedido leva
+cookie, e este vai com `credentials: "omit"` e sem leitura da resposta. Login, análise, histórico
+e todo o resto continuam pelo proxy. O comentário de `next.config.ts` registra a exceção.
+
+**ADR-0011.** Continua respeitado: o despertar só sai do navegador de quem está usando o site,
+nos mesmos momentos em que a espera já pedia `/health`. Não há agendador nem keep-alive.
+
+**Custo de estar errado.**
+- Se o Render passar a acordar pelo proxy, o despertar vira um GET redundante, de no máximo um a
+  cada 10 s, e só enquanto alguém espera.
+- Se o Render deixar de acordar também pelo navegador, nada desta solução funciona. O caminho
+  passa a ser um plano pago (o serviço não dorme) ou um domínio próprio (ADR-0014).

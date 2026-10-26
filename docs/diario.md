@@ -1187,3 +1187,90 @@ O motor de risco não mudou: `avaliar_corpus` não se aplica.
 4. `docs: registra o ADR-0017 e a correção do primeiro acesso`
 
 Nenhum arquivo aparece em dois commits.
+
+## 2026-10-26 — Correção: o backend não acorda pelo proxy
+
+### O problema
+
+Medi em produção depois do PR #8, com os dois serviços 20 min sem requisição:
+- todas as chamadas pelo proxy do Next (`/health` e `/api/auth/eu` no `verifyscan-app`) receberam
+  **HTTP 502 por 3 min seguidos**, das 19:13:24 às 19:16:22, e **o backend não acordou**;
+- depois, **um** GET direto em `https://verifyscan.onrender.com/health` acordou o backend em
+  **31,9 s**;
+- em seguida, o `/health` pelo proxy respondeu 200 em **0,4 s**.
+
+O log do backend no Render confirma: o processo subiu uma vez só, e o primeiro pedido recebido
+foi o GET direto, vindo de fora do Render. Nenhum pedido do proxy chegou antes disso.
+
+A hipótese é que o Render responde 502 na hora aos pedidos vindos de outro serviço do Render, em
+vez de acordar o destino. Já o pedido do navegador ao endereço público acorda. Outro projeto com
+a mesma arquitetura relatou o mesmo (github.com/BUMETCS673/CS673OLF26P2/pull/86). Não há
+documentação oficial, então está registrado como comportamento observado.
+
+**Por que o PR #8 não pegou isto:** o teste local não tinha como. Localmente, o proxy alcança o
+backend sem passar pelo Render. A lógica do PR #8 (leituras repetem, envios esperam e saem uma
+vez) continua certa. Faltava o pedido que acorda.
+
+### O que foi feito
+
+- **`frontend/app/_lib/servidor.ts`: `despertar()`.**
+  - Faz um GET a `${NEXT_PUBLIC_URL_DESPERTAR}/health`, com `no-cors`, sem cookie e sem ler a
+    resposta. Nunca lança.
+  - É chamado:
+    - no `aquecer()`;
+    - no início do `esperarPeloBackend()`, com o backend "velho";
+    - em toda repetição de uma leitura que não veio do backend.
+  - No máximo um a cada 10 s.
+  - Sem a variável, não faz nada.
+- **Testes.** 7 casos novos em `servidor.test.ts`, 28 no total. Primeiro falharam todos (o
+  import de `despertar` não existia), depois passaram.
+- **`next.config.ts`.** O comentário passou a registrar a exceção: "(exceto o despertar direto,
+  ADR-0017)".
+- **Documentação.**
+  - Adendo no ADR-0017.
+  - README: a variável no passo 7 de Produção, e uma frase em "Problemas comuns".
+  - `frontend/.env.local.example`: a variável comentada.
+
+### Decisões do Walter no plano
+
+1. **O despertar sai em toda repetição da leitura, não só na primeira.** Eu tinha proposto só na
+   primeira.
+   - Com um despertar único por espera, se ele se perder (rede instável no celular), ninguém
+     acorda o backend nos 90 s seguintes. Seria a falha medida hoje.
+   - O limite de 10 s segura a rajada: com 502 contínuo, saem 9 despertares em 90 s (em 2, 15,
+     25… 85 s). Há teste para isso.
+2. **O comentário do `next.config.ts` foi corrigido no mesmo commit.** Sem isso, ele afirmaria
+   algo que o código deixou de fazer. O ADR-0014 não foi reaberto: a exceção está no adendo do
+   ADR-0017.
+3. **A URL é lida por uma função, a cada chamada**, na forma literal
+   `process.env.NEXT_PUBLIC_URL_DESPERTAR`, que o Next embute no build. O teste só define ou apaga
+   a variável. Não há setter só para teste.
+
+### Verificação
+
+- Frontend: `npm test` 28/28; `npm run lint`, `npx tsc --noEmit` e `npm run build` limpos.
+- Conferência do build:
+  - **com a variável**, a URL aparece embutida num chunk de `.next/static`;
+  - **sem ela**, o build passa, e o código lê o polyfill de `process` do Next: vira `""` e o
+    despertar não sai.
+- Backend intocado: `pytest -q` com 272 passando e 1 xfail.
+- O comportamento do Render não se reproduz localmente. **O critério real é em produção.**
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Definir `NEXT_PUBLIC_URL_DESPERTAR=https://verifyscan.onrender.com` no serviço do frontend no Render e refazer o build | Walter — README, "Produção", passo 7 |
+| Conferir em produção, depois de 20 min parado: o GET direto chega no log do backend e o proxy responde em seguida | Walter |
+| Roteiro (a)–(e) do PR #8 no navegador, pelo build de produção | Walter |
+| Limpeza global das sessões vencidas; excluir conta e trocar senha pela tela | fatia 5 |
+| Critério final de login no iPhone e rate limit de login | vindas das fatias 2 e 3 |
+
+### Commits
+
+1. `fix(frontend): acorda o backend com um GET direto ao endereço público`
+2. `docs: registra o adendo do ADR-0017 sobre o despertar direto`
+
+Nenhum arquivo aparece em dois commits.
