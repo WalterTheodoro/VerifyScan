@@ -20,9 +20,10 @@ export function useEnvioConta(caminho: "/api/auth/cadastro" | "/api/auth/login")
     setDemorando(false);
     setErro(null);
     // O timer nasce no envio, não num efeito: é consequência do clique, não da renderização.
+    // `aoEsperar` liga o aviso antes, se o envio tiver de esperar o backend acordar (ADR-0017).
     const timer = window.setTimeout(() => setDemorando(true), ESPERA_ATE_AVISAR_MS);
 
-    void enviarConta(caminho, corpo).then((resultado) => {
+    void enviarConta(caminho, corpo, { aoEsperar: () => setDemorando(true) }).then((resultado) => {
       window.clearTimeout(timer);
       setDemorando(false);
       if (resultado.ok) {

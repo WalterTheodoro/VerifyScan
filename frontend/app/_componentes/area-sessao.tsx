@@ -14,6 +14,8 @@ const BOTAO =
   "botao-secundario alvo-de-toque inline-flex items-center rounded-full px-4 font-bold";
 
 /** "Entrar", ou "Olá, {nome}" e "Sair". O estado vem de GET /api/auth/eu; 401 é "deslogado".
+ *  Enquanto o backend acorda, a consulta se repete e a área fica em "carregando"; só esgotadas
+ *  as tentativas (cerca de 90 s) ela mostra "Entrar" (ADR-0017).
  *
  *  `aoMudarSessao` conta à página se há alguém logado — a home usa isso para o aviso do
  *  histórico, sem consultar /eu uma segunda vez. */
@@ -23,17 +25,18 @@ export function AreaSessao({ aoMudarSessao }: { aoMudarSessao?: (logado: boolean
   const [erroAoSair, setErroAoSair] = useState("");
 
   useEffect(() => {
-    // setState dentro do `then`, não no corpo do efeito (react-hooks/set-state-in-effect); a
-    // flag `ativo` descarta a resposta que chegar depois de a página sair da tela.
-    let ativo = true;
-    void consultarSessao().then((usuario) => {
-      if (ativo) {
-        setSessao(usuario ? { situacao: "logado", usuario } : { situacao: "deslogado" });
-        aoMudarSessao?.(usuario !== null);
+    // setState dentro do `then`, não no corpo do efeito (react-hooks/set-state-in-effect); o
+    // abort para as tentativas e descarta a resposta que chegar depois de a página sair da tela.
+    const controle = new AbortController();
+    void consultarSessao({ signal: controle.signal }).then((consulta) => {
+      if (!controle.signal.aborted) {
+        // "erro" (não deu para saber) também mostra "Entrar": é inofensivo.
+        setSessao(consulta.situacao === "logado" ? consulta : { situacao: "deslogado" });
+        aoMudarSessao?.(consulta.situacao === "logado");
       }
     });
     return () => {
-      ativo = false;
+      controle.abort();
     };
     // Uma consulta por montagem: o callback novo a cada renderização da página não a repete.
     // eslint-disable-next-line react-hooks/exhaustive-deps

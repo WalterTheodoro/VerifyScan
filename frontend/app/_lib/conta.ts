@@ -1,8 +1,11 @@
 // Chamadas de conta ao backend (ADR-0013), sempre por caminho relativo: o Next repassa /api/* ao
 // backend, e o cookie de sessão fica no domínio do próprio site (ADR-0014). Nada aqui mexe em
-// React: só busca e traduz a resposta em algo que a tela mostra.
+// React: só busca e traduz a resposta em algo que a tela mostra. A espera pelo backend que dorme
+// e a classificação de quem respondeu ficam em `servidor.ts` (ADR-0017).
 //
 // A pasta `_lib` começa com "_" para o App Router não tratá-la como rota.
+
+import { enviarUmaVez, lerSessao, type OpcoesDeEspera } from "./servidor";
 
 export type Usuario = { nome: string; email: string };
 
@@ -30,75 +33,62 @@ function ehUsuario(corpo: unknown): corpo is Usuario {
   );
 }
 
-/** Cadastro ou login. A frase de erro do backend já é a mensagem ao usuário (ADR-0013 §5). */
+/** Cadastro ou login. A frase de erro do backend já é a mensagem ao usuário (ADR-0013 §5).
+ *  Sai uma vez só: repetir o cadastro daria 409 a quem acabou de se cadastrar. */
 export async function enviarConta(
   caminho: "/api/auth/cadastro" | "/api/auth/login",
   corpo: Record<string, string>,
+  opcoes: OpcoesDeEspera = {},
 ): Promise<ResultadoConta> {
-  try {
-    const resposta = await fetch(caminho, {
+  const resposta = await enviarUmaVez(
+    caminho,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(corpo),
-    });
-    // Corpo que não é JSON é o Next respondendo no lugar do backend (proxy sem resposta).
-    const dados: unknown = await resposta.json().catch(() => null);
-
-    if (resposta.ok && ehUsuario(dados)) {
-      return { ok: true, usuario: dados };
-    }
-    const detalhe = lerDetail(dados);
-    if (typeof detalhe === "string") {
-      return { ok: false, mensagem: detalhe };
-    }
-    if (Array.isArray(detalhe) || (resposta.status >= 400 && resposta.status < 500)) {
-      return { ok: false, mensagem: MENSAGEM_CONFIRA };
-    }
-    return { ok: false, mensagem: MENSAGEM_SEM_SERVIDOR };
-  } catch {
+    },
+    opcoes,
+  );
+  if (!resposta.doBackend) {
     return { ok: false, mensagem: MENSAGEM_SEM_SERVIDOR };
   }
+  if (resposta.status >= 200 && resposta.status < 300 && ehUsuario(resposta.corpo)) {
+    return { ok: true, usuario: resposta.corpo };
+  }
+  const detalhe = lerDetail(resposta.corpo);
+  if (typeof detalhe === "string") {
+    return { ok: false, mensagem: detalhe };
+  }
+  if (Array.isArray(detalhe) || (resposta.status >= 400 && resposta.status < 500)) {
+    return { ok: false, mensagem: MENSAGEM_CONFIRA };
+  }
+  return { ok: false, mensagem: MENSAGEM_SEM_SERVIDOR };
 }
 
-/** Quem está logado. `null` cobre o 401 ("deslogado", não erro) e também qualquer falha: sem
- *  como saber, o cabeçalho oferece "Entrar", que é inofensivo. */
-export async function consultarSessao(): Promise<Usuario | null> {
-  try {
-    const resposta = await fetch("/api/auth/eu", { cache: "no-store" });
-    const dados: unknown = await resposta.json().catch(() => null);
-    return resposta.ok && ehUsuario(dados) ? dados : null;
-  } catch {
-    return null;
-  }
-}
+export type Sessao =
+  | { situacao: "logado"; usuario: Usuario }
+  | { situacao: "deslogado" }
+  | { situacao: "erro" };
 
-/** Como `consultarSessao`, mas separando "deslogado" (401) de "não deu para saber". A área da
- *  conta precisa da diferença: só o 401 justifica dizer "Entre na sua conta". */
-export async function verificarSessao(): Promise<"logado" | "deslogado" | "erro"> {
-  try {
-    const resposta = await fetch("/api/auth/eu", { cache: "no-store" });
-    if (resposta.status === 401) {
-      return "deslogado";
-    }
-    const dados: unknown = await resposta.json().catch(() => null);
-    return resposta.ok && ehUsuario(dados) ? "logado" : "erro";
-  } catch {
-    return "erro";
+/** Quem está logado. Repete sozinho enquanto o backend acorda; só o 401 é "deslogado". "erro" é
+ *  "não deu para saber": o cabeçalho mostra "Entrar", a área da conta mostra o aviso. */
+export async function consultarSessao(opcoes: OpcoesDeEspera = {}): Promise<Sessao> {
+  const sessao = await lerSessao(opcoes);
+  if (sessao.situacao === "logado") {
+    return ehUsuario(sessao.corpo)
+      ? { situacao: "logado", usuario: sessao.corpo }
+      : { situacao: "erro" };
   }
+  return sessao.situacao === "deslogado" ? { situacao: "deslogado" } : { situacao: "erro" };
 }
 
 /** Sai da conta. Devolve `true` só quando a resposta comprovadamente veio do backend — que
- *  limpa o cookie no 204 e também no 503 (com `detail`). Falha de rede ou 5xx sem JSON é o
- *  proxy sem backend: o cookie continua válido, e dizer "saiu" seria mentir (ADR-0014). */
+ *  limpa o cookie no 204 e também no 503 (com `detail`). Sem resposta do backend o cookie
+ *  continua válido, e dizer "saiu" seria mentir (ADR-0014). */
 export async function sairDaConta(): Promise<boolean> {
-  try {
-    const resposta = await fetch("/api/auth/logout", { method: "POST" });
-    if (resposta.status === 204) {
-      return true;
-    }
-    const dados: unknown = await resposta.json().catch(() => null);
-    return lerDetail(dados) !== undefined;
-  } catch {
+  const resposta = await enviarUmaVez("/api/auth/logout", { method: "POST" });
+  if (!resposta.doBackend) {
     return false;
   }
+  return resposta.status === 204 || lerDetail(resposta.corpo) !== undefined;
 }

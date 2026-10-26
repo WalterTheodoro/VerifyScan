@@ -3,6 +3,7 @@
 
 import type { NivelRisco } from "../_componentes/nivel-risco";
 import { lerDetail, MENSAGEM_SEM_SERVIDOR } from "./conta";
+import { enviarUmaVez, lerComRepeticao, type OpcoesDeEspera } from "./servidor";
 
 export type FatorDoHistorico = { categoria: string; descricao: string; peso: number };
 
@@ -31,34 +32,37 @@ export type Resultado<T> =
 
 /** Faz a chamada e traduz a resposta. `ler` só roda no 2xx; 204 chega sem corpo.
  *
- *  O 401 vira "deslogado" — a sessão pode ter vencido com a página aberta. Erro com `detail`
- *  em texto mostra a frase do backend, que já é escrita para o usuário. Qualquer outra coisa é o
- *  proxy sem backend, e a mensagem é a de sempre. */
+ *  GET repete sozinho enquanto o backend acorda; DELETE espera por ele e sai uma vez só
+ *  (ADR-0017). O 401 vira "deslogado" — a sessão pode ter vencido com a página aberta. Erro com
+ *  `detail` em texto mostra a frase do backend, que já é escrita para o usuário. Sem resposta do
+ *  backend, a mensagem é a de sempre. */
 async function chamar<T>(
   caminho: string,
   metodo: "GET" | "DELETE",
   ler: (corpo: unknown) => T | null,
+  opcoes: OpcoesDeEspera = {},
 ): Promise<Resultado<T>> {
-  try {
-    const resposta = await fetch(caminho, { method: metodo, cache: "no-store" });
-    if (resposta.status === 401) {
-      return { situacao: "deslogado" };
-    }
-    const corpo: unknown = resposta.status === 204 ? null : await resposta.json().catch(() => null);
-    if (resposta.ok) {
-      const dados = ler(corpo);
-      if (dados !== null) {
-        return { situacao: "ok", dados };
-      }
-    }
-    const detalhe = lerDetail(corpo);
-    return {
-      situacao: "erro",
-      mensagem: typeof detalhe === "string" ? detalhe : MENSAGEM_SEM_SERVIDOR,
-    };
-  } catch {
+  const resposta =
+    metodo === "GET"
+      ? await lerComRepeticao(caminho, opcoes)
+      : await enviarUmaVez(caminho, { method: metodo }, opcoes);
+  if (!resposta.doBackend) {
     return { situacao: "erro", mensagem: MENSAGEM_SEM_SERVIDOR };
   }
+  if (resposta.status === 401) {
+    return { situacao: "deslogado" };
+  }
+  if (resposta.status >= 200 && resposta.status < 300) {
+    const dados = ler(resposta.corpo);
+    if (dados !== null) {
+      return { situacao: "ok", dados };
+    }
+  }
+  const detalhe = lerDetail(resposta.corpo);
+  return {
+    situacao: "erro",
+    mensagem: typeof detalhe === "string" ? detalhe : MENSAGEM_SEM_SERVIDOR,
+  };
 }
 
 function ehHistorico(corpo: unknown): corpo is Historico {
@@ -85,8 +89,8 @@ function ehDadosConta(corpo: unknown): corpo is DadosConta {
   );
 }
 
-export function buscarHistorico(): Promise<Resultado<Historico>> {
-  return chamar("/api/historico", "GET", (corpo) => (ehHistorico(corpo) ? corpo : null));
+export function buscarHistorico(opcoes: OpcoesDeEspera): Promise<Resultado<Historico>> {
+  return chamar("/api/historico", "GET", (corpo) => (ehHistorico(corpo) ? corpo : null), opcoes);
 }
 
 export function apagarAnalise(id: string): Promise<Resultado<true>> {
@@ -97,8 +101,8 @@ export function apagarHistorico(): Promise<Resultado<true>> {
   return chamar("/api/historico", "DELETE", () => true);
 }
 
-export function buscarConta(): Promise<Resultado<DadosConta>> {
-  return chamar("/api/conta", "GET", (corpo) => (ehDadosConta(corpo) ? corpo : null));
+export function buscarConta(opcoes: OpcoesDeEspera): Promise<Resultado<DadosConta>> {
+  return chamar("/api/conta", "GET", (corpo) => (ehDadosConta(corpo) ? corpo : null), opcoes);
 }
 
 // Fuso fixo: o servidor do Render roda em UTC, e o navegador de quem viaja pode estar em outro.

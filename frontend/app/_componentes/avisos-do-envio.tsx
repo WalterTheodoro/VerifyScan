@@ -1,5 +1,11 @@
 import type { RefObject } from "react";
 
+/** A frase de quando o backend gratuito está acordando (ADR-0017). Um lugar só para o texto:
+ *  telas de conta, home e /status. */
+export function AvisoAcordando() {
+  return <p className="font-semibold">O servidor está acordando. Isso pode levar até 1 minuto.</p>;
+}
+
 /** Região `aria-live` das telas de conta: o aviso de demora e o erro do backend.
  *
  *  Sempre montada, mesmo vazia — região criada junto com o conteúdo não é anunciada por alguns
@@ -15,9 +21,7 @@ export function AvisosDoEnvio({
 }) {
   return (
     <div aria-live="polite" className="flex flex-col gap-perto">
-      {demorando && (
-        <p className="font-semibold">O servidor está acordando. Isso pode levar até 1 minuto.</p>
-      )}
+      {demorando && <AvisoAcordando />}
       {erro && (
         // `tabIndex={-1}`: recebe o foco por código, sem entrar na ordem do Tab.
         <div ref={avisoDeErro} tabIndex={-1} role="alert"

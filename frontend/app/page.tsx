@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 
+import { AvisoAcordando } from "./_componentes/avisos-do-envio";
 import { Cabecalho } from "./_componentes/cabecalho";
 import { Rodape } from "./_componentes/rodape";
 import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./_componentes/nivel-risco";
 import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
+import { lerDetail } from "./_lib/conta";
+import { enviarUmaVez } from "./_lib/servidor";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
 //
@@ -69,39 +72,44 @@ const APRESENTACAO: Record<NivelRisco, { resumo: string; recomendacao: string }>
   },
 };
 
-/** Manda o texto para a API e traduz qualquer falha em uma frase que o usuário entenda. */
-async function analisar(texto: string): Promise<Estado> {
-  try {
-    const resposta = await fetch("/api/analises", {
+/** Manda o texto para a API e traduz qualquer falha em uma frase que o usuário entenda.
+ *
+ *  Sai uma vez só: repetir gravaria a análise duas vezes. Se o backend estiver dormindo, espera
+ *  por ele antes, e `aoEsperar` liga o aviso de "servidor acordando" (ADR-0017). */
+async function analisar(texto: string, aoEsperar: () => void): Promise<Estado> {
+  const resposta = await enviarUmaVez(
+    "/api/analises",
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto }),
-    });
+    },
+    { aoEsperar },
+  );
 
-    if (resposta.ok) {
-      return { situacao: "concluida", resultado: (await resposta.json()) as RespostaAnalise };
-    }
-
-    // A API devolve `detail` como string quando a recusa é uma regra de negócio — e essa
-    // string já é a mensagem escrita para o usuário. Nos outros casos o formato é do FastAPI
-    // e não serve para exibir.
-    const corpo: unknown = await resposta.json().catch(() => null);
-    const detalhe =
-      corpo && typeof corpo === "object" && "detail" in corpo ? corpo.detail : null;
-    return {
-      situacao: "falhou",
-      mensagem:
-        typeof detalhe === "string"
-          ? detalhe
-          : "Não conseguimos analisar esta mensagem agora. Tente de novo em alguns instantes.",
-    };
-  } catch {
+  if (!resposta.doBackend) {
     return {
       situacao: "falhou",
       mensagem:
         "Não conseguimos falar com o serviço de análise. Verifique sua conexão e tente de novo.",
     };
   }
+
+  if (resposta.status >= 200 && resposta.status < 300) {
+    return { situacao: "concluida", resultado: resposta.corpo as RespostaAnalise };
+  }
+
+  // A API devolve `detail` como string quando a recusa é uma regra de negócio — e essa
+  // string já é a mensagem escrita para o usuário. Nos outros casos o formato é do FastAPI
+  // e não serve para exibir.
+  const detalhe = lerDetail(resposta.corpo);
+  return {
+    situacao: "falhou",
+    mensagem:
+      typeof detalhe === "string"
+        ? detalhe
+        : "Não conseguimos analisar esta mensagem agora. Tente de novo em alguns instantes.",
+  };
 }
 
 /** Rola até o elemento e põe o foco nele. Rola sem animação para quem pediu menos movimento. */
@@ -118,6 +126,9 @@ function levarAte(elemento: HTMLElement | null) {
 export default function PaginaAnalise() {
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<Estado>({ situacao: "pronta" });
+  // Só durante a espera pelo backend dormindo, não durante a análise: com o backend acordado ela
+  // pode levar ~17 s (ADR-0002), e "o servidor está acordando" seria falso.
+  const [acordando, setAcordando] = useState(false);
   // A entrada orquestrada do hero é só da carga da página; depois de "Analisar outra
   // mensagem" o formulário volta sem animar.
   const [animarEntrada, setAnimarEntrada] = useState(true);
@@ -130,7 +141,9 @@ export default function PaginaAnalise() {
   function aoEnviar(evento: React.FormEvent) {
     evento.preventDefault();
     setEstado({ situacao: "analisando" });
-    void analisar(texto).then((proximo) => {
+    setAcordando(false);
+    void analisar(texto, () => setAcordando(true)).then((proximo) => {
+      setAcordando(false);
       setEstado(proximo);
       // Leva o foco para o resultado: sem isso, quem usa teclado ou leitor de tela continua
       // no botão e não percebe que a resposta chegou.
@@ -252,6 +265,7 @@ export default function PaginaAnalise() {
                 {estado.situacao === "analisando" && (
                   <p className="text-destaque">Analisando sua mensagem…</p>
                 )}
+                {estado.situacao === "analisando" && acordando && <AvisoAcordando />}
 
                 {estado.situacao === "falhou" && (
                   <div role="alert" className="cartao border-l-[10px] border-[var(--erro)] p-5">
