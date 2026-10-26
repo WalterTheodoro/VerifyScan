@@ -3,6 +3,9 @@
 // do backend. Aqui fica a única classificação de "quem respondeu" e as duas regras:
 // leituras repetem sozinhas; envios esperam o backend e saem uma vez só.
 //
+// O pedido pelo proxy recebe 502 do Render sem acordar o backend; quem acorda é um GET do
+// navegador ao endereço público (`despertar`, adendo do ADR-0017).
+//
 // Este arquivo não importa nada: o teste roda no Node direto (type stripping), que não lê o
 // tsconfig nem resolve import sem extensão. Por isso também usa `setTimeout` e `Date.now()`
 // globais, e não os de `window` — são os que o relógio falso do teste controla.
@@ -28,10 +31,42 @@ export const LIMITE_ESPERA_MS = 90_000;
  *  15 min depois da última requisição, mesmo com a aba aberta; 10 min deixa margem. */
 export const JANELA_ACORDADO_MS = 10 * 60_000;
 
+/** Dois despertares nunca saem com menos que isto entre eles: sem rajada. */
+export const INTERVALO_DESPERTAR_MS = 10_000;
+
 const FORA_DO_BACKEND: Resposta = { doBackend: false };
 
 let ultimaRespostaDoBackend: number | null = null;
 let aquecimento: Promise<Resposta> | null = null;
+let ultimoDespertar: number | null = null;
+
+/** Endereço público do backend, ou "" sem a variável. Escrito por extenso porque o Next só
+ *  embute no build a forma literal `process.env.NEXT_PUBLIC_...`; lido a cada chamada para o
+ *  teste poder trocar. */
+function urlDespertar(): string {
+  return (process.env.NEXT_PUBLIC_URL_DESPERTAR ?? "").trim().replace(/\/+$/, "");
+}
+
+/** GET direto ao /health do endereço público, só para o Render acordar o backend. Sem cookie,
+ *  sem ler a resposta (por isso não esbarra no ADR-0014); nunca lança, nunca é aguardado. Sem a
+ *  variável (local), não faz nada: lá o proxy alcança o backend sem passar pelo Render. */
+export function despertar(): void {
+  const url = urlDespertar();
+  if (!url) {
+    return;
+  }
+  if (ultimoDespertar !== null && Date.now() - ultimoDespertar < INTERVALO_DESPERTAR_MS) {
+    return;
+  }
+  ultimoDespertar = Date.now();
+  try {
+    void fetch(`${url}/health`, { mode: "no-cors", credentials: "omit", cache: "no-store" }).catch(
+      () => {},
+    );
+  } catch {
+    // fetch que lança na hora (bloqueado pelo navegador): o despertar é só uma tentativa.
+  }
+}
 
 /** Um pedido, sem repetição, já classificado. */
 export async function pedir(caminho: string, init: RequestInit = {}): Promise<Resposta> {
@@ -90,6 +125,9 @@ export async function lerComRepeticao(
     if (tentativa === 0) {
       aoEsperar?.();
     }
+    // A cada repetição, não só na primeira: um despertar perdido não pode deixar a espera inteira
+    // sem nenhum. O intervalo mínimo segura a rajada.
+    despertar();
     await dormir(intervalo, signal);
     if (signal?.aborted) {
       break;
@@ -127,6 +165,7 @@ export async function lerSessao(opcoes: OpcoesDeEspera = {}): Promise<SituacaoDa
  *  pessoa lê. A flag também segura o efeito duplo do StrictMode. */
 export function aquecer(): void {
   if (aquecimento === null) {
+    despertar();
     aquecimento = pedir("/health", { cache: "no-store" });
   }
 }
@@ -140,6 +179,7 @@ export async function esperarPeloBackend(opcoes: OpcoesDeEspera = {}): Promise<b
   if (acordadoHaPouco()) {
     return true;
   }
+  despertar();
   if (aquecimento !== null) {
     await aquecimento;
     if (acordadoHaPouco()) {
@@ -167,4 +207,5 @@ export async function enviarUmaVez(
 export function esquecerBackend(): void {
   ultimaRespostaDoBackend = null;
   aquecimento = null;
+  ultimoDespertar = null;
 }
