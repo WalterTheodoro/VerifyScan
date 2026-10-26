@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { AvisoAcordando } from "../_componentes/avisos-do-envio";
+import { lerComRepeticao, type OpcoesDeEspera } from "../_lib/servidor";
 
 // Página de infraestrutura, do Gate 0: prova que o frontend alcança o backend e que o backend
 // alcança Postgres e Redis. Saiu de `/` na Fase 1, para dar lugar à tela de análise, e ficou
@@ -21,47 +24,52 @@ type RespostaHealth = {
 
 type Estado =
   | { situacao: "carregando" }
+  | { situacao: "acordando" }
   | { situacao: "carregado"; dados: RespostaHealth }
-  | { situacao: "inalcancavel"; erro: string };
+  | { situacao: "inalcancavel" };
 
-/** Consulta a API e devolve o próximo estado. Não mexe em React — só busca e traduz. */
-async function consultarSaude(): Promise<Estado> {
-  try {
-    // A API responde 503 quando algum serviço está fora, mas o corpo tem o mesmo formato —
-    // por isso lemos o JSON sem checar o status code. Caminho relativo: o Next repassa /health
-    // ao backend (ADR-0014).
-    const resposta = await fetch("/health", { cache: "no-store" });
-    const dados = (await resposta.json()) as RespostaHealth;
-    return { situacao: "carregado", dados };
-  } catch (erro) {
-    return {
-      situacao: "inalcancavel",
-      erro: erro instanceof Error ? erro.message : "erro desconhecido",
-    };
-  }
+/** Consulta a API e devolve o próximo estado. Não mexe em React — só busca e traduz.
+ *
+ *  A API responde 503 quando algum serviço está fora, mas o corpo tem o mesmo formato — por isso
+ *  vale qualquer resposta do backend, sem checar o status code. Sem resposta do backend, repete
+ *  enquanto ele acorda (ADR-0017). Caminho relativo: o Next repassa /health (ADR-0014). */
+async function consultarSaude(opcoes: OpcoesDeEspera): Promise<Estado> {
+  const resposta = await lerComRepeticao("/health", opcoes);
+  return resposta.doBackend
+    ? { situacao: "carregado", dados: resposta.corpo as RespostaHealth }
+    : { situacao: "inalcancavel" };
 }
 
 export default function PaginaSaude() {
   const [estado, setEstado] = useState<Estado>({ situacao: "carregando" });
+  // Uma consulta por vez: "Verificar novamente" cancela a anterior, e sair da página também.
+  const consultaAtual = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    // O setState fica dentro do callback do `then`, não no corpo do efeito: chamado de forma
-    // síncrona ali, ele dispararia renderização em cascata (react-hooks/set-state-in-effect).
-    // A flag `ativo` descarta a resposta que chegar depois de a página sair da tela.
-    let ativo = true;
-    void consultarSaude().then((resultado) => {
-      if (ativo) {
+  // O setState fica nos callbacks, não no corpo do efeito: chamado de forma síncrona ali, ele
+  // dispararia renderização em cascata (react-hooks/set-state-in-effect). O abort descarta a
+  // resposta que chegar depois de a consulta ser substituída ou de a página sair da tela.
+  const consultar = useCallback(() => {
+    consultaAtual.current?.abort();
+    const controle = new AbortController();
+    consultaAtual.current = controle;
+    void consultarSaude({
+      aoEsperar: () => setEstado({ situacao: "acordando" }),
+      signal: controle.signal,
+    }).then((resultado) => {
+      if (!controle.signal.aborted) {
         setEstado(resultado);
       }
     });
-    return () => {
-      ativo = false;
-    };
   }, []);
+
+  useEffect(() => {
+    consultar();
+    return () => consultaAtual.current?.abort();
+  }, [consultar]);
 
   function aoClicarVerificar() {
     setEstado({ situacao: "carregando" });
-    void consultarSaude().then(setEstado);
+    consultar();
   }
 
   return (
@@ -75,13 +83,16 @@ export default function PaginaSaude() {
 
       {estado.situacao === "carregando" && <p>Consultando a API…</p>}
 
+      {estado.situacao === "acordando" && <AvisoAcordando />}
+
       {estado.situacao === "inalcancavel" && (
         <div className="border border-current p-4">
-          <p className="font-bold">API inalcançável</p>
+          <p className="font-bold">Não conseguimos falar com o servidor.</p>
+          {/* `--loop none`: no Windows, o loop padrão quebra o psycopg assíncrono (ADR-0007). */}
           <p className="text-sm">
-            O backend está no ar? <code>uv run uvicorn app.main:app --reload --port 8000</code>
+            O backend está no ar?{" "}
+            <code>uv run uvicorn app.main:app --port 8000 --loop none</code>
           </p>
-          <p className="mt-2 text-sm opacity-70">{estado.erro}</p>
         </div>
       )}
 
