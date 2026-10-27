@@ -47,9 +47,10 @@ class Settings(BaseSettings):
     redis_url: str | None = None
 
     # Teto da mensagem analisada. Acima disso a análise é recusada, nunca truncada — ver
-    # `ServicoAnalise._validar`. É configuração para a Fase 2 poder ajustar se o corpus
-    # mostrar recusa frequente.
-    texto_max_caracteres: int = 5000
+    # `ServicoAnalise._validar`. Pode baixar; subir de 5000 exige migração junto: o CHECK
+    # `ck_analises_texto_ate_5000` (0004) recusaria o texto de quem está logado e o registro
+    # seria descartado em silêncio. Por isso o processo nem sobe com valor maior (ADR-0018).
+    texto_max_caracteres: int = Field(default=5000, gt=0, le=5000)
 
     # Timeout das checagens de /health. Todo I/O externo tem timeout explícito (ADR-0002).
     timeout_health_s: float = 2.0

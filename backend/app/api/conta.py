@@ -38,6 +38,7 @@ def _item(analise: AnaliseDoHistorico) -> ItemHistorico:
             FatorHistorico(categoria=f.categoria, descricao=f.descricao, peso=f.peso)
             for f in analise.fatores
         ],
+        texto=analise.texto,
     )
 
 

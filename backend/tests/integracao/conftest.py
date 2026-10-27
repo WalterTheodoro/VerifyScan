@@ -123,7 +123,9 @@ async def fabrica_de_sessoes(
     `NullPool` e engine por teste: cada teste do pytest-asyncio tem o próprio event loop, e uma
     conexão de pool aberta num loop não pode ser usada em outro.
     """
-    engine = create_async_engine(url_banco_de_teste, poolclass=NullPool)
+    # `hide_parameters`, como o `criar_engine` da aplicação: com o texto no banco (ADR-0018), o
+    # teste de log precisa do mesmo engine que roda em produção.
+    engine = create_async_engine(url_banco_de_teste, poolclass=NullPool, hide_parameters=True)
     try:
         async with engine.connect() as conexao:
             transacao = await conexao.begin()

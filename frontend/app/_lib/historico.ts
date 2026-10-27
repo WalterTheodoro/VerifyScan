@@ -13,6 +13,8 @@ export type AnaliseDoHistorico = {
   nivel_risco: NivelRisco;
   score_risco: number;
   fatores: FatorDoHistorico[];
+  /** A mensagem como foi colada (ADR-0018); `null` nas análises anteriores a ele. */
+  texto: string | null;
 };
 
 export type Historico = { dias: number; analises: AnaliseDoHistorico[] };

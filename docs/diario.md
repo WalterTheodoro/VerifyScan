@@ -1334,3 +1334,134 @@ plano gratuito não temos como alterá-la, e ela aparece antes de qualquer códi
 3. `fix(frontend): esconde a dica de desenvolvedor do /status em produção`
 
 Nenhum arquivo aparece em dois commits.
+
+## 2026-10-26 — Fase 8, fatia 5: conta completa e histórico completo
+
+### O problema
+
+- O histórico sem texto (ADR-0015) não deixava reconhecer a análise: duas do mesmo dia, com o
+  mesmo nível, ficavam iguais.
+- Não havia como trocar a senha, e excluir a conta só pelo contato.
+- Uma consulta ao Neon achou 5 sessões vencidas paradas: as vencidas só sumiam quando a própria
+  pessoa entrava de novo.
+- Pendência de 26/10: quem colava antes da hidratação via o botão desabilitado com o texto na tela.
+
+### Decisão do Walter sobre o texto
+
+**A mensagem é guardada sempre para quem está logado, sem caixa de seleção, por 7 dias.**
+- A caixa de consentimento por análise foi descartada por ser pouco prática para o público, num
+  dado que some em 7 dias de qualquer jeito.
+- O trecho mascarado perde justamente o que a pessoa reconheceria.
+- Base legal: execução do serviço que a pessoa contratou ao criar a conta (LGPD, art. 7º, V). Para
+  ela valer, a home avisa antes do envio, e o aviso de privacidade explica o prazo e como apagar.
+- A falta de escolha por análise é decisão consciente, registrada no ADR-0018 com o custo: num
+  vazamento, os textos dos últimos 7 dias de todos os logados ficam expostos. O conflito com a
+  §2.6 do RFC fica declarado como limitação.
+
+Outras decisões do Walter nesta fatia:
+- As URLs ficam fora do histórico (o banco não as guarda, ADR-0009). Os links aparecem como texto
+  em "Você colou:".
+- O cartão da home "Sua mensagem não fica guardada" virou "Sem conta, sua mensagem não fica
+  guardada", porque deixou de ser verdade para quem está logado.
+- `TEXTO_MAX_CARACTERES` foi travado em ≤ 5000, amarrado ao CHECK da 0004.
+- O aviso "Sua conta foi excluída." vai por `sessionStorage`, **nunca pela URL**. Eu tinha proposto
+  `?conta=excluida`, e o Walter recusou: qualquer pessoa montaria esse link e mostraria a frase a
+  quem está logado, o que, num site sobre golpes, assusta.
+- Na lista de commits, os de documentação vão para o fim, e o aviso de privacidade é código
+  (`feat`).
+
+### O que foi feito
+
+- **Backend, texto (ADR-0018):**
+  - migração 0004 com `analises.texto_input` e dois CHECKs nomeados: texto só com dono, e até 5000
+    caracteres;
+  - `RegistroAnalise` repete a regra do dono no `__post_init__`;
+  - o orquestrador grava o texto quando resolve o dono, e a resposta ganha `texto_salvo`;
+  - a desvinculação zera dono e texto no mesmo UPDATE, e `GET /api/historico` devolve `texto`;
+  - `hide_parameters=True` no engine.
+- **Backend, conta (ADR-0019):**
+  - `POST /api/conta/senha` grava o hash novo e apaga as outras sessões, numa transação só;
+  - `POST /api/conta/excluir` pede a senha, apaga pelos CASCADE e limpa o cookie;
+  - senha errada é 400, nunca 401;
+  - a faxina (subida e listagem) também apaga as sessões vencidas de todas as contas.
+- **Frontend:**
+  - o resultado virou componente compartilhado (`_componentes/resultado.tsx`): o histórico mostra
+    a mesma placa da home, com data e hora e "Você colou:" (ou "O texto desta análise não foi
+    guardado.");
+  - na home, a frase dos 7 dias para quem está logado, o aviso de "salva com a mensagem", o aviso
+    de conta excluída e a correção da hidratação;
+  - em Meus dados, "Trocar senha" e "Excluir minha conta" (confirmação no quadro, foco em
+    "Cancelar");
+  - o aviso de privacidade cobre a mensagem guardada e a exclusão pela tela;
+  - `useEnvio` genérico, de que `useEnvioConta` passou a depender;
+  - `CampoSenha` ganhou rótulo e `name` configuráveis.
+- **Antes da etapa B, a pedido do Walter, uma conferência da FK.** `analises.usuario_id` é
+  `ON DELETE CASCADE` (consultado em `pg_constraint`), não SET NULL. Excluir a conta apaga a linha
+  inteira, e o CHECK do texto não tem o que recusar.
+  - O teste de integração da exclusão ganhou a pré-condição explícita: a análise apagada tinha
+    texto.
+  - Ele passou de primeira, porque o comportamento já estava certo. Se a FK um dia virar SET NULL,
+    o teste fica vermelho.
+
+### O que deu errado no caminho
+
+- Um teste meu supôs 3 fatores no golpe de PIX; são 4. Troquei a conta exata por "maior que zero".
+- O script de medição do diário não existia mais no scratchpad e foi reescrito (CDP, Edge
+  headless, sem dependência). Na primeira rodada:
+  - ele clicou no "Analisar mensagem" do cabeçalho, e não no do formulário;
+  - acusou como "texto que vaza" o corte com reticências, que é proposital, do nome e do e-mail.
+  Os dois eram defeitos do script, e foram corrigidos.
+- As capturas mostraram um defeito real: o grupo de avisos vazio abria um buraco entre o campo e os
+  botões, e "Sim, excluir minha conta" quebrava colado no "Cancelar". O campo foi agrupado com os
+  avisos, e os botões ficaram na largura toda no celular.
+- O isolamento do frontend numa cópia com `node_modules` por junção quebrou o Turbopack ("Symlink
+  … points out of the filesystem root"). Refeito com `npm ci` na cópia.
+
+### Verificação
+
+- Backend:
+  - `ruff format`, `ruff check` e `mypy app` limpos;
+  - `pytest -q`: 304 passando e 1 xfail (o strict do SMS continua aparecendo);
+  - `-m integracao`: 49;
+  - `alembic upgrade head` (0003 → 0004) e `alembic check` limpos.
+- Testes escritos antes do código: os 18 de A1 e os 18 de A2 falharam primeiro.
+- Frontend: `npm test` 34/34; `npm run lint`, `npx tsc --noEmit` e `npm run build` limpos.
+- Commits isolados (cópia sem os arquivos dos commits seguintes): o 1 do backend e os 3 e 4 do
+  frontend passam sozinhos.
+- Medição (build de produção na 3001, backend na 8000), em 320, 390 e 1280 px:
+  - telas: home deslogada, logada, com resultado e com o aviso de conta excluída; histórico com e
+    sem texto; Meus dados, com e sem a confirmação aberta; privacidade;
+  - nenhuma rolagem lateral, sobreposição ou alvo abaixo de 44 px nas telas da fatia.
+- Fluxos no Edge headless, todos ok:
+  - texto colado com o JavaScript segurado: o botão fica habilitado depois da hidratação;
+  - frase dos 7 dias só para quem está logado;
+  - "salva com a mensagem" depois da análise;
+  - troca de senha: com a atual errada, a frase do 400, sem deslogar; com a certa, o anúncio, os
+    campos limpos e a outra sessão com 401;
+  - exclusão: foco em "Cancelar"; senha errada dá 400; com a certa, a home mostra "Sua conta foi
+    excluída.", a URL fica limpa, o cabeçalho deslogado, a chave apagada, o aviso não se repete
+    ao recarregar e o login depois dá 401;
+  - `/?conta=excluida` não mostra nada.
+
+O motor de risco não mudou: `avaliar_corpus` não se aplica.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| "Exemplo: evite o bloqueio, último aviso" (O que ele procura) vaza 4 px a 390 px: o marcador do `mark` no fim da linha. Sem rolagem lateral. Seção não tocada nesta fatia | observação, fora do escopo |
+| Rate limit em login, troca de senha e exclusão | ADR-0013 / ADR-0019 |
+| Recuperação de senha por e-mail | ADR-0019 |
+| Roteiro de verificação no navegador, em produção, depois do deploy (a 0004 roda no build) | Walter |
+
+### Commits
+
+1. `feat(historico): guarda a mensagem de quem está logado pela janela de 7 dias`
+2. `feat(conta): troca de senha, exclusão da conta e faxina das sessões vencidas`
+3. `feat(frontend): mostra no histórico o resultado completo e a mensagem`
+4. `feat(frontend): troca de senha e exclusão da conta em Meus dados`
+5. `feat(frontend): o aviso de privacidade cobre a mensagem guardada e a exclusão pela tela`
+6. `docs(adr): registra os ADR-0018 e ADR-0019 e atualiza errata, achado 9 e ADR-0015`
+7. `docs: atualiza CLAUDE.md, README e diário da fatia 5`
+
+Nenhum arquivo aparece em dois commits.

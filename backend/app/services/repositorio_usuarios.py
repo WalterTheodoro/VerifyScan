@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 import psycopg
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
@@ -62,6 +62,12 @@ class RepositorioUsuarios(Protocol):
     async def atualizar_senha_hash(self, usuario_id: uuid.UUID, senha_hash: str) -> None: ...
 
     async def buscar_conta(self, usuario_id: uuid.UUID) -> DadosConta | None: ...
+
+    async def trocar_senha(
+        self, usuario_id: uuid.UUID, senha_hash: str, token_hash_mantido: str
+    ) -> None: ...
+
+    async def apagar(self, usuario_id: uuid.UUID) -> None: ...
 
 
 class RepositorioUsuariosPostgres:
@@ -126,6 +132,31 @@ class RepositorioUsuariosPostgres:
         if linha is None:
             return None
         return DadosConta(nome=linha.nome_exibicao, email=linha.email, criado_em=linha.created_at)
+
+    async def trocar_senha(
+        self, usuario_id: uuid.UUID, senha_hash: str, token_hash_mantido: str
+    ) -> None:
+        """Hash novo e as outras sessões da conta apagadas, numa transação só (ADR-0019).
+
+        Em duas transações, um timeout entre elas deixaria a senha trocada e o aparelho perdido
+        ainda logado — justamente o caso de quem troca a senha por desconfiança.
+        """
+        async with self._fabrica_de_sessoes() as sessao, sessao.begin():
+            await sessao.execute(
+                update(Usuario).where(Usuario.id == usuario_id).values(senha_hash=senha_hash)
+            )
+            await sessao.execute(
+                delete(SessaoUsuario).where(
+                    SessaoUsuario.usuario_id == usuario_id,
+                    SessaoUsuario.token_hash != token_hash_mantido,
+                )
+            )
+
+    async def apagar(self, usuario_id: uuid.UUID) -> None:
+        """Apaga a conta. Sessões, análises ligadas (com o texto) e os indicadores delas vão
+        pelos ON DELETE CASCADE das migrações 0001, 0002 e 0003 — quem apaga é o banco."""
+        async with self._fabrica_de_sessoes() as sessao, sessao.begin():
+            await sessao.execute(delete(Usuario).where(Usuario.id == usuario_id))
 
 
 def _constraint_violada(erro: IntegrityError) -> str | None:

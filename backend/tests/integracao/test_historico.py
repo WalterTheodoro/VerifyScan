@@ -5,6 +5,8 @@ transação do teste. As datas são mudadas por SQL: dentro da transação o `no
 "7 dias atrás" é exato — a borda da janela pode ser testada ao segundo.
 """
 
+import dataclasses
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,7 +28,7 @@ from app.api.deps import (
 from app.core.config import get_settings
 from app.main import criar_app
 from app.models import Analise, IndicadorRisco, Usuario
-from app.services.repositorio_analises import RepositorioAnalisesPostgres
+from app.services.repositorio_analises import RegistroAnalise, RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres, UsuarioAutenticado
@@ -331,3 +333,104 @@ async def test_sem_sessao_as_quatro_rotas_dao_401(
     anonimo: AsyncClient, metodo: str, caminho: str
 ) -> None:
     assert (await anonimo.request(metodo, caminho)).status_code == 401
+
+
+# ─── texto da mensagem (ADR-0018) ─────────────────────────────────────────────────────────
+
+# Um pedaço da mensagem que não aparece em nenhum template de fator nem em nome de coluna: se
+# estiver no log, veio da mensagem.
+TRECHO_DA_MENSAGEM = "bb-regularize"
+
+
+async def _textos(
+    fabrica: async_sessionmaker[AsyncSession],
+) -> list[tuple[uuid.UUID | None, str | None]]:
+    async with fabrica() as sessao:
+        linhas = (await sessao.execute(select(Analise.usuario_id, Analise.texto_input))).all()
+    return [(linha.usuario_id, linha.texto_input) for linha in linhas]
+
+
+async def test_logado_grava_o_texto_e_anonimo_nao(
+    maria: AsyncClient,
+    anonimo: AsyncClient,
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession],
+) -> None:
+    corpo_maria = await _analisar(maria)
+    corpo_anonimo = await _analisar(anonimo)
+
+    assert corpo_maria["texto_salvo"] is True
+    assert corpo_anonimo["texto_salvo"] is False
+    id_maria = await _id_da_conta(fabrica_de_sessoes, "Maria")
+    assert sorted(await _textos(fabrica_de_sessoes), key=str) == sorted(
+        [(id_maria, GOLPE_DE_PIX), (None, None)], key=str
+    )
+
+
+async def test_historico_devolve_o_texto_inteiro(maria: AsyncClient) -> None:
+    await _analisar(maria)
+
+    item = (await maria.get("/api/historico")).json()["analises"][0]
+
+    assert item["texto"] == GOLPE_DE_PIX
+
+
+async def test_desvinculacao_apaga_o_texto_junto_com_o_vinculo(
+    maria: AsyncClient,
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession],
+) -> None:
+    """O texto vive exatamente a janela do histórico: o mesmo UPDATE tira o dono e o texto."""
+    id_maria = await _id_da_conta(fabrica_de_sessoes, "Maria")
+    await _analisar(maria)
+    await _envelhecer(fabrica_de_sessoes, "8 days", id_maria)
+    await _analisar(maria)
+
+    assert (await maria.get("/api/historico")).status_code == 200
+
+    async with fabrica_de_sessoes() as sessao:
+        linhas = (
+            await sessao.execute(
+                text(
+                    "SELECT usuario_id, texto_input, created_at < now() - interval '7 days' "
+                    "AS antiga FROM analises"
+                )
+            )
+        ).all()
+    antigas = [(linha.usuario_id, linha.texto_input) for linha in linhas if linha.antiga]
+    recentes = [(linha.usuario_id, linha.texto_input) for linha in linhas if not linha.antiga]
+    assert antigas == [(None, None)]
+    assert recentes == [(id_maria, GOLPE_DE_PIX)]
+
+
+class AnalisesQueViolamUmCheck(RepositorioAnalisesPostgres):
+    """Grava de verdade, mas com um nível fora do CHECK: o erro do Postgres traz a linha recusada
+    ("Failing row contains ..."), com o texto dentro. É o pior caso para vazar no log."""
+
+    async def registrar(self, registro: RegistroAnalise) -> uuid.UUID:
+        return await super().registrar(
+            dataclasses.replace(registro, nivel_risco="INVALIDO")  # type: ignore[arg-type]
+        )
+
+
+async def test_nenhum_log_contem_o_texto_da_mensagem(
+    app: FastAPI,
+    maria: AsyncClient,
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Gravar, listar, desvincular e falhar ao gravar: nada disso escreve a mensagem em log.
+
+    INFO, e não DEBUG: em DEBUG o próprio SQLAlchemy despeja as linhas lidas, e nenhum processo do
+    projeto liga esse nível no logger dele. Em INFO ele escreve o SQL, e os parâmetros saem
+    escondidos pelo `hide_parameters` (ADR-0018).
+    """
+    with caplog.at_level(logging.INFO):
+        await _analisar(maria)
+        await maria.get("/api/historico")
+        app.dependency_overrides[obter_repositorio_analises] = lambda: AnalisesQueViolamUmCheck(
+            fabrica_de_sessoes
+        )
+        corpo = await _analisar(maria)
+
+    assert corpo["texto_salvo"] is False
+    assert "IntegrityError" in caplog.text
+    assert TRECHO_DA_MENSAGEM not in caplog.text

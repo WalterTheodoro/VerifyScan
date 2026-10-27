@@ -16,13 +16,13 @@ from app.schemas.analise import Fator, NivelRisco, RespostaAnalise, TipoInput
 class RegistroAnalise:
     """Tudo o que o banco recebe de uma análise — e nada além disso.
 
-    Não há campo para o texto (ADR-0006) nem para as URLs (ADR-0009 preserva a query, que pode
-    carregar e-mail ou token da vítima). A regra fica no tipo: o repositório não tem por onde
-    receber esses dados, do mesmo jeito que o AIFormulator não tem por onde receber a mensagem
-    (invariante 1).
+    Não há campo para as URLs (ADR-0009 preserva a query, que pode carregar e-mail ou token da
+    vítima). A regra fica no tipo: o repositório não tem por onde recebê-las, do mesmo jeito que
+    o AIFormulator não tem por onde receber a mensagem (invariante 1).
 
     `usuario_id` é o dono, quando a análise foi feita logado (ADR-0015): um id, não conteúdo.
-    Quem o preenche é o orquestrador, depois de resolver a sessão.
+    `texto_input` é a mensagem, e só existe junto com o dono (ADR-0018). Quem preenche os dois é
+    o orquestrador, depois de resolver a sessão.
     """
 
     score: int
@@ -30,6 +30,15 @@ class RegistroAnalise:
     tipo_input: TipoInput
     fatores: tuple[Fator, ...]
     usuario_id: uuid.UUID | None = None
+    texto_input: str | None = None
+
+    def __post_init__(self) -> None:
+        """A regra do CHECK `ck_analises_texto_so_com_dono`, no tipo: o erro aparece aqui, e não
+        como um registro descartado depois. Texto de OCR nunca é guardado (ADR-0006)."""
+        if self.texto_input is not None and self.usuario_id is None:
+            raise ValueError("Texto da análise só pode ser guardado com dono (ADR-0018).")
+        if self.texto_input is not None and self.tipo_input != "texto":
+            raise ValueError("Só a mensagem colada é guardada, nunca texto de OCR (ADR-0006).")
 
     @classmethod
     def da_resposta(cls, resposta: RespostaAnalise, tipo_input: TipoInput) -> "RegistroAnalise":
@@ -60,6 +69,7 @@ class RepositorioAnalisesPostgres:
             nivel_risco=registro.nivel_risco,
             tipo_input=registro.tipo_input,
             usuario_id=registro.usuario_id,
+            texto_input=registro.texto_input,
             indicadores=[
                 IndicadorRisco(
                     tipo=fator.tipo,

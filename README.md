@@ -10,11 +10,12 @@ transforma o resultado estruturado em texto legível.
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: Fase 8, fatia 2 (autenticação no backend).** Você cola uma mensagem na tela e
-> recebe nível de risco, fatores identificados e o que fazer; a análise fica registrada no banco,
-> sem o texto da mensagem. O backend já tem cadastro, login, logout e `/api/auth/eu`, com sessão
-> em cookie; a tela de login é a fatia 3. Ainda sem OCR, sem consulta a APIs externas, sem
-> explicação por IA e sem histórico — isso vem nas Fases 4 a 8.
+> **Estado atual: Fase 8, fatia 5 (conta e histórico completos).** Você cola uma mensagem na tela
+> e recebe nível de risco, fatores identificados e o que fazer. Sem conta, a análise fica no banco
+> sem o texto da mensagem. Com conta, ela vai para o histórico por 7 dias, com a mensagem e o
+> mesmo resultado da tela, e a página avisa isso antes do envio (ADR-0018). Em "Minha conta" dá
+> para apagar análises, trocar a senha e excluir a conta (ADR-0019). Ainda sem OCR, sem consulta a
+> APIs externas e sem explicação por IA: isso vem nas Fases 4 a 7.
 
 ---
 
@@ -266,12 +267,15 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    `.env.example` saíram: a sessão é opaca, em banco, e não há segredo de assinatura. Se elas
    estiverem no painel do Render, podem ser apagadas.
    O histórico (ADR-0015) também já vem no default de produção: `HISTORICO_DIAS=7`, por quantos
-   dias a análise feita logado fica ligada à conta. A migração `0003` roda sozinha no build.
+   dias a análise feita logado fica ligada à conta, com a mensagem (ADR-0018). As migrações
+   `0003` e `0004` rodam sozinhas no build. `TEXTO_MAX_CARACTERES` não pode passar de 5000: o
+   CHECK da `0004` limita o texto guardado, e o backend não sobe com valor maior.
 7. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;
    - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
-     exclusão da conta. Sem ela, a página diz "contato em configuração";
+     exclusão da conta (o caminho de quem esqueceu a senha; com a senha, a exclusão é feita em
+     Minha conta → Meus dados). Sem ela, a página diz "contato em configuração";
    - `NEXT_PUBLIC_URL_DESPERTAR=https://verifyscan.onrender.com` — o endereço público do
      backend. O navegador faz um GET direto a `/health` nele, só para acordá-lo: pelo proxy, o
      Render responde 502 e não acorda o backend (adendo do ADR-0017). Também é lida no build. Sem

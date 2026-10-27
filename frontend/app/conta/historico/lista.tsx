@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { AvisosDoEnvio } from "../../_componentes/avisos-do-envio";
-import { IconeDeRisco, PALAVRA_DO_NIVEL } from "../../_componentes/nivel-risco";
+import { MensagemColada, Resultado } from "../../_componentes/resultado";
 import {
   apagarAnalise,
   apagarHistorico,
@@ -21,7 +21,8 @@ type Confirmacao = { alvo: "uma"; id: string } | { alvo: "todas" } | null;
 
 const BOTAO = "alvo-de-toque inline-flex items-center justify-center rounded-full px-5 font-bold";
 
-/** Seção Histórico (RF12, ADR-0015): as análises feitas logado dentro da janela, sem o texto.
+/** Seção Histórico (RF12, ADR-0015, ADR-0018): as análises feitas logado dentro da janela, com
+ *  a mensagem e o mesmo resultado da home.
  *
  *  Apagar pede confirmação na própria linha, sem janela por cima: modal exige prender o foco, e
  *  `window.confirm` tem redação do navegador, não a nossa. */
@@ -87,7 +88,7 @@ export function ListaDoHistorico() {
         </h2>
         <p>
           Mostramos as análises dos últimos {historico?.dias ?? 7} dias. Depois disso, elas deixam
-          de ficar ligadas à sua conta.
+          de ficar ligadas à sua conta, e a mensagem é apagada.
         </p>
         {/* Sempre montadas: região criada junto com o conteúdo não é anunciada por alguns
             leitores de tela. Ficam neste grupo, de espaçamento curto, porque vazias também
@@ -114,7 +115,9 @@ export function ListaDoHistorico() {
 
       {historico && historico.analises.length > 0 && (
         <>
-          <ul className="flex flex-col gap-perto">
+          {/* Um item por análise, separados por um fio: cada um já tem a placa do resultado, e
+              mais um cartão em volta pesaria. */}
+          <ul className="flex flex-col divide-y-2 divide-lavanda">
             {historico.analises.map((analise) => (
               <ItemDoHistorico
                 key={analise.id}
@@ -172,32 +175,23 @@ function ItemDoHistorico({
   const quando = formatarDataHora(analise.created_at);
 
   return (
-    // As cores do nível vêm do mesmo `.placa-risco[data-nivel]` do resultado da home.
-    <li className="placa-risco rounded-2xl border-2 border-[var(--risco-forte)]"
-      data-nivel={analise.nivel_risco}>
-      <div className="faixa-risco flex items-center gap-3 px-5 py-3">
-        <span aria-hidden="true" className="shrink-0">
-          <IconeDeRisco nivel={analise.nivel_risco} tamanho={32} />
-        </span>
-        <h3 className="text-secao font-bold">{PALAVRA_DO_NIVEL[analise.nivel_risco]}</h3>
-      </div>
+    // O mesmo resultado da home (ADR-0018): placa, "O que fazer" e fatores, de um componente só.
+    <li className="flex flex-col gap-perto py-bloco first:pt-0 last:pb-0">
+      <p className="text-destaque font-semibold">
+        <time dateTime={analise.created_at}>{quando}</time>
+      </p>
 
-      <div className="flex flex-col gap-perto p-5">
-        <p className="flex flex-wrap gap-x-perto">
-          <time dateTime={analise.created_at} className="font-semibold">{quando}</time>
-          <span>Pontuação: {analise.score_risco}</span>
-        </p>
+      {analise.texto !== null ? (
+        <div className="flex flex-col gap-junto rounded-2xl border-2 border-lavanda p-5">
+          <MensagemColada texto={analise.texto} />
+        </div>
+      ) : (
+        <p>O texto desta análise não foi guardado.</p>
+      )}
 
-        {analise.fatores.length > 0 ? (
-          <ul className="flex list-disc flex-col gap-1 pl-6 marker:text-[var(--risco-forte)]">
-            {analise.fatores.map((fator) => (
-              <li key={fator.categoria}>{fator.descricao}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>Nenhum sinal conhecido de golpe foi encontrado.</p>
-        )}
+      <Resultado resultado={analise} nivel={3} />
 
+      <div className="flex flex-col gap-perto">
         {confirmando ? (
           <Confirmar
             pergunta="Apagar esta análise?"

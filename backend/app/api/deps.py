@@ -133,13 +133,15 @@ def obter_servico_autenticacao(
 
 def obter_servico_historico(
     repositorio: RepositorioHistorico = Depends(obter_repositorio_historico),
+    sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
     settings: Settings = Depends(get_settings),
 ) -> ServicoHistorico:
     return ServicoHistorico(
         repositorio=repositorio,
+        sessoes=sessoes,
         historico_dias=settings.historico_dias,
         timeout_s=settings.timeout_autenticacao_s,
-        timeout_desvinculacao_s=settings.timeout_persistencia_s,
+        timeout_faxina_s=settings.timeout_persistencia_s,
     )
 
 

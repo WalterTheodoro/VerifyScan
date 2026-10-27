@@ -1,6 +1,7 @@
 """Contrato de /api/historico e /api/conta (ADR-0015).
 
-Nenhum campo de texto da mensagem: a análise se reconhece pela data, pelo nível e pelos fatores.
+O item do histórico traz a mensagem analisada enquanto ela existe no banco (ADR-0018). As URLs
+não vêm: o banco não as guarda (ADR-0009), e elas continuam visíveis dentro do próprio texto.
 """
 
 import uuid
@@ -23,6 +24,9 @@ class ItemHistorico(BaseModel):
     nivel_risco: NivelRisco
     score_risco: int
     fatores: list[FatorHistorico]
+    texto: str | None = Field(
+        description="A mensagem como foi colada. `null` nas análises anteriores ao ADR-0018."
+    )
 
 
 class RespostaHistorico(BaseModel):

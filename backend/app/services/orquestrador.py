@@ -39,13 +39,22 @@ class OrquestradorAnalise:
         do registro.
         """
         resposta = self._servico.analisar(texto)
-        salvou_com_dono = await self._registrar(
-            RegistroAnalise.da_resposta(resposta, tipo_input="texto"), token_de_sessao
+        registro = await self._registrar(
+            RegistroAnalise.da_resposta(resposta, tipo_input="texto"), token_de_sessao, texto
         )
-        return resposta.model_copy(update={"salva_no_historico": salvou_com_dono})
+        return resposta.model_copy(
+            update={
+                "salva_no_historico": registro is not None and registro.usuario_id is not None,
+                "texto_salvo": registro is not None and registro.texto_input is not None,
+            }
+        )
 
-    async def _registrar(self, registro: RegistroAnalise, token: str | None) -> bool:
-        """Resolve o dono e grava, num teto só. Devolve se gravou ligada a uma conta.
+    async def _registrar(
+        self, registro: RegistroAnalise, token: str | None, texto: str
+    ) -> RegistroAnalise | None:
+        """Resolve o dono e grava, num teto só. Devolve o que foi gravado, ou `None`.
+
+        Com dono, a mensagem vai junto (ADR-0018); sem dono, nunca (ADR-0006).
 
         Falha ao registrar nunca derruba a análise (ADR-0012; filosofia das invariantes 3 e 4).
         Resolver a sessão e gravar dividem o mesmo `timeout_persistencia_s`: o orçamento da
@@ -58,13 +67,16 @@ class OrquestradorAnalise:
         try:
             async with asyncio.timeout(self._timeout_s):
                 usuario_id = await self._resolver_dono(token)
-                await self._repositorio.registrar(
-                    dataclasses.replace(registro, usuario_id=usuario_id)
+                registro = dataclasses.replace(
+                    registro,
+                    usuario_id=usuario_id,
+                    texto_input=texto if usuario_id is not None else None,
                 )
+                await self._repositorio.registrar(registro)
         except Exception as exc:
             logger.warning("Registro da análise descartado: %s", type(exc).__name__)
-            return False
-        return usuario_id is not None
+            return None
+        return registro
 
     async def _resolver_dono(self, token: str | None) -> uuid.UUID | None:
         """Sessão válida → id da conta; sem cookie, inválida ou vencida → anônima.

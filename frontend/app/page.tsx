@@ -1,21 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AvisoAcordando } from "./_componentes/avisos-do-envio";
 import { Cabecalho } from "./_componentes/cabecalho";
 import { Rodape } from "./_componentes/rodape";
 import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./_componentes/nivel-risco";
 import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
+import { APRESENTACAO, MensagemColada, Resultado } from "./_componentes/resultado";
 import { lerDetail } from "./_lib/conta";
+import { consumirContaExcluida } from "./_lib/conta-excluida";
 import { enviarUmaVez } from "./_lib/servidor";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
 //
 // Numa página só, e não em duas rotas, por um motivo de privacidade: passar a mensagem para
-// /resultado exigiria colocá-la na URL ou em storage do navegador. A mensagem do usuário não
-// sai da memória da aba — nem quando ela reaparece citada acima do resultado.
+// /resultado exigiria colocá-la na URL ou em storage do navegador. No navegador, a mensagem não
+// sai da memória da aba — nem quando ela reaparece citada acima do resultado. Quem guarda a
+// mensagem de quem está logado, por 7 dias, é o backend (ADR-0018), e a página avisa antes.
 
 type Fator = {
   tipo: string;
@@ -33,6 +36,8 @@ type RespostaAnalise = {
   verificacao_externa_indisponivel: boolean;
   // true só quando o backend gravou a análise ligada à conta (ADR-0015).
   salva_no_historico: boolean;
+  // true só quando gravou também a mensagem (ADR-0018). Opcional: backend anterior não o manda.
+  texto_salvo?: boolean;
 };
 
 type Estado =
@@ -40,37 +45,6 @@ type Estado =
   | { situacao: "analisando" }
   | { situacao: "concluida"; resultado: RespostaAnalise }
   | { situacao: "falhou"; mensagem: string };
-
-/** Texto exibido para cada nível; a palavra e o ícone vêm de `_componentes/nivel-risco`.
- *  O tom acalma sem minimizar: quem lê isto pode estar com medo de já ter perdido dinheiro. */
-const APRESENTACAO: Record<NivelRisco, { resumo: string; recomendacao: string }> = {
-  BAIXO: {
-    // A segunda frase é obrigatória: hoje só o texto é analisado (sem conferir o site do
-    // link, sem ler imagem, sem consulta externa), então risco baixo quer dizer "não achei
-    // sinais conhecidos", nunca "é seguro".
-    resumo:
-      "Não encontramos sinais conhecidos de golpe nesta mensagem. Isso não é garantia de " +
-      "que ela seja segura: por enquanto, lemos só o texto — ainda não conferimos o site do " +
-      "link, não lemos imagens e não consultamos listas de sites perigosos. Se algo parecer " +
-      "estranho, confie na sua desconfiança.",
-    recomendacao:
-      "Mesmo assim, se ela pedir dinheiro ou dados, confirme com a empresa pelo telefone ou " +
-      "aplicativo oficial antes de responder.",
-  },
-  MEDIO: {
-    resumo: "Esta mensagem tem sinais que pedem cuidado.",
-    recomendacao:
-      "Por enquanto, não clique em links e não passe seus dados. Confirme com a empresa, " +
-      "pelo telefone ou aplicativo oficial, se a mensagem é verdadeira.",
-  },
-  ALTO: {
-    resumo: "Esta mensagem tem sinais fortes de golpe. Você fez bem em conferir antes.",
-    recomendacao:
-      "Não clique no link, não pague nada e não passe seus dados. Apague a mensagem e " +
-      "bloqueie quem enviou. Se já pagou ou passou algum dado, ligue para o seu banco pelo " +
-      "número que está no verso do cartão.",
-  },
-};
 
 /** Manda o texto para a API e traduz qualquer falha em uma frase que o usuário entenda.
  *
@@ -134,9 +108,27 @@ export default function PaginaAnalise() {
   const [animarEntrada, setAnimarEntrada] = useState(true);
   // Quem diz se há alguém logado é o cabeçalho, que já consultou /api/auth/eu.
   const [logado, setLogado] = useState(false);
+  // "Sua conta foi excluída.", vindo de Meus dados por sessionStorage, nunca pela URL (ADR-0019).
+  const [contaExcluida, setContaExcluida] = useState(false);
   const tituloDoResultado = useRef<HTMLHeadingElement>(null);
   const campoMensagem = useRef<HTMLTextAreaElement>(null);
   const botaoRecomecar = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // setState só no callback, nunca no corpo do efeito (react-hooks/set-state-in-effect).
+    const quadro = requestAnimationFrame(() => {
+      // Quem cola antes de a página hidratar deixa texto no campo que o React não registrou: o
+      // botão ficaria desabilitado com a mensagem na tela. O valor do campo passa para o estado.
+      const colado = campoMensagem.current?.value ?? "";
+      if (colado !== "") {
+        setTexto((atual) => (atual === "" ? colado : atual));
+      }
+      if (consumirContaExcluida()) {
+        setContaExcluida(true);
+      }
+    });
+    return () => cancelAnimationFrame(quadro);
+  }, []);
 
   function aoEnviar(evento: React.FormEvent) {
     evento.preventDefault();
@@ -189,22 +181,27 @@ export default function PaginaAnalise() {
             }
           >
             <div className="flex flex-col gap-bloco">
+              {/* Sempre montada, para o leitor de tela anunciar o aviso; vazia, `sr-only` a tira
+                  do fluxo e ela não conta no espaçamento. */}
+              <div aria-live="polite" className={contaExcluida ? "" : "sr-only"}>
+                {contaExcluida && (
+                  <p className="cartao border-l-[10px] border-anil p-5 text-destaque
+                    font-semibold">
+                    Sua conta foi excluída.
+                  </p>
+                )}
+              </div>
+
               {concluida ? (
                 <>
                   <h1 className="text-titulo font-bold sm:text-titulo-lg">
                     O que encontramos na sua mensagem
                   </h1>
                   {/* O campo dá lugar à própria mensagem, citada: o que a pessoa disse fica
-                      em cima e a resposta logo abaixo. Não é conversa — não há histórico nem
-                      segundo turno; "Analisar outra mensagem" apaga tudo. */}
+                      em cima e a resposta logo abaixo. Não é conversa — não há segundo turno;
+                      "Analisar outra mensagem" apaga tudo da tela. */}
                   <div className="cartao flex flex-col gap-junto p-5 sm:p-bloco">
-                    <p className="font-bold">Você colou:</p>
-                    <blockquote
-                      className="whitespace-pre-wrap break-words border-l-4 border-anil py-1
-                        pl-5 text-destaque"
-                    >
-                      {texto}
-                    </blockquote>
+                    <MensagemColada texto={texto} />
                   </div>
                 </>
               ) : (
@@ -255,6 +252,20 @@ export default function PaginaAnalise() {
                         <p id="dica-botao">Cole uma mensagem para poder analisar.</p>
                       )}
                     </div>
+                    {/* Antes de enviar, e só para quem está logado: é o aviso que sustenta a
+                        base legal de guardar a mensagem sem caixa de seleção (ADR-0018). */}
+                    {logado && (
+                      <p>
+                        Como você está na sua conta, esta mensagem fica no seu histórico por 7
+                        dias.{" "}
+                        <Link
+                          href="/privacidade"
+                          className="font-bold text-anil underline underline-offset-4"
+                        >
+                          Saiba mais
+                        </Link>
+                      </p>
+                    )}
                   </form>
                 </>
               )}
@@ -276,9 +287,14 @@ export default function PaginaAnalise() {
 
                 {estado.situacao === "concluida" && (
                   <>
-                    <Resultado resultado={estado.resultado} tituloRef={tituloDoResultado} />
+                    <Resultado
+                      resultado={estado.resultado}
+                      tituloRef={tituloDoResultado}
+                      animar
+                    />
                     <AvisoDoHistorico
                       salva={estado.resultado.salva_no_historico}
+                      comTexto={estado.resultado.texto_salvo === true}
                       logado={logado}
                     />
                   </>
@@ -482,10 +498,13 @@ function FaixaDeContexto() {
           </div>
           <div className="cartao flex flex-col gap-junto p-bloco">
             <h3 className="text-secao font-bold sm:text-secao-lg">
-              Sua mensagem não fica guardada
+              Sem conta, sua mensagem não fica guardada
             </h3>
+            {/* Verdadeira para os dois casos (ADR-0018): anônima é descartada; com conta, fica
+                7 dias no histórico. */}
             <p className="text-destaque">
-              Lemos o texto, analisamos e descartamos. Nenhuma cópia fica com a gente.
+              Lemos, analisamos e descartamos. Se você estiver na sua conta, ela fica no seu
+              histórico por 7 dias, e você pode apagá-la antes.
             </p>
           </div>
         </div>
@@ -643,11 +662,21 @@ function OQueEleProcura() {
 /** Abaixo do resultado: se a análise foi para o histórico. Deslogado, nada — a análise sem
  *  conta continua sendo o caminho principal. Logado e não salva (sessão vencida, banco lento),
  *  diz a verdade em vez de prometer. */
-function AvisoDoHistorico({ salva, logado }: { salva: boolean; logado: boolean }) {
+function AvisoDoHistorico({
+  salva,
+  comTexto,
+  logado,
+}: {
+  salva: boolean;
+  comTexto: boolean;
+  logado: boolean;
+}) {
   if (salva) {
     return (
       <p className="text-destaque">
-        Esta análise foi salva no seu histórico por 7 dias.{" "}
+        {comTexto
+          ? "Esta análise foi salva no seu histórico por 7 dias, com a mensagem. "
+          : "Esta análise foi salva no seu histórico por 7 dias. "}
         <Link href="/conta/historico" className="font-bold text-anil underline underline-offset-4">
           Ver histórico
         </Link>
@@ -658,91 +687,6 @@ function AvisoDoHistorico({ salva, logado }: { salva: boolean; logado: boolean }
     return <p className="text-destaque">Não conseguimos salvar esta análise no seu histórico.</p>;
   }
   return null;
-}
-
-function Resultado({
-  resultado,
-  tituloRef,
-}: {
-  resultado: RespostaAnalise;
-  tituloRef: React.RefObject<HTMLHeadingElement | null>;
-}) {
-  const { resumo, recomendacao } = APRESENTACAO[resultado.nivel_risco];
-  const palavra = PALAVRA_DO_NIVEL[resultado.nivel_risco];
-  const urls = resultado.urls_analisadas;
-
-  return (
-    <div className="cartao placa-risco entrada-resultado" data-nivel={resultado.nivel_risco}>
-      <div className="faixa-risco flex items-center gap-4 px-5 py-5 sm:px-bloco">
-        {/* O ícone é decorativo para o leitor de tela: a palavra ao lado já diz tudo, e
-            anunciar os dois seria repetição. */}
-        <span aria-hidden="true" className="shrink-0">
-          <IconeDeRisco nivel={resultado.nivel_risco} />
-        </span>
-        <h2
-          ref={tituloRef}
-          tabIndex={-1}
-          className="text-veredito font-extrabold sm:text-veredito-lg"
-        >
-          {palavra}
-        </h2>
-      </div>
-
-      <div className="flex flex-col gap-bloco px-5 py-6 sm:p-bloco">
-        <p className="text-destaque font-semibold">{resumo}</p>
-
-        {/* "O que fazer" vem antes de "Fatores identificados" — o inverso da versão
-            anterior — de propósito: quem chega aqui está assustado e precisa primeiro saber
-            como se proteger; o porquê (os fatores) vem depois, para quem quiser entender. */}
-        <div className="flex flex-col gap-2 rounded-2xl border-2 border-[var(--risco-forte)]
-          bg-[var(--risco-fundo)] p-5">
-          <h3 className="text-secao font-bold sm:text-secao-lg">O que fazer</h3>
-          <p className="text-destaque">{recomendacao}</p>
-        </div>
-
-        {resultado.fatores.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h3 className="text-secao font-bold sm:text-secao-lg">Fatores identificados</h3>
-            {/* Marcador simples, não numeração: os fatores são um conjunto, e números
-                sugeririam uma ordem de importância que não existe. */}
-            <ul className="flex list-disc flex-col gap-2 pl-6 text-destaque
-              marker:text-[var(--risco-forte)]">
-              {resultado.fatores.map((fator) => (
-                <li key={fator.categoria}>{fator.descricao}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {urls.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h3 className="text-secao font-bold sm:text-secao-lg">
-              Links que aparecem na mensagem
-            </h3>
-            {/* Texto, nunca <a>: um link clicável aqui seria um atalho para o próprio golpe.
-                A grafia é a forma canônica da API (ADR-0009), que pode diferir da colada. */}
-            <ul className="flex flex-col gap-2">
-              {urls.map((url) => (
-                <li
-                  key={url}
-                  className="break-all rounded-xl border-2 border-tinta/40 bg-fundo px-4 py-2
-                    font-mono"
-                >
-                  {url}
-                </li>
-              ))}
-            </ul>
-            <p>
-              {urls.length === 1
-                ? "Ainda não conferimos se este site é verdadeiro. "
-                : "Ainda não conferimos se estes sites são verdadeiros. "}
-              Não abra antes de confirmar com a empresa pelo telefone ou aplicativo oficial.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ── Ilustração ──────────────────────────────────────────────────────────────────────────────

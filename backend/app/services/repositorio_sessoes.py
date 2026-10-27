@@ -25,6 +25,8 @@ class RepositorioSessoes(Protocol):
 
     async def apagar_vencidas(self, usuario_id: uuid.UUID) -> None: ...
 
+    async def apagar_todas_vencidas(self) -> int: ...
+
 
 class RepositorioSessoesPostgres:
     def __init__(self, fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> None:
@@ -71,3 +73,17 @@ class RepositorioSessoesPostgres:
                     SessaoUsuario.expira_em <= func.now(),
                 )
             )
+
+    async def apagar_todas_vencidas(self) -> int:
+        """As vencidas de todas as contas, inclusive de quem nunca mais volta (ADR-0019).
+
+        `<= now()` é o complemento exato do `> now()` de `buscar_usuario`: só some o que já não
+        autentica. O índice em `expira_em` (0002) deixa o DELETE barato.
+        """
+        async with self._fabrica_de_sessoes() as sessao, sessao.begin():
+            apagadas = await sessao.scalars(
+                delete(SessaoUsuario)
+                .where(SessaoUsuario.expira_em <= func.now())
+                .returning(SessaoUsuario.id)
+            )
+            return len(apagadas.all())

@@ -100,3 +100,13 @@ class RespostaAnalise(BaseModel):
             "sessão, com sessão vencida ou com o registro descartado, `false`."
         ),
     )
+
+    # Campo aditivo da fatia 5 (ADR-0018): a tela só diz "salva com a mensagem" quando é verdade.
+    texto_salvo: bool = Field(
+        default=False,
+        description=(
+            "`true` só quando a análise foi gravada com dono e com a mensagem, que fica no "
+            "histórico pela janela de `HISTORICO_DIAS`. Anônima ou com o registro descartado, "
+            "`false`."
+        ),
+    )

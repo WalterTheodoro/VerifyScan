@@ -1,11 +1,10 @@
 """Tabelas da análise: `analises` e `indicadores_risco` (§5.5 do RFC, ADR-0012).
 
-`usuario_id` liga a análise feita logado à conta, por `HISTORICO_DIAS` (ADR-0015). Anônima, ou
-depois da janela, fica `NULL` — e então é idêntica a uma análise anônima do ADR-0006.
+`usuario_id` liga a análise feita logado à conta, por `HISTORICO_DIAS` (ADR-0015). `texto_input`
+guarda a mensagem só enquanto esse vínculo existe (ADR-0018). Anônima, ou depois da janela, as
+duas colunas ficam `NULL` — e então a análise é idêntica a uma anônima do ADR-0006.
 
 O que NÃO está aqui, de propósito:
-- texto da mensagem, nem trecho dele, para nenhum usuário: o histórico se reconhece pela data,
-  pelo nível e pelos fatores (ADR-0006, ADR-0015);
 - `urls_analisadas`: a forma canônica preserva a query string (ADR-0009), que pode carregar
   e-mail ou token da vítima;
 - `resultado` (§5.5): o RFC não define o conteúdo; o único uso ligado a persistência é a Tela 5,
@@ -36,6 +35,10 @@ class Analise(Base):
     __table_args__ = (
         CheckConstraint(_check_valores("nivel_risco", get_args(NivelRisco)), name="nivel_risco"),
         CheckConstraint(_check_valores("tipo_input", get_args(TipoInput)), name="tipo_input"),
+        # Análise anônima nunca tem texto (ADR-0006): quem garante é o banco (ADR-0018).
+        CheckConstraint("texto_input IS NULL OR usuario_id IS NOT NULL", name="texto_so_com_dono"),
+        # O teto de TEXTO_MAX_CARACTERES; o Settings recusa valor maior (migração 0004).
+        CheckConstraint("char_length(texto_input) <= 5000", name="texto_ate_5000"),
         # A listagem filtra pelo dono e pela janela e ordena por data: um índice serve às duas
         # coisas, e com `usuario_id` na frente também cobre a FK no CASCADE (ADR-0015).
         Index("ix_analises_usuario_id_created_at", "usuario_id", "created_at"),
@@ -52,6 +55,9 @@ class Analise(Base):
     usuario_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("usuarios.id", ondelete="CASCADE")
     )
+    # A mensagem como chegou, só para quem está logado e só pela janela do histórico: a
+    # desvinculação zera esta coluna junto com `usuario_id` (ADR-0018). OCR nunca grava aqui.
+    texto_input: Mapped[str | None] = mapped_column(Text)
 
     # lazy="raise": acessar sem `selectinload` explícito levanta erro em vez de disparar I/O
     # escondido. É a regra 2 do ADR-0001 garantida pelo ORM, não pela memória.

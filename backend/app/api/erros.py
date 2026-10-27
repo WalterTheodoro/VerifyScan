@@ -10,6 +10,12 @@ from fastapi import status
 
 Respostas = dict[int | str, dict[str, Any]]
 
+ERRO_400_SENHA: Respostas = {
+    status.HTTP_400_BAD_REQUEST: {
+        "description": "Senha errada de quem já está logado. `detail` diz isso. Não é 401: a "
+        'sessão continua válida, e 401 faria a tela mostrar "Entrar" (ADR-0019).'
+    }
+}
 ERRO_401: Respostas = {
     status.HTTP_401_UNAUTHORIZED: {"description": "Sem sessão válida. `detail` diz o que fazer."}
 }

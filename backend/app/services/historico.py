@@ -1,10 +1,10 @@
-"""Histórico da conta: listar, apagar e desvincular o que passou da janela (ADR-0015).
+"""Histórico da conta: listar, apagar e a faxina do que venceu (ADR-0015, ADR-0019).
 
 Dois tetos, escolhidos pelo modo de falha, como no ADR-0013:
 - **o que a pessoa pediu** (listar, apagar) usa `timeout_autenticacao_s`; estourou, 503 com
   "tente de novo";
-- **a desvinculação** é faxina oportunista: usa `timeout_persistencia_s`, e estourar ou falhar
-  só vira log. Na leitura nada fora da janela aparece nunca, rode ela ou não.
+- **a faxina** é oportunista: usa `timeout_persistencia_s`, e estourar ou falhar só vira log. Na
+  leitura nada fora da janela aparece, e sessão vencida não autentica, rode ela ou não.
 """
 
 import asyncio
@@ -16,6 +16,7 @@ from datetime import timedelta
 
 from app.services.autenticacao import ServicoIndisponivel
 from app.services.repositorio_historico import AnaliseDoHistorico, RepositorioHistorico
+from app.services.repositorio_sessoes import RepositorioSessoes
 from app.services.repositorio_usuarios import UsuarioAutenticado
 
 logger = logging.getLogger(__name__)
@@ -31,42 +32,48 @@ class AnaliseNaoEncontrada(Exception):
         super().__init__("Não encontramos esta análise.")
 
 
-async def desvincular_vencidas(
-    repositorio: RepositorioHistorico, historico_dias: int, timeout_s: float
+async def faxina(
+    historico: RepositorioHistorico,
+    sessoes: RepositorioSessoes,
+    historico_dias: int,
+    timeout_s: float,
 ) -> None:
-    """Tira o dono das análises que passaram da janela. Nunca levanta.
+    """Desvincula as análises vencidas (dono e texto) e apaga as sessões vencidas. Nunca levanta.
 
     Roda sem agendador, nos dois momentos em que o processo já está acordado: na subida (lifespan)
-    e a cada listagem. O log leva só o tipo da exceção, como no registro (ADR-0012).
+    e a cada listagem. Um teto só para os dois passos: a listagem não espera mais do que esperava
+    antes desta fatia. Se o primeiro falhar, o segundo fica para a próxima vez. O log leva só o
+    tipo da exceção, como no registro (ADR-0012).
     """
     try:
         async with asyncio.timeout(timeout_s):
-            await repositorio.desvincular_vencidas(timedelta(days=historico_dias))
+            await historico.desvincular_vencidas(timedelta(days=historico_dias))
+            await sessoes.apagar_todas_vencidas()
     except Exception as exc:
-        logger.warning("Desvinculação do histórico não rodou: %s", type(exc).__name__)
+        logger.warning("Faxina do histórico e das sessões não rodou: %s", type(exc).__name__)
 
 
 class ServicoHistorico:
     def __init__(
         self,
         repositorio: RepositorioHistorico,
+        sessoes: RepositorioSessoes,
         historico_dias: int,
         timeout_s: float,
-        timeout_desvinculacao_s: float,
+        timeout_faxina_s: float,
     ) -> None:
         self._repositorio = repositorio
+        self._sessoes = sessoes
         self._historico_dias = historico_dias
         self._timeout_s = timeout_s
-        self._timeout_desvinculacao_s = timeout_desvinculacao_s
+        self._timeout_faxina_s = timeout_faxina_s
 
     @property
     def dias(self) -> int:
         return self._historico_dias
 
     async def listar(self, usuario: UsuarioAutenticado) -> list[AnaliseDoHistorico]:
-        await desvincular_vencidas(
-            self._repositorio, self._historico_dias, self._timeout_desvinculacao_s
-        )
+        await faxina(self._repositorio, self._sessoes, self._historico_dias, self._timeout_faxina_s)
         async with self._banco():
             return await self._repositorio.listar(
                 usuario.id, timedelta(days=self._historico_dias), LIMITE_DA_LISTAGEM

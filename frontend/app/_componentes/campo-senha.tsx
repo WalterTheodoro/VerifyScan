@@ -14,6 +14,8 @@ export function CampoSenha({
   aoMudar,
   somenteLeitura,
   dica,
+  rotulo = "Senha",
+  nome = "senha",
 }: {
   id: string;
   autoComplete: "current-password" | "new-password";
@@ -22,6 +24,10 @@ export function CampoSenha({
   somenteLeitura: boolean;
   /** Regra mostrada ANTES de qualquer erro, entre o rótulo e o campo. */
   dica?: string;
+  /** "Senha atual" e "Nova senha" na troca de senha: dois campos no mesmo formulário. */
+  rotulo?: string;
+  /** `name` distinto por campo, para o gerenciador de senhas não confundir os dois. */
+  nome?: string;
 }) {
   const [visivel, setVisivel] = useState(false);
   const idDica = `${id}-dica`;
@@ -29,13 +35,13 @@ export function CampoSenha({
   return (
     <div className="flex flex-col gap-junto">
       <label htmlFor={id} className="font-bold">
-        Senha
+        {rotulo}
       </label>
       {dica && <p id={idDica}>{dica}</p>}
       <div className="flex items-stretch gap-2">
         <input
           id={id}
-          name="senha"
+          name={nome}
           type={visivel ? "text" : "password"}
           autoComplete={autoComplete}
           autoCapitalize="none"
@@ -54,7 +60,8 @@ export function CampoSenha({
           className="botao-secundario alvo-de-toque shrink-0 rounded-full px-4 font-bold"
         >
           {visivel ? "Ocultar" : "Mostrar"}
-          <span className="sr-only"> senha</span>
+          {/* "Mostrar senha atual" e "Mostrar nova senha": dois botões, dois nomes distintos. */}
+          <span className="sr-only"> {rotulo.toLocaleLowerCase("pt-BR")}</span>
         </button>
       </div>
     </div>

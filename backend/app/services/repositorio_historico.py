@@ -2,7 +2,8 @@
 implementação Postgres e falso em memória nos testes.
 
 A hora é sempre a do banco (`now()`), como no ADR-0012: a janela não depende do relógio do
-processo. Nada aqui lê ou devolve texto de mensagem — a tabela não tem onde guardá-lo.
+processo. O texto da mensagem só existe enquanto a análise tem dono (ADR-0018): a listagem o
+devolve, e a desvinculação o apaga junto com o vínculo.
 """
 
 import uuid
@@ -28,13 +29,17 @@ class FatorDoHistorico:
 
 @dataclass(frozen=True)
 class AnaliseDoHistorico:
-    """O que a pessoa reconhece de uma consulta passada: quando, que nível e por quê."""
+    """O que a pessoa reconhece de uma consulta passada: quando, o quê, que nível e por quê.
+
+    `texto` é `None` nas análises gravadas antes do ADR-0018.
+    """
 
     id: uuid.UUID
     criada_em: datetime
     nivel_risco: NivelRisco
     score: int
     fatores: tuple[FatorDoHistorico, ...]
+    texto: str | None = None
 
 
 class RepositorioHistorico(Protocol):
@@ -86,6 +91,7 @@ class RepositorioHistoricoPostgres:
                             analise.indicadores, key=lambda i: (-i.peso, i.categoria)
                         )
                     ),
+                    texto=analise.texto_input,
                 )
                 for analise in analises
             ]
@@ -111,7 +117,9 @@ class RepositorioHistoricoPostgres:
             return len(apagadas.all())
 
     async def desvincular_vencidas(self, janela: timedelta) -> int:
-        """Depois da janela, a análise perde o dono e vira idêntica a uma anônima (ADR-0006)."""
+        """Depois da janela, a análise perde o dono e o texto, e vira idêntica a uma anônima
+        (ADR-0006). Um UPDATE só: o CHECK `ck_analises_texto_so_com_dono` recusaria tirar o dono
+        e deixar o texto (ADR-0018)."""
         async with self._fabrica_de_sessoes() as sessao, sessao.begin():
             desvinculadas = await sessao.scalars(
                 update(Analise)
@@ -119,7 +127,7 @@ class RepositorioHistoricoPostgres:
                     Analise.usuario_id.is_not(None),
                     Analise.created_at <= func.now() - janela,
                 )
-                .values(usuario_id=None)
+                .values(usuario_id=None, texto_input=None)
                 .returning(Analise.id)
             )
             return len(desvinculadas.all())
