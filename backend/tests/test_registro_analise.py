@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import obter_repositorio_analises, obter_repositorio_sessoes
 from app.core.config import get_settings
+from app.core.db import criar_engine
 from app.services.repositorio_analises import RegistroAnalise
 from app.services.repositorio_usuarios import UsuarioAutenticado
 from tests.conftest import RelogioFalso, RepositorioAnalisesEmMemoria, RepositorioSessoesEmMemoria
@@ -60,13 +61,25 @@ async def test_entrada_recusada_nao_e_registrada(
     assert repositorio.registros == []
 
 
-def test_registro_nao_tem_campo_para_texto_nem_url() -> None:
-    """ADR-0006 e ADR-0009 garantidos no tipo: o repositório não tem por onde receber a
-    mensagem nem os links (a query da URL pode carregar e-mail ou token da vítima). O dono
-    (ADR-0015) é o único campo que entrou, e é um id, não conteúdo."""
+def test_registro_nao_tem_campo_para_url_e_o_texto_so_entra_com_dono() -> None:
+    """ADR-0009 garantido no tipo: o repositório não tem por onde receber os links (a query da
+    URL pode carregar e-mail ou token da vítima). O texto entrou com o ADR-0018, mas só com dono:
+    a regra do CHECK `ck_analises_texto_so_com_dono`, repetida no tipo (ADR-0006)."""
     campos = {campo.name for campo in dataclasses.fields(RegistroAnalise)}
 
-    assert campos == {"score", "nivel_risco", "tipo_input", "fatores", "usuario_id"}
+    assert campos == {"score", "nivel_risco", "tipo_input", "fatores", "usuario_id", "texto_input"}
+    with pytest.raises(ValueError, match="dono"):
+        RegistroAnalise(
+            score=0, nivel_risco="BAIXO", tipo_input="texto", fatores=(), texto_input="oi"
+        )
+
+
+def test_engine_nao_escreve_parametros_em_log_nem_em_erro() -> None:
+    """Com o texto no banco (ADR-0018), um INSERT carrega a mensagem. `hide_parameters` tira os
+    parâmetros do log do SQLAlchemy e da representação de `StatementError`."""
+    engine = criar_engine("postgresql+psycopg://usuario:senha@localhost:5432/qualquer")
+
+    assert engine.sync_engine.hide_parameters is True
 
 
 async def _corpo_de_referencia(cliente: AsyncClient) -> dict[str, object]:
@@ -150,20 +163,25 @@ async def test_sem_cookie_grava_anonima_e_nao_salva_no_historico(
     corpo = (await navegador.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
     assert corpo["salva_no_historico"] is False
+    assert corpo["texto_salvo"] is False
     assert repositorio.registros[0].usuario_id is None
+    assert repositorio.registros[0].texto_input is None
 
 
-async def test_com_sessao_valida_grava_com_dono(
+async def test_com_sessao_valida_grava_com_dono_e_com_o_texto(
     navegador: AsyncClient,
     repositorio: RepositorioAnalisesEmMemoria,
     sessoes: RepositorioSessoesEmMemoria,
 ) -> None:
+    """ADR-0018: para quem está logado, a mensagem vai junto, como chegou."""
     await _cadastrar(navegador)
 
     corpo = (await navegador.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
     assert corpo["salva_no_historico"] is True
+    assert corpo["texto_salvo"] is True
     assert repositorio.registros[0].usuario_id == sessoes.sessoes[0].usuario_id
+    assert repositorio.registros[0].texto_input == GOLPE_DE_PIX
 
 
 async def test_com_sessao_vencida_grava_anonima(
@@ -175,7 +193,9 @@ async def test_com_sessao_vencida_grava_anonima(
     corpo = (await navegador.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
     assert corpo["salva_no_historico"] is False
+    assert corpo["texto_salvo"] is False
     assert repositorio.registros[0].usuario_id is None
+    assert repositorio.registros[0].texto_input is None
 
 
 async def test_consulta_da_sessao_com_erro_grava_anonima(
@@ -195,6 +215,7 @@ async def test_consulta_da_sessao_com_erro_grava_anonima(
     assert resposta.json()["salva_no_historico"] is False
     assert len(repositorio.registros) == 1
     assert repositorio.registros[0].usuario_id is None
+    assert repositorio.registros[0].texto_input is None
     assert "RuntimeError" in caplog.text
     assert SEGREDO not in caplog.text
     assert "PIX" not in caplog.text
@@ -235,3 +256,21 @@ async def test_registro_que_estoura_o_tempo_logado_nao_salva_no_historico(
 
     assert resposta.status_code == 200
     assert resposta.json()["salva_no_historico"] is False
+    assert resposta.json()["texto_salvo"] is False
+
+
+async def test_registro_logado_que_falha_nao_leva_o_texto_ao_log(
+    app: FastAPI, navegador: AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR-0018: o texto agora chega ao repositório, e o log continua sem ele."""
+    await _cadastrar(navegador)
+    app.dependency_overrides[obter_repositorio_analises] = RepositorioQueFalha
+
+    with caplog.at_level(logging.DEBUG):
+        resposta = await navegador.post("/api/analises", json={"texto": GOLPE_DE_PIX})
+
+    assert resposta.status_code == 200
+    assert resposta.json()["texto_salvo"] is False
+    assert "RuntimeError" in caplog.text
+    assert "bb-regularize" not in caplog.text
+    assert "PIX" not in caplog.text

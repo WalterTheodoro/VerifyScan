@@ -6,6 +6,7 @@ derruba a listagem. O SQL — janela, dono, CASCADE — é provado contra o Post
 """
 
 import asyncio
+import dataclasses
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -77,6 +78,21 @@ async def test_lista_as_da_conta_no_formato_do_contrato(
     ]
     # ISO 8601 com fuso: a tela converte para America/Sao_Paulo sem adivinhar.
     assert item["created_at"].endswith(("Z", "+00:00"))
+    # Análise sem texto guardado (anterior ao ADR-0018): o campo existe e vem nulo.
+    assert item["texto"] is None
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_item_traz_o_texto_inteiro_quando_guardado(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """ADR-0018: a mensagem volta inteira, com as quebras de linha de quando foi colada."""
+    mensagem = "Linha um.\nLinha dois, com acento e PIX."
+    historico.adicionar(MARIA.id, dataclasses.replace(_analise(relogio), texto=mensagem))
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["texto"] == mensagem
 
 
 @pytest.mark.usefixtures("como_maria")

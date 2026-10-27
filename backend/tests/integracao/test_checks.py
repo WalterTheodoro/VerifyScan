@@ -53,3 +53,53 @@ async def _inserir(sessao: AsyncSession, tabela: str, valores: dict[str, object]
     colunas = ", ".join(valores)
     parametros = ", ".join(f":{coluna}" for coluna in valores)
     await sessao.execute(text(f"INSERT INTO {tabela} ({colunas}) VALUES ({parametros})"), valores)
+
+
+# ─── texto da mensagem (migração 0004, ADR-0018) ──────────────────────────────────────────
+
+
+async def _inserir_usuario(sessao: AsyncSession) -> uuid.UUID:
+    id_usuario = uuid.uuid4()
+    await _inserir(
+        sessao,
+        "usuarios",
+        {
+            "id": id_usuario,
+            "nome_exibicao": "Maria",
+            "email": f"{id_usuario}@exemplo.com",
+            "senha_hash": "x",
+        },
+    )
+    return id_usuario
+
+
+async def test_banco_recusa_texto_em_analise_sem_dono(
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession],
+) -> None:
+    """ADR-0006 continua valendo no banco: análise anônima nunca tem texto."""
+    async with fabrica_de_sessoes() as sessao:
+        with pytest.raises(IntegrityError, match="ck_analises_texto_so_com_dono"):
+            await _inserir(
+                sessao,
+                "analises",
+                {"id": uuid.uuid4(), **ANALISE_VALIDA, "texto_input": "mensagem"},
+            )
+
+
+@pytest.mark.parametrize(("tamanho", "aceita"), [(5000, True), (5001, False)])
+async def test_banco_limita_o_texto_a_5000_caracteres(
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession], tamanho: int, aceita: bool
+) -> None:
+    """`char_length` conta caracteres, como o `len` do Python que valida a entrada: "ç" é um só."""
+    async with fabrica_de_sessoes() as sessao:
+        analise = {
+            "id": uuid.uuid4(),
+            **ANALISE_VALIDA,
+            "usuario_id": await _inserir_usuario(sessao),
+            "texto_input": "ç" * tamanho,
+        }
+        if aceita:
+            await _inserir(sessao, "analises", analise)
+        else:
+            with pytest.raises(IntegrityError, match="ck_analises_texto_ate_5000"):
+                await _inserir(sessao, "analises", analise)

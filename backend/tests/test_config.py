@@ -1,6 +1,7 @@
 """Settings — a URL do banco aceita a string do Neon como ela vem, e o Redis é opcional."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings, normalizar_database_url
 
@@ -68,3 +69,12 @@ def test_autenticacao_tem_defaults_seguros() -> None:
     assert settings.sessao_dias == 7
     assert settings.cookie_secure is True
     assert settings.timeout_autenticacao_s == 5.0
+
+
+def test_texto_max_caracteres_nao_passa_do_check_do_banco() -> None:
+    """O CHECK `ck_analises_texto_ate_5000` da migração 0004 guarda até 5000 caracteres. Um limite
+    maior aceitaria a análise e perderia o registro de quem está logado em silêncio (ADR-0018):
+    o processo prefere não subir."""
+    assert Settings(_env_file=None).texto_max_caracteres == 5000  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, texto_max_caracteres=5001)  # type: ignore[call-arg]
