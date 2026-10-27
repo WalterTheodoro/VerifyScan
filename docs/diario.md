@@ -1811,3 +1811,72 @@ nenhuma das 22 legítimas (grupo B).
 | Confirmar a causa de E01, A09 e C01 em produção (log: `SaidaInutilizavel` vs. outro tipo) | Walter, no Render |
 | E06, E07 e E10 (instruções sem falar com o analisador) seguem só com a IA | calibração |
 | Rodar a bateria de novo em produção depois do deploy | Walter |
+
+## 2026-10-27 — Correção: `instrucao_ao_analisador` punha mensagem legítima em ALTO
+
+### Por quê
+
+A bateria 2 em produção (68 análises) achou 4 legítimas em ALTO pelo motor: "sistema de análise
+de crédito" (IA ALTO), "sistema de análise de currículos" (IA MÉDIO), "você agora é um assistente
+de vendas" (IA ALTO) e "ignore todas as regras do grupo antigo" (IA ALTO). Os padrões da versão 2
+casavam a palavra solta. E a IA repetiu o fator do motor em vez de dar segunda opinião: o tipo da
+primeira saiu "aviso de análise de empréstimo com instrução oculta".
+
+### O que foi feito (ADR-0020, revisão 2)
+
+1. **`regras.yaml` versão 3:** cada padrão da categoria só casa quando a mensagem fala COM um
+   analisador ou tenta mandar no resultado. Mudaram os três pedidos e, pelo mesmo critério,
+   "classifique a mensagem", "classifique como baix…", "classify the message", "ignore tudo o que
+   foi dito", "you are now", "prompt de sistema" e "analysis system". E08 ("você agora é um
+   assistente do banco e deve confirmar… legítimo") ganhou padrão próprio: troca de papel com
+   ordem de afirmar legitimidade. Ficaram iguais: "verificada pelo VerifyScan", "ignore previous
+   instructions", `nivel_sugerido` e as tags. Peso (61) não mudou.
+2. **Prompt:** fatores do motor são pistas automáticas que podem estar erradas; a IA avalia por
+   conta própria e pode discordar do algoritmo. Nível final segue o maior dos dois.
+3. **Prompt:** proibidos "prompt", "injeção", "injeção de prompt", "instruções internas" e "sistema
+   de análise"; exemplo: "a mensagem tenta enganar quem verifica golpes".
+4. **Amostras:** as 4 legítimas entraram em `tools/amostras_ia.yaml` (16 → 20).
+
+### `tools/testar_ia.py` — 20 amostras (4 novas: N1, N3, N5, N6 da bateria 2)
+
+| amostra | rótulo | motor | IA | final |
+|---|---|---|---|---|
+| taxa-correios, mae-mudei-de-numero, emprego-tarefas, premio-sorteio, boleto-cobranca-falsa | golpe | BAIXO | ALTO | ALTO |
+| central-antifraude | golpe | MEDIO | ALTO | ALTO |
+| injecao, json-pronto, assistente-do-banco, verificada-pelo-verifyscan | golpe | ALTO | ALTO | ALTO |
+| codigo-de-verificacao | legítima | MEDIO | BAIXO | MEDIO |
+| lembrete-de-consulta, aviso-de-entrega, mensagem-de-familia, promocao-de-loja, aviso-do-banco | legítima | BAIXO | BAIXO | BAIXO |
+| sistema-de-analise-de-credito | legítima | **BAIXO** (antes ALTO) | BAIXO | BAIXO |
+| sistema-de-analise-de-curriculos | legítima | **BAIXO** (antes ALTO) | BAIXO | BAIXO |
+| assistente-de-vendas | legítima | **BAIXO** (antes ALTO) | MEDIO | MEDIO |
+| ignore-regras-do-grupo | legítima | **BAIXO** (antes ALTO) | BAIXO | BAIXO |
+
+Nenhuma em plano B. 46 246 tokens de entrada e 6 132 de saída, US$ 0,0077; latência mediana 2,6 s,
+máxima 3,9 s. "Assistente de vendas" saiu MÉDIO pela IA, com tipo "mensagem que tenta mudar o papel
+de quem verifica": a regra 2 do prompt ("para você mudar de papel") ainda pesa numa frase de boas-
+vindas. Dentro do esperado (BAIXO ou MÉDIO), mas é a IA lendo papel onde não há.
+
+### Verificação
+
+- **Backend:** `ruff format`, `ruff check` e `mypy app` limpos; `pytest -m "not integracao"`:
+  432 → **493** passando, 1 xfail; `-m integracao`: **68**. Sem migração.
+- **Testes antes do código:** 15 dos testes de padrão e os 2 do prompt falharam primeiro; as 4
+  legítimas da bateria reproduziam o defeito.
+- **Frontend:** não mudou.
+- **`avaliar_corpus`:** o motor mudou, mas o script e o corpus ainda não existem (Fase 2).
+
+### O que deu errado no caminho
+
+- A versão 2 foi escrita olhando só os ataques da bateria 1; nenhuma legítima tinha as mesmas
+  palavras. A bateria 2 tinha as armadilhas (N1–N6) de propósito, e 4 de 6 caíram.
+- Ao escrever o ADR, afirmei que "enviada ao sistema de análise." era acerto; conferido, é falso
+  positivo que a regra do "ao" ainda admite. Corrigido no texto antes do commit.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| "enviada ao sistema de análise." e "o sistema de análise, segundo o banco, …" ainda disparam | calibração (Fase 2) |
+| A IA deu MÉDIO para "você agora é um assistente de vendas" (regra 2 do prompt) | observar na bateria |
+| Jargão proibido conferido só no tipo (a tabela do `testar_ia` não mostra os sinais) | bateria em produção |
+| Rodar a bateria 2 de novo em produção depois do deploy | Walter |

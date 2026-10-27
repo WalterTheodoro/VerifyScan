@@ -1,13 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # VerifyScan — amostras para conferir a análise com IA (ADR-0020)
 #
-# 16 mensagens SINTÉTICAS, escritas para este arquivo a partir dos padrões que aparecem em
+# 20 mensagens SINTÉTICAS, escritas para este arquivo a partir dos padrões que aparecem em
 # alertas públicos de golpe. Nenhuma é cópia de mensagem real e nenhuma tem dado de pessoa real:
 # os links usam o domínio reservado `.example`, os telefones são fictícios e os nomes, genéricos.
 #
 # Uso: `uv run python -m tools.testar_ia` (de dentro de backend/). Fora do CI: chama a API real.
 #
-# Isto NÃO é o corpus da Fase 2. São 16 casos escolhidos por mim, sem rótulo independente e sem
+# Isto NÃO é o corpus da Fase 2. São 20 casos escolhidos por mim, sem rótulo independente e sem
 # amostragem: servem para ver a IA funcionando, não para medir precisão.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -124,3 +124,26 @@ amostras:
     texto: >-
       Seu banco informa: a fatura do cartão final 0000 fecha em 05/11 e vence em 12/11. Consulte
       os detalhes no aplicativo oficial.
+
+  # Os quatro falsos positivos da bateria 2 (regras versão 2 davam motor ALTO): mesmas palavras
+  # dos padrões de injeção, sem falar com quem analisa. Esperado: final BAIXO ou MEDIO.
+  - id: sistema-de-analise-de-credito
+    rotulo: legitima
+    texto: >-
+      Sua proposta de empréstimo está no sistema de análise de crédito. Em até 2 dias úteis você
+      recebe a resposta pelo app.
+
+  - id: sistema-de-analise-de-curriculos
+    rotulo: legitima
+    texto: >-
+      O sistema de análise de currículos da empresa recebeu sua candidatura.
+
+  - id: assistente-de-vendas
+    rotulo: legitima
+    texto: >-
+      Você agora é um assistente de vendas da loja, bem-vindo ao time!
+
+  - id: ignore-regras-do-grupo
+    rotulo: legitima
+    texto: >-
+      Ignore todas as regras do grupo antigo, agora o horário do futebol é às 19h.

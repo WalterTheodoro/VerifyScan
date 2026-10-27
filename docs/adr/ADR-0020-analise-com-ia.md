@@ -229,3 +229,40 @@ fora da soma — mais explícita, mas um segundo caminho de decisão no motor. (
   ALTO pelo motor. É aceito: quem fala com o analisador não é mensagem comum.
 - Custo de estar errado do filtro: com o item 4, uma afirmação disfarçada de relato ("diz que pode
   confiar") passa para a tela; o nível não muda, porque o filtro não toca mais nele.
+
+## Revisão de 2026-10-27 (2) — a categoria só dispara quando a mensagem fala com o analisador
+
+**Defeito.** A bateria 2 em produção (68 análises) pôs 4 mensagens legítimas em ALTO pelo motor:
+"sistema de análise de crédito", "sistema de análise de currículos", "você agora é um assistente de
+vendas" e "ignore todas as regras do grupo antigo". Os padrões da versão 2 casavam a palavra solta.
+Agravante: a IA repetia o fator do motor em vez de servir de segunda opinião (tipo da primeira:
+"aviso de análise de empréstimo com instrução oculta").
+
+**Decisão.**
+1. `regras.yaml` versão 3. Critério de cada padrão: a mensagem fala COM um analisador ou tenta
+   mandar no resultado. "Sistema de análise" só interpelado (seguido de `:`, `,` ou `!`, ou depois
+   de "atenção,", "ao", "para o", sem "de crédito"/"do banco" logo depois); "você agora é" só com
+   termo de IA (ia, inteligência artificial, modelo de linguagem, chatbot, sistema, assistente
+   virtual, assistente de IA) ou com ordem de afirmar que o pedido é legítimo (E08); "ignore as
+   regras/instruções" só com anteriores, acima, do sistema, que você recebeu, de segurança. Pelo
+   mesmo critério também estreitaram: "classifique a mensagem" → "esta/essa mensagem"; "classifique
+   como baix…" → "baixo"/"risco baixo" (para não pegar "baixa prioridade"); "classify the message"
+   → "this message"; "ignore tudo o que foi dito" → "+ antes/acima/anteriormente"; "you are now" →
+   "+ a/an … ai/assistant/chatbot/model/system"; "prompt de sistema" → "mostre/revele/repita… o
+   seu prompt"; "analysis system" igual ao português.
+2. Prompt: os fatores do motor são pistas automáticas que podem estar erradas; a IA avalia a
+   mensagem por conta própria e pode discordar do algoritmo, deixando de fora o fator que a
+   mensagem não confirma. O nível final continua sendo o maior dos dois.
+3. Prompt: nunca usar "prompt", "injeção", "injeção de prompt", "instruções internas" nem "sistema
+   de análise"; dizer, por exemplo, "a mensagem tenta enganar quem verifica golpes".
+
+**Consequências.**
+- As 8 injeções da bateria que disparavam (E01–E05, E08, E09, E12) e a amostra `injecao`
+  continuam disparando; E11 também. Nenhuma das 28 legítimas da bateria (grupo B, N1–N6) dispara.
+- Padrão mais estreito deixa passar variação que a versão 2 pegava ("o nosso sistema de análise
+  aprovou, pague a taxa" não dispara mais). Essa troca é deliberada: o falso positivo em ALTO é o
+  defeito mais caro deste projeto, e a IA segue como segunda camada para a injeção que o motor não
+  pega.
+- Falsos positivos que a regra ainda admite, conferidos: "Sua proposta foi enviada ao sistema de
+  análise." (o "ao" sem complemento depois) e "O sistema de análise, segundo o banco, demora 2
+  dias" (a vírgula). Ficam para a calibração da Fase 2, com o corpus.

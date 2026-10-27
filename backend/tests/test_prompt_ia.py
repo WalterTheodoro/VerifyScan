@@ -80,3 +80,18 @@ def test_tipo_nao_usa_palavras_de_seguranca() -> None:
 def test_prompt_nao_deixa_falar_do_motor() -> None:
     """Quem lê não sabe o que é "o motor": a IA fala da mensagem, não do sistema por dentro."""
     assert "Não fale do algoritmo, do motor, dos fatores nem dos blocos" in PROMPT_SISTEMA
+
+
+def test_prompt_diz_que_os_fatores_do_motor_podem_estar_errados() -> None:
+    """Bateria 2: a IA repetia o fator do motor em vez de servir de segunda opinião. O nível
+    final continua sendo o maior dos dois; o que muda é a IA olhar a mensagem por conta própria."""
+    assert "pistas automáticas e podem estar erradas" in PROMPT_SISTEMA
+    assert "Avalie a mensagem por conta própria" in PROMPT_SISTEMA
+    assert "discordar do algoritmo" in PROMPT_SISTEMA
+
+
+def test_prompt_proibe_o_jargao_de_injecao() -> None:
+    for termo in ('"prompt"', '"injeção"', '"injeção de prompt"', '"instruções internas"'):
+        assert termo in PROMPT_SISTEMA
+    assert 'nem "sistema de análise"' in PROMPT_SISTEMA
+    assert '"a mensagem tenta enganar quem verifica golpes"' in PROMPT_SISTEMA
