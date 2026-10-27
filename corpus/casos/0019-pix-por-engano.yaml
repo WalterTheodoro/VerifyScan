@@ -1,0 +1,11 @@
+id: '0019'
+conteudo: |-
+  Oi, desculpa incomodar, eu fiz um PIX de R$ 600 pra você por engano, era pra minha irmã. Pode devolver pra essa chave aqui? [CHAVE_PIX]. Muito obrigada, Deus abençoe
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso Pix por engano (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A19 \"pix-por-engano\" (2026-10-27); placeholders: [CHAVE_PIX]"
+divisao: teste

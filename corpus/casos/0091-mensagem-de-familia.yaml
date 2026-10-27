@@ -1,0 +1,11 @@
+id: '0091'
+conteudo: |-
+  Oi, filho, tudo bem? Chego no domingo para o almoço. Seu pai mandou um beijo. Você leva aquele bolo de cenoura que só você sabe fazer?
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "mensagem de família"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "amostra \"mensagem-de-familia\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

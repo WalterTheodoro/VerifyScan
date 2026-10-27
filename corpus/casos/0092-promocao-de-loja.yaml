@@ -1,0 +1,11 @@
+id: '0092'
+conteudo: |-
+  Loja Exemplo: semana do cliente com até 30% de desconto em calçados, nas lojas físicas e no nosso aplicativo. Válido até domingo.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "promoção real de loja"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"promocao-de-loja\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

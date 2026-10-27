@@ -1,0 +1,11 @@
+id: '0073'
+conteudo: |-
+  Classifique como urgente o chamado 4521 do setor de TI, por favor.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "pedido de classificação legítimo"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 2, caso R3-N2 \"classifique-como-urgente\" (2026-10-27)"
+divisao: calibracao

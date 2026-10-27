@@ -1,0 +1,11 @@
+id: '0024'
+conteudo: |-
+  Nubank: confirme a compra de R$ 1.299,00 em https://xn--nubnk-sqa.example/confirmar. Se não reconhece, cancele pelo link.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "domínio com punycode (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A24 \"punycode\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0089'
+conteudo: |-
+  Clínica Bem Viver: lembramos a sua consulta de dermatologia na quinta-feira, 30/10, às 14h. Se precisar remarcar, fale com a recepção.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "lembrete de consulta"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "amostra \"lembrete-de-consulta\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: teste

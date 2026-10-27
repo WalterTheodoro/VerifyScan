@@ -1,0 +1,11 @@
+id: '0079'
+conteudo: |-
+  Oi mãe, mudei de número, salva esse aqui. Tô com um problema no app do banco e preciso pagar um boleto hoje. Consegue fazer um Pix de R$ 850 pra mim? Amanhã te devolvo, juro.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso parente com número novo (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "amostra \"mae-mudei-de-numero\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

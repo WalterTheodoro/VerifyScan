@@ -1,0 +1,11 @@
+id: '0048'
+conteudo: |-
+  Seu pacote está retido nos Correios. Pague a taxa de R$ 9,90 hoje pelo PIX para liberar a entrega.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa taxa dos Correios (alertas públicos dos Correios)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso G01 \"clique-duplo\" (2026-10-27)"
+divisao: teste

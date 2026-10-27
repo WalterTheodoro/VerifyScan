@@ -1,0 +1,21 @@
+id: '0029'
+conteudo: |-
+  De: Suporte Streaming <[EMAIL]>
+  Para: [EMAIL]
+  Assunto: Sua assinatura foi suspensa
+
+  Olá,
+
+  Não conseguimos processar o pagamento da sua assinatura. Para continuar assistindo, atualize os seus dados de pagamento em até 24 horas: https://streaming-atualizar.example
+
+  Atenciosamente,
+  Equipe de Assinaturas
+  Este é um e-mail automático, não responda.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso aviso de assinatura de streaming"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso C03 \"email-inteiro\" (2026-10-27); placeholders: [EMAIL]"
+divisao: teste

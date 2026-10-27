@@ -1,0 +1,11 @@
+id: '0021'
+conteudo: |-
+  Seu cartão foi bloqueado por segurança. Desbloqueie agora: https://curto.test/x7Kp2
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "link encurtado em falso bloqueio de cartão (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A21 \"link-encurtado\" (2026-10-27)"
+divisao: calibracao

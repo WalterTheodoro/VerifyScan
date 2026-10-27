@@ -1,0 +1,11 @@
+id: '0028'
+conteudo: |-
+  Seu PIX agendado de R$ 1.500,00 será debitado hoje às 18h. Se não reconhece este agendamento, cancele imediatamente ligando para 0800 000 0000.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso Pix agendado com central falsa (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A28 \"pix-agendado\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0026'
+conteudo: |-
+  ola seu cpf esta cum pendensia na receita federau, si nao regularizar oje vai sê bloqueado as conta, clica no link pra regulariza https://receita-cpf.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso CPF irregular mal escrito (alertas públicos da Receita Federal)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A26 \"erros-de-portugues\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,17 @@
+id: '0027'
+conteudo: |-
+  Prezado(a) correntista,
+
+  Informamos que, em cumprimento à Resolução nº 000/2026, todas as contas precisarão passar por recadastramento biométrico até o dia 31. O procedimento é simples e leva menos de dois minutos pelo nosso portal: https://recadastramento-bancario.example
+
+  Agradecemos a compreensão.
+  Atenciosamente,
+  Ouvidoria
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso recadastramento bancário bem escrito (alertas públicos da Febraban)"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso A27 \"muito-bem-escrito\" (2026-10-27)"
+divisao: calibracao

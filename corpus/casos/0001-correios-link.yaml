@@ -1,0 +1,11 @@
+id: '0001'
+conteudo: |-
+  Correios: seu pacote está retido no centro de distribuição. Pague a taxa de R$ 12,90 pelo PIX para liberar a entrega: https://correios-rastreio.example/taxa
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa taxa dos Correios (alertas públicos dos Correios)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A01 \"correios-link\" (2026-10-27)"
+divisao: calibracao

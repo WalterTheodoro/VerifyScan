@@ -1,0 +1,11 @@
+id: '0030'
+conteudo: |-
+  <html><body><p>Prezado cliente,</p><p>Seu acesso ao <b>Internet Banking</b> será bloqueado hoje.</p><p><a href="https://banco-acesso.example/login">Clique aqui para regularizar</a></p><p>Equipe de Segurança</p></body></html>
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "phishing bancário em HTML (alertas públicos da Febraban)"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso C04 \"email-html\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0070'
+conteudo: |-
+  Seu PIX de R$ 45,00 para Padaria Pão Quente foi concluído com sucesso.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "notificação de Pix"
+canal: notificacao
+data: 2026-10-27
+observacoes: "bateria 1, caso B21 \"pix-concluido\" (2026-10-27)"
+divisao: teste

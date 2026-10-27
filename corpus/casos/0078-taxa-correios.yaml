@@ -1,0 +1,11 @@
+id: '0078'
+conteudo: |-
+  CORREIOS: Seu pacote está retido no centro de distribuição. Para liberar a entrega, pague a taxa de R$ 9,90 hoje pelo PIX em https://rastreio-correios.example/taxa. Após 24 horas o objeto será devolvido ao remetente.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa taxa dos Correios (alertas públicos dos Correios)"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"taxa-correios\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: teste

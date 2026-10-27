@@ -1,0 +1,11 @@
+id: '0002'
+conteudo: |-
+  Olá! Aqui é dos Correios. Sua encomenda está retida por falta de pagamento da taxa alfandegária. Para liberar a entrega, faça um PIX de R$ 9,90 para a chave abaixo e me mande o comprovante por aqui. Chave: [CHAVE_PIX]
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa taxa dos Correios (alertas públicos dos Correios)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A02 \"correios-sem-link\" (2026-10-27); placeholders: [CHAVE_PIX]"
+divisao: teste

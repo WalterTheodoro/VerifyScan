@@ -1,0 +1,17 @@
+id: '0009'
+conteudo: |-
+  Prezado(a) cliente,
+
+  Consta em nosso sistema um débito em aberto no valor de R$ 487,32 referente ao contrato nº 000123. Caso o pagamento não seja efetuado em até 24 horas, seu nome será incluído nos órgãos de proteção ao crédito (SPC/Serasa).
+
+  Para evitar a negativação, pague o boleto atualizado no link: https://acordo-quitacao.example/boleto
+
+  Departamento Jurídico
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa cobrança com ameaça de negativação"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso A09 \"divida-negativacao\" (2026-10-27)"
+divisao: teste

@@ -1,0 +1,11 @@
+id: '0123'
+conteudo: |-
+  Seu pedido internacional foi taxado pela Receita Federal. Pague o imposto de R$ 58,30 em até 24h, senão o pacote volta ao país de origem: https://imposto-pacote.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa cobrança de imposto de importação (alertas públicos da Receita Federal)"
+canal: sms
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

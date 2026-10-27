@@ -1,0 +1,11 @@
+id: '0020'
+conteudo: |-
+  Crédito pré-aprovado de R$ 15.000 no seu CPF, sem consulta ao SPC/Serasa, parcelas de R$ 199. Para liberar o valor hoje, pague a taxa de abertura de cadastro de R$ 250,00 via PIX.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso empréstimo com taxa antecipada (alertas públicos do Banco Central)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A20 \"emprestimo-taxa-adiantada\" (2026-10-27)"
+divisao: calibracao

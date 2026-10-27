@@ -22,6 +22,7 @@
 | 11 | §5.5 (modelo de dados) | `Usuario`: + `nome_exibicao`, − `plano` | Fase 8 |
 | 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → 7 dias, só autenticado, com aviso; anônimo nunca | 9 |
 | 13 | §2.3 (RF13), §5.4.8 e §7.1 | a LLM passa a ler a mensagem como dado e só pode subir o nível | Fase 7 |
+| 14 | §1.6 (KPIs) | "precisão > 85%" → precisão **e** recall > 85%, com MÉDIO = golpe | 10 |
 
 ---
 
@@ -216,3 +217,18 @@ LGPD art. 33), que a retém por até 30 dias e não a usa para treino, segundo o
 retido… taxa de R$ 9,90… PIX" saía BAIXO. A garantia que o RF13 dava ("a IA não decide risco")
 continua de pé por outro caminho: a regra fixa de combinação, fora do alcance do modelo. Uma
 mensagem que convença o modelo de que é segura não baixa o nível que o motor deu (ADR-0020).
+
+### 14 — §1.6, KPI de precisão
+
+Trocar "Precisão na identificação de golpes > 85% em testes com casos reais" por:
+
+> **Precisão e recall** na identificação de golpes **acima de 85%**, contando o nível MÉDIO como
+> golpe, medidos pelo `avaliar_corpus` na divisão de teste do corpus rotulado e publicados com o
+> intervalo de confiança de 95% (Wilson).
+
+**Por quê:** "precisão" sozinha se atinge alarmando quase nada. Na primeira medição, o motor
+sozinho teve 92% de precisão detectando 24% dos golpes. Recall sozinho se atinge alarmando tudo.
+Exigir os dois fecha as duas saídas. O MÉDIO conta como golpe porque o falso negativo custa mais
+(ADR-0005). O "casos reais" do texto original continua sendo a meta. Enquanto a coleta de
+mensagens reais depender do comitê de ética, o corpus é sintético e a medição não atesta casos
+reais, o que fica declarado como limitação (ADR-0021).

@@ -1,0 +1,11 @@
+id: '0108'
+conteudo: |-
+  Oi! Sobre a casa na praia para o feriado: ainda está disponível, mas tem mais duas famílias interessadas. Para garantir, preciso de 50% de sinal por Pix hoje, R$ 900. Mando o contrato depois do depósito.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso aluguel por temporada (alertas públicos de Procons)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

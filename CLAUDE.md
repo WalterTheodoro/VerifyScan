@@ -60,8 +60,11 @@ uv run pytest -q -m "not integracao"   # só unitários, sem banco
 docker compose exec postgres createdb -U verifyscan verifyscan_teste
 uv run alembic check                   # falha se modelo e migração divergirem
 
-# avaliação do motor de risco contra o corpus rotulado
-uv run python -m tools.avaliar_corpus
+# avaliação contra o corpus rotulado (ADR-0021); relatório novo em docs/avaliacoes/
+uv run python -m tools.avaliar_corpus                            # motor, offline, as duas divisões
+uv run python -m tools.avaliar_corpus --com-ia --divisao teste   # motor + IA real (fora do CI)
+uv run python -m tools.avaliar_corpus --gravar-linha-de-base     # só se o corpus ou o motor mudou
+uv run python -m tools.sortear_divisao                           # divide só os casos novos
 
 # análise com IA contra a API real, 20 amostras sintéticas (fora do CI; usa a chave do .env)
 uv run python -m tools.testar_ia
@@ -83,10 +86,12 @@ verifyscan/
 │  ├─ RFC-VerifyScan-v1.1.pdf
 │  ├─ plano-de-execucao.md
 │  ├─ diario.md            # log de sessões — vira capítulo da monografia
+│  ├─ avaliacoes/          # relatórios do avaliar_corpus (AAAA-MM-DD-<modo>.md), nunca sobrescritos
 │  └─ adr/                 # ADR-000N-titulo.md
 ├─ corpus/
-│  ├─ casos/               # YAML rotulado, anonimizado
-│  └─ README.md            # proveniência e critério de rotulagem
+│  ├─ casos/               # NNNN-slug.yaml: sintético, rotulado, anonimizado, divisão fixa
+│  ├─ para-o-walter.md     # modelo dos casos escritos à mão (autor: walter)
+│  └─ README.md            # proveniência, formato, placeholders e critério de rotulagem
 ├─ backend/
 │  └─ app/
 │     ├─ api/              # rotas FastAPI (finas, sem regra de negócio)
@@ -102,7 +107,8 @@ verifyscan/
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
 │  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
 │  │                       #   IA + explicação só com dono); esquema só por aqui
-│  ├─ tools/               # scripts (avaliar_corpus, testar_ia + amostras_ia.yaml, etc.)
+│  ├─ tools/               # avaliar_corpus + linha_de_base_motor.json (gate do CI, só calibração),
+│  │                       #   sortear_divisao, pii, testar_ia + amostras_ia.yaml
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/

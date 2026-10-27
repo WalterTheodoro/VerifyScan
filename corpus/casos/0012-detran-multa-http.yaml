@@ -1,0 +1,11 @@
+id: '0012'
+conteudo: |-
+  DETRAN: notificação de multa pendente para o seu veículo. Pague com 40% de desconto até hoje, ou a sua CNH será suspensa: http://detran-multas.example/pagar
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa multa de trânsito (alertas públicos dos Detrans)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A12 \"detran-multa-http\" (2026-10-27)"
+divisao: teste

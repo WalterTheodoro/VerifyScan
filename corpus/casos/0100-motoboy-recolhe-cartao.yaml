@@ -1,0 +1,11 @@
+id: '0100'
+conteudo: |-
+  Aqui é da central de segurança do seu cartão. Identificamos que o seu cartão foi clonado. Para sua proteção, um funcionário vai até a sua casa hoje recolher o cartão. Deixe-o num envelope junto com a senha anotada.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "golpe do motoboy que recolhe o cartão (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

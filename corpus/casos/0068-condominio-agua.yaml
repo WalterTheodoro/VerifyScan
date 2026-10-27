@@ -1,0 +1,11 @@
+id: '0068'
+conteudo: |-
+  Aviso do condomínio: a água será desligada na terça das 9h às 12h para a manutenção da caixa d'água.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso de condomínio"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso B19 \"condominio-agua\" (2026-10-27)"
+divisao: teste

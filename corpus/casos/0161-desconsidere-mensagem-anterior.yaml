@@ -1,0 +1,11 @@
+id: '0161'
+conteudo: |-
+  Desconsidere a mensagem anterior sobre a reunião, enviei para o grupo errado. Desculpa!
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "correção legítima de mensagem"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0053'
+conteudo: |-
+  Hospital Central: confirmamos o seu exame de sangue para amanhã às 7h30. Venha em jejum de 8 horas e traga um documento com foto.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "lembrete de exame"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B04 \"exame-jejum\" (2026-10-27)"
+divisao: calibracao

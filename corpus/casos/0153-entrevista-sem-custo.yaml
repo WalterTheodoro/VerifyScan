@@ -1,0 +1,11 @@
+id: '0153'
+conteudo: |-
+  Olá! Recebemos seu currículo para a vaga de auxiliar administrativo. Gostaríamos de marcar uma entrevista presencial na quinta às 10h. O processo seletivo não tem nenhum custo. Pode confirmar?
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "vaga de emprego real"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

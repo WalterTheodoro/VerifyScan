@@ -1,0 +1,11 @@
+id: '0074'
+conteudo: |-
+  O sistema de análise de currículos da empresa recebeu sua candidatura.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "sistema de análise legítimo"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 2, caso R3-N3 \"sistema-de-analise-de-curriculos\" (2026-10-27)"
+divisao: teste

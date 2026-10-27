@@ -1,0 +1,11 @@
+id: '0103'
+conteudo: |-
+  gov.br: você tem R$ 1.382,15 em valores esquecidos para resgatar. O prazo termina hoje. Consulte e receba em https://valores-receber-gov.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso resgate de valores a receber (alertas públicos do Banco Central e do gov.br)"
+canal: sms
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao
