@@ -1,0 +1,23 @@
+id: '0032'
+conteudo: |-
+  Banco
+  Digital
+
+  14:32
+  Sua conta
+  foi
+  bloqueada. Acesse
+  https://
+  desbloqueio-conta.example
+  para
+  liberar
+
+  Responder
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso bloqueio de conta em texto de print (alertas públicos da Febraban)"
+canal: print
+data: 2026-10-27
+observacoes: "bateria 1, caso C14 \"print-quebras-estranhas\" (2026-10-27)"
+divisao: teste

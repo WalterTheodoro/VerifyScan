@@ -1,0 +1,11 @@
+id: '0025'
+conteudo: |-
+  Olá, tudo bem? Aqui é a [NOME], do setor de cadastro da sua operadora. Estamos atualizando os registros dos clientes e, para manter o seu plano com o valor atual, precisamos apenas confirmar o seu CPF, a data de nascimento e o nome da sua mãe. Pode me responder por aqui quando puder. Obrigada pela atenção!
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "coleta de dados pessoais sem urgência"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A25 \"sem-urgencia-educado\" (2026-10-27); placeholders: [NOME]"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0022'
+conteudo: |-
+  Itaú: detectamos um acesso não autorizado. Confirme seus dados em http://203.0.113.45/itau/validar para não ter a sua conta suspensa.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "link com endereço IP em falso aviso de banco (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A22 \"link-com-ip\" (2026-10-27)"
+divisao: teste

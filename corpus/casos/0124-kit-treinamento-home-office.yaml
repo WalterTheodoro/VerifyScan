@@ -1,0 +1,11 @@
+id: '0124'
+conteudo: |-
+  Parabéns! Seu currículo foi selecionado para a vaga de digitador home office, R$ 2.800 por mês. Antes de começar, é necessário adquirir o kit de treinamento por R$ 97,00. Envie o comprovante para receber o login.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa vaga de emprego com cobrança (alertas públicos do Ministério do Trabalho)"
+canal: email
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

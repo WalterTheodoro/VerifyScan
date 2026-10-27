@@ -1,0 +1,11 @@
+id: '0052'
+conteudo: |-
+  Olá! Lembrete: a sua consulta com a Dra. [NOME] está marcada para quinta, 30/10, às 14h, na Clínica Sorriso. Responda 1 para confirmar ou 2 para remarcar.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "lembrete de consulta"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso B03 \"lembrete-dentista\" (2026-10-27); placeholders: [NOME]"
+divisao: teste

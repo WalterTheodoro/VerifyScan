@@ -1,0 +1,11 @@
+id: '0060'
+conteudo: |-
+  Urgente: a reunião com o cliente mudou para as 15h. Avisa o pessoal do time, por favor.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "urgência verdadeira de trabalho"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso B11 \"urgente-reuniao-15h\" (2026-10-27)"
+divisao: calibracao

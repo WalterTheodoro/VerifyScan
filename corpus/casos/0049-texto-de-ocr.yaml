@@ -1,0 +1,24 @@
+id: '0049'
+conteudo: |-
+  09:41 ull 4G 87%
+  < Mensagens
+  [TELEFONE]
+  Hoje 08:12
+  Prezad0 c1iente, identificamos uma pen-
+  dência no seu CPF junto a Receita Fede-
+  ral. Para evitar o b1oqueio das suas con-
+  tas bancárias, regu1arize a situação ainda h0je.
+  Acesse: https://regu1ariza-cpf.examp1e/atendimento
+  Caso não regu1arize, seu n0me será inc1uído no cadastro de inadimp1entes e a mu1ta será de R$ 1.247,OO.
+  Mensagem de texto • SMS
+  Responder
+  Copiar
+  Encaminhar
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso CPF irregular em texto de OCR (alertas públicos da Receita Federal)"
+canal: print
+data: 2026-10-27
+observacoes: "bateria 1, caso H04 \"texto-de-ocr\" (2026-10-27); um bloco só do texto de OCR, que a bateria repetia; placeholders: [TELEFONE]"
+divisao: calibracao

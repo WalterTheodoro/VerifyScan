@@ -1,0 +1,11 @@
+id: '0010'
+conteudo: |-
+  INSS informa: o seu benefício foi BLOQUEADO por falta de prova de vida. Para desbloquear e não perder os pagamentos, atualize seus dados em até 48h no link https://inss-provadevida.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa prova de vida do INSS (alertas públicos do INSS)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A10 \"inss-prova-de-vida\" (2026-10-27)"
+divisao: calibracao

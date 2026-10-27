@@ -1,0 +1,11 @@
+id: '0004'
+conteudo: |-
+  Pai, sou eu, esse é meu número novo. Não conta pra mãe ainda. Preciso de uma ajuda, pode me fazer uma transferência hoje? Depois te explico tudo
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso parente com número novo (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A04 \"pai-numero-novo\" (2026-10-27)"
+divisao: calibracao

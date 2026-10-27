@@ -1,0 +1,11 @@
+id: '0105'
+conteudo: |-
+  Aposentado(a), você tem direito à revisão do seu benefício do INSS com valores atrasados de até R$ 8.700. Nossa assessoria cuida de tudo, basta pagar a taxa de abertura do processo de R$ 180. Responda QUERO.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa revisão de benefício do INSS (alertas públicos do INSS)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0081'
+conteudo: |-
+  Olá! Somos uma agência de marketing e estamos contratando para trabalho em casa. Você ganha de R$ 50 a R$ 300 por dia só curtindo vídeos. Para ativar sua conta de tarefas, faça um depósito inicial de R$ 30. Vagas limitadas!
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa vaga de tarefas pagas (alertas públicos de Procons)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "amostra \"emprego-tarefas\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0071'
+conteudo: |-
+  Campanha de vacinação contra a gripe: postos de saúde abertos no sábado das 8h às 17h. Leve a carteirinha de vacinação.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "campanha de vacinação"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B22 \"vacinacao\" (2026-10-27)"
+divisao: calibracao

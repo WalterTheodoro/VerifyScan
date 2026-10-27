@@ -1,0 +1,11 @@
+id: '0005'
+conteudo: |-
+  BANCO: Compra suspeita de R$ 2.379,00 em ELETRO SHOP aprovada no seu cartão final 0000. Se não reconhece, ligue imediatamente para a central antifraude 0800 000 0000 e informe o código que enviaremos por SMS.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa central antifraude (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A05 \"central-antifraude\" (2026-10-27)"
+divisao: teste

@@ -1,0 +1,11 @@
+id: '0036'
+conteudo: |-
+  Itаú: sua cоnta será bloqueada hoje. Acesse o app e cоnfirme seus dados.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso aviso de banco com letras cirílicas (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso D15 \"cirilico\" (2026-10-27)"
+divisao: calibracao

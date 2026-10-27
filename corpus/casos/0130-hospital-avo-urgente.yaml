@@ -1,0 +1,11 @@
+id: '0130'
+conteudo: |-
+  Mãe, tô no hospital com o vô, ele caiu mas tá bem. Me liga quando puder, urgente.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "urgência verdadeira de família"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

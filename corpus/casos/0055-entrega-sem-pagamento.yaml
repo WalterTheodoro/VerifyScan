@@ -1,0 +1,11 @@
+id: '0055'
+conteudo: |-
+  Sua encomenda saiu para entrega e deve chegar hoje até as 18h. Não é preciso estar em casa: o entregador deixa na portaria.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso real de entrega"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B06 \"entrega-sem-pagamento\" (2026-10-27)"
+divisao: calibracao

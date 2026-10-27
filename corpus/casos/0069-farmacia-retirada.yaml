@@ -1,0 +1,11 @@
+id: '0069'
+conteudo: |-
+  Farmácia Exemplo: o seu pedido está pronto para retirada no balcão. Horário: 8h às 22h.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso de farmácia"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B20 \"farmacia-retirada\" (2026-10-27)"
+divisao: calibracao

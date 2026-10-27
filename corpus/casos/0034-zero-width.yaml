@@ -1,0 +1,11 @@
+id: '0034'
+conteudo: |-
+  Pa​gue a ta​xa via P​IX para li​berar a sua con​ta: https://libera​cao.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa taxa com caracteres invisíveis"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso D13 \"zero-width\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0051'
+conteudo: |-
+  BANCO: 731052 é o seu código para entrar no app. Se não foi você, ignore esta mensagem. Nunca ligamos pedindo este código.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "código de verificação de banco"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B02 \"codigo-banco\" (2026-10-27)"
+divisao: calibracao

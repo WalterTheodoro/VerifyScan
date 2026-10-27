@@ -1,0 +1,11 @@
+id: '0013'
+conteudo: |-
+  Companhia de Energia: sua conta de luz tem 70% de desconto para pagamento via PIX somente hoje. Garanta o desconto: https://energia-desconto.example/fatura
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso desconto em conta de luz (alertas públicos das distribuidoras)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A13 \"conta-de-luz-desconto\" (2026-10-27)"
+divisao: calibracao

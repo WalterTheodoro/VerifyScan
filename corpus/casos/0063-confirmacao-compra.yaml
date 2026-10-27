@@ -1,0 +1,11 @@
+id: '0063'
+conteudo: |-
+  Recebemos o seu pedido nº 10234 no valor de R$ 159,90. Ele será enviado em até 2 dias úteis. Obrigado por comprar com a gente!
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "confirmação de compra"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso B14 \"confirmacao-compra\" (2026-10-27)"
+divisao: teste

@@ -1,0 +1,11 @@
+id: '0011'
+conteudo: |-
+  Receita Federal: seu CPF consta como IRREGULAR e será cancelado. Regularize hoje para evitar o bloqueio das suas contas e multa: https://receita-regulariza.example/cpf
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso CPF irregular na Receita (alertas públicos da Receita Federal)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A11 \"receita-cpf-irregular\" (2026-10-27)"
+divisao: calibracao

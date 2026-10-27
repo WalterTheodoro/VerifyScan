@@ -1,0 +1,11 @@
+id: '0006'
+conteudo: |-
+  Boa tarde, aqui é a [NOME] da central de segurança do seu banco. Identificamos um acesso indevido na sua conta. Para bloquear, preciso que você me informe o código de 6 dígitos que chegou agora no seu celular e a senha do cartão.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa central que pede código e senha (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A06 \"central-pede-senha\" (2026-10-27); placeholders: [NOME]"
+divisao: calibracao

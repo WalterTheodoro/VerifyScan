@@ -1,0 +1,11 @@
+id: '0090'
+conteudo: |-
+  Sua encomenda do pedido 48213 saiu para entrega e deve chegar hoje até as 18h. Se não houver ninguém em casa, faremos uma nova tentativa amanhã.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso real de entrega"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"aviso-de-entrega\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

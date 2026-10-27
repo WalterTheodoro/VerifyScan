@@ -1,0 +1,11 @@
+id: '0062'
+conteudo: |-
+  Semana do cliente na Loja Exemplo: até 30% de desconto em calçados, só na loja física. Válido até domingo.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "promoção real de loja"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B13 \"promocao-loja\" (2026-10-27)"
+divisao: teste

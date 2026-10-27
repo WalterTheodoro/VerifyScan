@@ -1,0 +1,11 @@
+id: '0064'
+conteudo: |-
+  Seu motorista chegou. Ele está em um carro prata, placa [PLACA]. Encontre-o no ponto de embarque.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "notificação de transporte"
+canal: notificacao
+data: 2026-10-27
+observacoes: "bateria 1, caso B15 \"uber-chegou\" (2026-10-27); placeholders: [PLACA]"
+divisao: teste

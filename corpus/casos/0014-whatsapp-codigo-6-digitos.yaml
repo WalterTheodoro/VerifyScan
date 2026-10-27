@@ -1,0 +1,11 @@
+id: '0014'
+conteudo: |-
+  Suporte WhatsApp: detectamos uma tentativa de clonagem da sua conta. Para confirmar que você é o dono, responda esta mensagem com o código de 6 dígitos que enviamos por SMS. Se não responder em 10 minutos, sua conta será desativada.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "clonagem de conta de mensageiro pelo código (alertas públicos da Febraban)"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso A14 \"whatsapp-codigo-6-digitos\" (2026-10-27)"
+divisao: calibracao

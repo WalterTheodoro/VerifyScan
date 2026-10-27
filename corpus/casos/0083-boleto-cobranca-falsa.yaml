@@ -1,0 +1,11 @@
+id: '0083'
+conteudo: |-
+  Aviso de débito: consta no seu CPF uma pendência de R$ 187,45 com risco de negativação. Evite o protesto pagando o boleto atualizado em https://quitacao-debitos.example/boleto ainda hoje.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa cobrança com ameaça de negativação"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"boleto-cobranca-falsa\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

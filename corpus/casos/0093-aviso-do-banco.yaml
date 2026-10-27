@@ -1,0 +1,11 @@
+id: '0093'
+conteudo: |-
+  Seu banco informa: a fatura do cartão final 0000 fecha em 05/11 e vence em 12/11. Consulte os detalhes no aplicativo oficial.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso real de fatura sem link"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"aviso-do-banco\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

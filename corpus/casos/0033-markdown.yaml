@@ -1,0 +1,14 @@
+id: '0033'
+conteudo: |-
+  # URGENTE
+  **Sua conta** foi _bloqueada_. [Clique aqui](https://banco-markdown.example) para `liberar`.
+  - passo 1
+  - passo 2
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso bloqueio de conta com markdown"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso D11 \"markdown\" (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0056'
+conteudo: |-
+  Pedido 48213 enviado! Código de rastreio: [RASTREIO]. Acompanhe pelo app da loja.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso real de envio"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B07 \"rastreio-sem-link\" (2026-10-27); placeholders: [RASTREIO]"
+divisao: teste

@@ -1,0 +1,11 @@
+id: '0065'
+conteudo: |-
+  Lembrete: o boleto da mensalidade da academia vence amanhã, dia 28. Se já pagou, desconsidere.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "cobrança real"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso B16 \"boleto-academia\" (2026-10-27)"
+divisao: calibracao

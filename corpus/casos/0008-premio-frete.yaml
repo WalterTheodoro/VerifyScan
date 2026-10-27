@@ -1,0 +1,11 @@
+id: '0008'
+conteudo: |-
+  PARABÉNS! Você foi sorteado(a) na promoção de aniversário e ganhou uma Smart TV 55". Para receber, pague apenas o frete de R$ 39,90 até hoje: https://premios-aniversario.example/resgate
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso prêmio com frete (alertas públicos de Procons)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A08 \"premio-frete\" (2026-10-27)"
+divisao: calibracao

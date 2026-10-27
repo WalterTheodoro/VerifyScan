@@ -1,0 +1,11 @@
+id: '0018'
+conteudo: |-
+  Parabéns, você foi aprovado(a) na seleção para Auxiliar Administrativo, salário de R$ 3.200 + benefícios. Para garantir a sua vaga, é necessário pagar a taxa de inscrição e exame admissional de R$ 89,00 até amanhã.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falsa vaga com taxa (alertas públicos do Ministério do Trabalho)"
+canal: email
+data: 2026-10-27
+observacoes: "bateria 1, caso A18 \"vaga-com-taxa\" (2026-10-27)"
+divisao: calibracao

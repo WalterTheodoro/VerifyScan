@@ -1,0 +1,11 @@
+id: '0023'
+conteudo: |-
+  Itaú Segurança: seu token expirou. Atualize agora em https://itau-seguranca-online.example/token e evite o bloqueio do app.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "domínio parecido com o de banco (alertas públicos da Febraban)"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A23 \"dominio-parecido-banco\" (2026-10-27)"
+divisao: calibracao

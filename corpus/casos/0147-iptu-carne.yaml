@@ -1,0 +1,11 @@
+id: '0147'
+conteudo: |-
+  Prefeitura informa: os carnês do IPTU 2027 serão entregues pelos Correios a partir de janeiro. A segunda via fica disponível no site da prefeitura.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso de prefeitura"
+canal: sms
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 7 (2026-10-27)"
+divisao: calibracao

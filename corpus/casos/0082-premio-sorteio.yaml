@@ -1,0 +1,11 @@
+id: '0082'
+conteudo: |-
+  PARABÉNS! Seu número foi sorteado na promoção de aniversário e você ganhou uma TV de 55 polegadas. Para receber, pague o frete de R$ 39,90 em https://premio-aniversario.example até hoje às 23h.
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso prêmio com frete (alertas públicos de Procons)"
+canal: sms
+data: 2026-10-27
+observacoes: "amostra \"premio-sorteio\" de tools/amostras_ia.yaml (2026-10-27)"
+divisao: calibracao

@@ -1,0 +1,11 @@
+id: '0017'
+conteudo: |-
+  Leilão de apreendidos: iPhone 15 Pro por R$ 899, notebook por R$ 450. Últimas unidades. Pague com PIX e receba em 3 dias: https://leilao-apreendidos.example
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "falso leilão de apreendidos"
+canal: sms
+data: 2026-10-27
+observacoes: "bateria 1, caso A17 \"leilao-barato\" (2026-10-27)"
+divisao: calibracao

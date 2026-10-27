@@ -1,0 +1,11 @@
+id: '0035'
+conteudo: |-
+  Baixe o comprovante: comprovante‮fdp.exe e abra para ver o PIX recebido
+rotulo: golpe
+fonte: sintetico
+autor: claude
+padrao: "arquivo disfarçado com caractere de inversão de direção"
+canal: whatsapp
+data: 2026-10-27
+observacoes: "bateria 1, caso D14 \"rtl-override\" (2026-10-27)"
+divisao: calibracao
