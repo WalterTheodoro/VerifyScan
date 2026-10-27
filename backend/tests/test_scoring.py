@@ -67,13 +67,14 @@ def test_fronteiras_das_faixas(score: int, esperado: NivelRisco) -> None:
     assert carregar_regras().faixas.classificar(score) == esperado
 
 
-def test_as_seis_categorias_juntas_dao_alto(motor: ScoringEngine) -> None:
-    """Teto do texto puro: 10+15+15+20+25+25 = 110 (§5.4.1)."""
+def test_todas_as_categorias_juntas_dao_alto(motor: ScoringEngine) -> None:
+    """Teto do texto puro: 10+15+15+20+25+25 = 110 (§5.4.1), mais os 61 da instrução ao
+    analisador (ADR-0020) = 171."""
     regras = carregar_regras()
 
     resultado = motor.pontuar(
         [fator(categoria.id, categoria.peso) for categoria in regras.categorias]
     )
 
-    assert resultado.score == 110
+    assert resultado.score == 171
     assert resultado.nivel_risco == "ALTO"

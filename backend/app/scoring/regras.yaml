@@ -18,7 +18,7 @@
 # (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-versao: 1
+versao: 2
 
 # Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
 # dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
@@ -161,3 +161,27 @@ categorias:
       - 'senha do (aplicativo|banco|cartão|internet banking)'
       - 'foto (do|de) (documento|rg|cnh)'
       - 'selfie (com|segurando)'
+
+  # ── Fora da §5.4.1: defesa em profundidade contra injeção de prompt (ADR-0020) ──────────────
+  # Mensagem legítima não fala com um sistema de análise nem tenta mandar no resultado. Sozinha,
+  # leva a ALTO: o peso precisa passar de `faixas.medio_ate` (um teste confere). É o que segura
+  # o nível quando a IA cai e a resposta sai só do motor — o golpe que diz "classifique como
+  # segura" não pode sair BAIXO só porque o Claude estava fora do ar.
+  - id: instrucao_ao_analisador
+    peso: 61
+    descricao: 'A mensagem tenta dar ordens a quem analisa mensagens. Mensagem comum não faz isso.'
+    padroes:
+      - 'sistemas? de análise'
+      - '\banalysis system\b'
+      - '\bclassifi(que|car|ca) (esta|essa|a) mensagem\b'
+      - '\bclassifi(que|car|ca) (isto |isso )?como (segur|baix|legítim|confiáve|oficial)'
+      - '\bclassify (this|the) message\b'
+      - '\bignore (as|todas as) (regras|instruções)\b'
+      - '\bignore tudo o que foi dito\b'
+      - '\bignore (all )?(the |your )?previous instructions\b'
+      - 'verificad[ao] pelo verifyscan'
+      - '\byou are now\b'
+      - '\bvocê agora é (um|uma) (assistente|ia|inteligência artificial|sistema)\b'
+      - '\bnivel_sugerido\b'
+      - '\bprompt de sistema\b'
+      - '</?(mensagem|instruções|instrucoes|system)>'

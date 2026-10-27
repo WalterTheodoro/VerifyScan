@@ -21,6 +21,8 @@ PESOS_DO_RFC = {
     "solicitacao_financeira": 25,
     "dados_pessoais": 25,
 }
+# Fora do RFC (ADR-0020): sozinha leva a ALTO, então o peso é o primeiro ponto acima de MÉDIO.
+PESOS = {**PESOS_DO_RFC, "instrucao_ao_analisador": 61}
 
 
 def test_regras_carregam_do_yaml() -> None:
@@ -31,10 +33,20 @@ def test_regras_carregam_do_yaml() -> None:
 
 
 def test_as_seis_categorias_existem_com_os_pesos_do_rfc() -> None:
-    """§5.4.1 tem seis categorias; a §5.4.7 funde duas delas — e está errada (errata, item 3)."""
+    """§5.4.1 tem seis categorias; a §5.4.7 funde duas delas — e está errada (errata, item 3).
+    A sétima, `instrucao_ao_analisador`, não é do RFC (ADR-0020)."""
     regras = carregar_regras()
 
-    assert {categoria.id: categoria.peso for categoria in regras.categorias} == PESOS_DO_RFC
+    assert {categoria.id: categoria.peso for categoria in regras.categorias} == PESOS
+
+
+def test_instrucao_ao_analisador_sozinha_leva_a_alto() -> None:
+    """Mensagem legítima não fala com um analisador: o peso tem que passar do teto de MÉDIO,
+    ou uma recalibração das faixas deixaria a injeção sair MÉDIO com a IA fora do ar."""
+    regras = carregar_regras()
+    [categoria] = [c for c in regras.categorias if c.id == "instrucao_ao_analisador"]
+
+    assert regras.faixas.classificar(categoria.peso) == "ALTO"
 
 
 def test_faixas_sao_as_do_rfc() -> None:
@@ -121,7 +133,7 @@ Categoria = dict[str, object]
 def _regras_validas() -> dict[str, object]:
     categorias: list[Categoria] = [
         {"id": id_, "peso": peso, "descricao": "Descrição.", "padroes": ["teste"]}
-        for id_, peso in PESOS_DO_RFC.items()
+        for id_, peso in PESOS.items()
     ]
     return {
         "versao": 1,
@@ -149,7 +161,7 @@ def test_recusa_categoria_faltando() -> None:
     assert isinstance(categorias, list)
     dados["categorias"] = categorias[:-1]
 
-    with pytest.raises(ValidationError, match="dados_pessoais"):
+    with pytest.raises(ValidationError, match="instrucao_ao_analisador"):
         Regras.model_validate(dados)
 
 
