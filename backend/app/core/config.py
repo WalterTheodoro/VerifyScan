@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Esquemas que o Neon (e a maioria dos provedores) entrega sem o driver. O SQLAlchemy lê
@@ -73,6 +73,36 @@ class Settings(BaseSettings):
     # Atributo Secure do cookie de sessão. O default é o de produção: esquecer a variável no
     # Render não manda a sessão por HTTP. Só o `.env` local desliga (HTTP em localhost).
     cookie_secure: bool = True
+
+    # Análise com o Claude (ADR-0020). Desligada por padrão: o CI e os testes nunca chamam a
+    # rede, e quem liga é o `.env` local ou o Render. A ordem importa: o validador da chave lê
+    # `ia_ativada`, que precisa ter sido validada antes.
+    ia_ativada: bool = False
+    # SecretStr: o `repr` e o `str` do Settings mostram asteriscos, nunca a chave.
+    anthropic_api_key: SecretStr | None = Field(default=None, validate_default=True)
+    ia_modelo: str = "claude-haiku-5-5"
+    # A invariante 8 conta com 15 s para a IA. Pode baixar; subir exige rever o orçamento, por
+    # isso o processo nem sobe com valor maior (mesmo raciocínio do `texto_max_caracteres`).
+    ia_timeout_s: float = Field(default=15, gt=0, le=15)
+    # Baixo de propósito: a saída é um JSON curto. Com o pensamento desligado (ADR-0020), o teto
+    # é todo da resposta.
+    ia_max_tokens: int = Field(default=700, gt=0, le=2000)
+
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def _chave_obrigatoria_com_ia_ligada(
+        cls, valor: SecretStr | None, info: ValidationInfo
+    ) -> SecretStr | None:
+        """Num validador do próprio campo, e não do modelo: o erro de um `model_validator`
+        imprime todas as variáveis lidas, com a senha do `DATABASE_URL` junto."""
+        if valor is not None and not valor.get_secret_value().strip():
+            valor = None
+        if valor is None and info.data.get("ia_ativada"):
+            raise ValueError(
+                "IA_ATIVADA=true exige ANTHROPIC_API_KEY. Defina a chave ou desligue a IA "
+                "com IA_ATIVADA=false."
+            )
+        return valor
 
     @field_validator("database_url")
     @classmethod
