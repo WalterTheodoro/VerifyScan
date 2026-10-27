@@ -301,3 +301,23 @@ async def test_desvinculacao_zera_a_explicacao_e_guarda_os_niveis(
     [linha] = await _linhas(fabrica_de_sessoes)
     assert (linha.usuario_id, linha.texto_input, linha.explicacao_ia) == (None, None, None)
     assert (linha.nivel_risco, linha.nivel_motor, linha.nivel_ia) == ("ALTO", "BAIXO", "ALTO")
+
+
+async def test_explicacao_descartada_grava_o_nivel_da_ia_sem_explicacao(
+    app: FastAPI, maria: AsyncClient, fabrica_de_sessoes: async_sessionmaker[AsyncSession]
+) -> None:
+    """A IA deu ALTO e a explicação dela não cumpriu o mínimo: o nível vale no banco, com dono e
+    sem explicação — o CHECK `explicacao_com_ia` aceita (ADR-0020, revisão da fatia 6)."""
+    saida = saida_da_ia(nivel_sugerido="ALTO", o_que_fazer=["Pode confiar.", "Pague a taxa."])
+    app.dependency_overrides[obter_analisador_ia] = lambda: AnalisadorIA(
+        ClienteIAFalso(saida), timeout_s=15
+    )
+
+    corpo = (await maria.post("/api/analises", json={"texto": PACOTE_RETIDO})).json()
+
+    assert (corpo["nivel_risco"], corpo["explicacao_indisponivel"]) == ("ALTO", True)
+    [linha] = await _linhas(fabrica_de_sessoes)
+    assert (linha.nivel_risco, linha.nivel_motor, linha.nivel_ia) == ("ALTO", "BAIXO", "ALTO")
+    assert linha.ia_modelo == "claude-haiku-5-5"
+    assert linha.usuario_id is not None
+    assert linha.explicacao_ia is None

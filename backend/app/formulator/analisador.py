@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from app.formulator.cliente import ClienteIA, RespostaIA
 from app.formulator.prompt import PROMPT_SISTEMA, EntradaIA, montar_entrada
-from app.formulator.saida import SaidaIA, explicacao_da_saida
+from app.formulator.saida import SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ExplicacaoIA, NivelRisco
 
 logger = logging.getLogger(__name__)
@@ -20,10 +20,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ResultadoIA:
-    """O que a IA acrescenta: um nível sugerido e a explicação, já limpa."""
+    """O que a IA acrescenta: um nível sugerido e a explicação, já limpa.
+
+    `explicacao=None` quando ela não cumpriu o mínimo depois da limpeza: a tela usa o plano B do
+    nível final, mas o nível sugerido continua valendo (ADR-0020).
+    """
 
     nivel_sugerido: NivelRisco
-    explicacao: ExplicacaoIA
+    explicacao: ExplicacaoIA | None
     modelo: str
 
 
@@ -76,6 +80,8 @@ class AnalisadorIA:
 
 
 def _interpretar(resposta: RespostaIA) -> ResultadoIA:
+    """Só falha de FORMA levanta — e descarta a IA inteira: recusa, corte, parada inesperada,
+    JSON inválido ou nível fora do enum. Falha de TEXTO descarta só a explicação."""
     if resposta.motivo_parada == "refusal":
         raise SaidaRecusada
     if resposta.motivo_parada == "max_tokens":
@@ -83,10 +89,14 @@ def _interpretar(resposta: RespostaIA) -> ResultadoIA:
     if resposta.motivo_parada != "end_turn":
         raise ParadaInesperada
     saida = SaidaIA.model_validate_json(resposta.texto)
+    explicacao: ExplicacaoIA | None
+    try:
+        explicacao = explicacao_da_saida(saida)
+    except SaidaInutilizavel as exc:
+        logger.warning("Explicação da IA descartada, nível da IA mantido: %s", type(exc).__name__)
+        explicacao = None
     return ResultadoIA(
-        nivel_sugerido=saida.nivel_sugerido,
-        explicacao=explicacao_da_saida(saida),
-        modelo=resposta.modelo,
+        nivel_sugerido=saida.nivel_sugerido, explicacao=explicacao, modelo=resposta.modelo
     )
 
 

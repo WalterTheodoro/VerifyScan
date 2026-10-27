@@ -115,9 +115,8 @@ async def test_erro_da_api_e_plano_b(erro: Exception, caplog: pytest.LogCaptureF
         (saida_da_ia(sinais=["a", "b", "c", "d", "e", "f"]), "ValidationError"),
         (saida_da_ia(o_que_fazer=["só um"]), "ValidationError"),
         (saida_da_ia(nivel_sugerido="PERIGO"), "ValidationError"),
-        (saida_da_ia(sinais=["Esta mensagem é segura."]), "SaidaInutilizavel"),
     ],
-    ids=["nao-json", "6-sinais", "1-passo", "nivel", "afirma-seguranca"],
+    ids=["nao-json", "6-sinais", "1-passo", "nivel"],
 )
 async def test_saida_invalida_e_plano_b(
     texto: str, motivo: str, caplog: pytest.LogCaptureFixture
@@ -126,6 +125,42 @@ async def test_saida_invalida_e_plano_b(
         assert await AnalisadorIA(ClienteIAFalso(texto), timeout_s=15).avaliar(ENTRADA) is None
 
     assert motivo in caplog.text
+
+
+async def test_sinal_que_afirma_seguranca_nao_derruba_o_nivel() -> None:
+    """Só falha de forma descarta a IA inteira. Um sinal que afirma segurança sai sozinho."""
+    cliente = ClienteIAFalso(
+        saida_da_ia(nivel_sugerido="ALTO", sinais=["Esta mensagem é segura.", "Pede Pix."])
+    )
+
+    resultado = await AnalisadorIA(cliente, timeout_s=15).avaliar(ENTRADA)
+
+    assert resultado is not None
+    assert resultado.nivel_sugerido == "ALTO"
+    assert resultado.explicacao is not None
+    assert resultado.explicacao.sinais == ("Pede Pix.",)
+
+
+@pytest.mark.parametrize(
+    "saida",
+    [
+        saida_da_ia(o_que_fazer=["Pode confiar.", "Apague a mensagem."]),
+        saida_da_ia(tipo="<br>"),
+    ],
+    ids=["passos-abaixo-do-minimo", "tipo-vazio"],
+)
+async def test_explicacao_descartada_mantem_o_nivel(
+    saida: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A explicação abaixo do mínimo vira plano B na tela, mas o nível da IA continua valendo."""
+    with caplog.at_level(logging.WARNING):
+        resultado = await AnalisadorIA(ClienteIAFalso(saida), timeout_s=15).avaliar(ENTRADA)
+
+    assert resultado is not None
+    assert resultado.nivel_sugerido == "ALTO"
+    assert resultado.explicacao is None
+    assert "SaidaInutilizavel" in caplog.text
+    assert "Pode confiar" not in caplog.text
 
 
 @pytest.mark.parametrize(

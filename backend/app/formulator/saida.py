@@ -68,23 +68,31 @@ class SaidaIA(BaseModel):
 
 
 class SaidaInutilizavel(Exception):
-    """A saída passou na validação, mas não serve para a tela: vira plano B."""
+    """A explicação não cumpre o mínimo depois da limpeza: a tela usa o plano B do nível final.
+
+    Só a explicação é descartada. O nível sugerido já passou na validação de forma e continua
+    valendo na combinação (ADR-0020): nenhuma validação de texto reduz o nível.
+    """
 
 
 def explicacao_da_saida(saida: SaidaIA) -> ExplicacaoIA:
-    """Limpa cada campo e confere o que sobrou. É o único caminho da IA até a tela."""
+    """Limpa cada campo e confere o que sobrou. É o único caminho da IA até a tela.
+
+    O item que afirma segurança sai sozinho, e os outros ficam. Descartar a saída inteira por
+    causa de uma frase jogava fora o nível ALTO junto (defeito da bateria da fatia 6).
+    """
     tipo = limpar_texto(saida.tipo, limite=TIPO_MAX_CARACTERES)
+    if afirma_seguranca(tipo):
+        tipo = ""
     sinais = _limpar_itens(saida.sinais)
     passos = _limpar_itens(saida.o_que_fazer)
     if not tipo:
         raise SaidaInutilizavel("o tipo ficou vazio depois da limpeza")
     if len(passos) < PASSOS_MIN:
         raise SaidaInutilizavel("sobraram menos passos que o mínimo depois da limpeza")
-    if any(afirma_seguranca(texto) for texto in (tipo, *sinais, *passos)):
-        raise SaidaInutilizavel("a saída afirma que a mensagem é segura")
     return ExplicacaoIA(tipo=tipo, sinais=sinais, o_que_fazer=passos)
 
 
 def _limpar_itens(itens: tuple[str, ...]) -> tuple[str, ...]:
     limpos = (limpar_texto(item, limite=ITEM_MAX_CARACTERES) for item in itens)
-    return tuple(item for item in limpos if item)
+    return tuple(item for item in limpos if item and not afirma_seguranca(item))
