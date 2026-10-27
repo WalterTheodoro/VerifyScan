@@ -5,6 +5,9 @@ infraestrutura entram na aplicação por `Depends` e são substituídas aqui por
 falsas determinísticas.
 """
 
+import asyncio
+import dataclasses
+import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -15,12 +18,15 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
+    obter_analisador_ia,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
     obter_repositorio_usuarios,
 )
 from app.core.config import Settings, get_settings
+from app.formulator.analisador import AnalisadorIA
+from app.formulator.cliente import RespostaIA
 from app.main import criar_app
 from app.schemas.health import SaudeServico
 from app.services.health import VerificadorSaude
@@ -49,6 +55,58 @@ def verificador_falso(resultado: SaudeServico) -> Callable[[], VerificadorSaude]
         return resultado
 
     return lambda: verificar
+
+
+def saida_da_ia(**mudancas: object) -> str:
+    """Uma resposta válida da IA, em JSON, com os campos trocados por `mudancas`."""
+    valores: dict[str, object] = {
+        "tipo": "falsa cobrança de taxa dos Correios",
+        "sinais": ["Pede pagamento por Pix para liberar uma entrega."],
+        "nivel_sugerido": "ALTO",
+        "o_que_fazer": ["Não pague a taxa.", "Apague a mensagem e bloqueie o contato."],
+    }
+    valores.update(mudancas)
+    return json.dumps(valores, ensure_ascii=False)
+
+
+class ClienteIAFalso:
+    """Falso determinístico de `ClienteIA`: responde `texto`, demora ou levanta `erro`.
+
+    Guarda o que recebeu, para o teste conferir o que foi enviado à IA.
+    """
+
+    def __init__(
+        self,
+        texto: str = "",
+        *,
+        erro: Exception | None = None,
+        demora_s: float = 0.0,
+        motivo_parada: str = "end_turn",
+    ) -> None:
+        self.texto = texto or saida_da_ia()
+        self.erro = erro
+        self.demora_s = demora_s
+        self.motivo_parada = motivo_parada
+        self.chamadas: list[tuple[str, str]] = []
+
+    async def gerar(self, sistema: str, entrada: str) -> RespostaIA:
+        self.chamadas.append((sistema, entrada))
+        if self.demora_s:
+            await asyncio.sleep(self.demora_s)
+        if self.erro is not None:
+            raise self.erro
+        return RespostaIA(
+            texto=self.texto,
+            motivo_parada=self.motivo_parada,
+            modelo="claude-haiku-5-5",
+            tokens_entrada=1000,
+            tokens_saida=200,
+        )
+
+
+def ia_desligada() -> AnalisadorIA:
+    """Override de `obter_analisador_ia` com a IA desligada: o padrão de toda app de teste."""
+    return AnalisadorIA(None, timeout_s=15)
 
 
 class RepositorioAnalisesEmMemoria:
@@ -228,7 +286,9 @@ class RepositorioHistoricoEmMemoria:
             if linha.dono is not None and linha.analise.criada_em <= limite_da_janela
         ]
         for linha in vencidas:
+            # Como o UPDATE real: o dono, o texto e a explicação da IA saem juntos (ADR-0020).
             linha.dono = None
+            linha.analise = dataclasses.replace(linha.analise, texto=None, explicacao_ia=None)
         return len(vencidas)
 
 
@@ -272,13 +332,15 @@ def app(
     """Uma instância nova por teste, para que os overrides não vazem entre casos.
 
     Os repositórios reais precisariam do banco; por padrão toda app de teste usa os falsos em
-    memória, e a configuração é a default de produção (cookie Secure).
+    memória, e a configuração é a default de produção (cookie Secure). A IA começa desligada; o
+    teste que a quer troca o `obter_analisador_ia` por um com o `ClienteIAFalso`.
     """
     app = criar_app()
     app.dependency_overrides[obter_repositorio_analises] = lambda: repositorio
     app.dependency_overrides[obter_repositorio_usuarios] = lambda: usuarios
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: sessoes
     app.dependency_overrides[obter_repositorio_historico] = lambda: historico
+    app.dependency_overrides[obter_analisador_ia] = ia_desligada
     # Lambda, e não a função direto: o FastAPI lê a assinatura do override, e o `**valores`
     # viraria parâmetro da requisição (422 em toda rota — aconteceu).
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()

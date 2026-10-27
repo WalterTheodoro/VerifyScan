@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# VerifyScan — respostas do plano B, uma por nível (ADR-0020)
+#
+# É o que a pessoa lê quando a análise sai sem a IA: desligada, fora do ar, lenta ou com uma
+# resposta inválida. Com a IA, o título continua vindo daqui (e o texto do BAIXO também); só os
+# passos são trocados pelos que a IA escreveu para aquela mensagem.
+#
+# Regra que não muda: o sistema NUNCA diz "não é golpe". O algoritmo só sabe que não achou os
+# sinais que conhece. O teste `test_respostas.py` confere isso a cada mudança.
+#
+# Fonte do prazo do MED: Guia de implementação do MED, Banco Central (ADR-0020).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+versao: 1
+
+niveis:
+  BAIXO:
+    titulo: Não encontramos sinais comuns de golpe.
+    texto: >-
+      Isso não garante que a mensagem seja segura. Se ela pedir dinheiro, senha, código ou
+      dados pessoais, desconfie e confirme pelo aplicativo ou telefone oficial que você já
+      conhece.
+
+  MEDIO:
+    titulo: Esta mensagem tem sinais que aparecem em golpes.
+    passos:
+      - Não clique em links nem passe dados ou códigos.
+      - >-
+        Confirme com a empresa ou a pessoa por um canal que você já conhece, nunca pelo número
+        ou pelo link da mensagem.
+      - Na dúvida, mostre a mensagem para alguém de confiança antes de responder.
+
+  ALTO:
+    titulo: Esta mensagem tem fortes sinais de golpe.
+    passos:
+      - Não clique, não pague e não responda.
+      - Bloqueie o contato e denuncie no próprio aplicativo.
+      - >-
+        Se já pagou por Pix, ligue agora para o seu banco e peça a devolução pelo MED
+        (Mecanismo Especial de Devolução, do Banco Central). O prazo para contestar é de até
+        80 dias.
+      - Registre um boletim de ocorrência na delegacia online do seu estado.
