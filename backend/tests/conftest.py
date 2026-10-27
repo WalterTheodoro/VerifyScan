@@ -106,6 +106,11 @@ class RepositorioSessoesEmMemoria:
             if not (s.usuario_id == usuario_id and s.expira_em <= self.relogio())
         ]
 
+    async def apagar_todas_vencidas(self) -> int:
+        antes = len(self.sessoes)
+        self.sessoes = [s for s in self.sessoes if s.expira_em > self.relogio()]
+        return antes - len(self.sessoes)
+
 
 class RepositorioUsuariosEmMemoria:
     """Falso determinístico de `RepositorioUsuarios`. O e-mail é a chave, como o UNIQUE."""
@@ -134,6 +139,26 @@ class RepositorioUsuariosEmMemoria:
         for email, atual in self.credenciais.items():
             if atual.usuario.id == usuario_id:
                 self.credenciais[email] = CredenciaisArmazenadas(atual.usuario, senha_hash)
+
+    async def trocar_senha(
+        self, usuario_id: uuid.UUID, senha_hash: str, token_hash_mantido: str
+    ) -> None:
+        await self.atualizar_senha_hash(usuario_id, senha_hash)
+        self.sessoes.sessoes = [
+            s
+            for s in self.sessoes.sessoes
+            if s.usuario_id != usuario_id or s.token_hash == token_hash_mantido
+        ]
+
+    async def apagar(self, usuario_id: uuid.UUID) -> None:
+        """O que o ON DELETE CASCADE faz no banco: a conta leva as sessões junto."""
+        self.credenciais = {
+            email: atual
+            for email, atual in self.credenciais.items()
+            if atual.usuario.id != usuario_id
+        }
+        self.sessoes.sessoes = [s for s in self.sessoes.sessoes if s.usuario_id != usuario_id]
+        self.sessoes.usuarios.pop(usuario_id, None)
 
     async def buscar_conta(self, usuario_id: uuid.UUID) -> DadosConta | None:
         for atual in self.credenciais.values():

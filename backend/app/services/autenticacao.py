@@ -40,6 +40,21 @@ class CredenciaisInvalidas(Exception):
         super().__init__("E-mail ou senha incorretos.")
 
 
+class SenhaIncorreta(Exception):
+    """Senha errada numa ação de quem JÁ está logado (trocar senha, excluir conta). Vira 400, e
+    nunca 401: o frontend trata 401 como "deslogado" e trocaria a tela por "Entrar" (ADR-0019)."""
+
+    def __init__(self) -> None:
+        super().__init__("A senha atual não confere.")
+
+
+class ContaNaoEncontrada(Exception):
+    """A conta sumiu entre a checagem da sessão e a ação: para a tela, é "deslogado" (401)."""
+
+    def __init__(self) -> None:
+        super().__init__("Você precisa entrar na sua conta.")
+
+
 class ServicoIndisponivel(Exception):
     """O banco não respondeu dentro de `timeout_autenticacao_s` — tipicamente o Neon acordando."""
 
@@ -127,6 +142,43 @@ class ServicoAutenticacao:
         """`None` se a conta sumiu entre a checagem da sessão e esta consulta."""
         async with self._banco():
             return await self._usuarios.buscar_conta(usuario.id)
+
+    async def trocar_senha(
+        self, usuario: UsuarioAutenticado, token: str, senha_atual: str, nova_senha: str
+    ) -> None:
+        """Grava o hash novo e derruba as OUTRAS sessões da conta; a deste aparelho continua.
+
+        Quem troca a senha por desconfiança quer tirar o acesso de quem mais estiver logado, sem
+        precisar entrar de novo onde está (ADR-0019). A nova senha segue as regras do cadastro.
+        """
+        self._validar_senha(nova_senha)
+        await self._conferir_senha(usuario, senha_atual)
+        # Comparar o texto basta: a senha atual acabou de ser conferida contra o hash.
+        if nova_senha == senha_atual:
+            raise EntradaInvalida("A nova senha precisa ser diferente da atual.")
+        senha_hash = await self._hasher.gerar(nova_senha)
+        async with self._banco():
+            await self._usuarios.trocar_senha(usuario.id, senha_hash, hash_do_token(token))
+        logger.info("Senha trocada")
+
+    async def excluir_conta(self, usuario: UsuarioAutenticado, senha: str) -> None:
+        """Pede a senha mesmo com a sessão aberta: no celular dividido com a família, sessão
+        aberta sozinha não basta para apagar a conta (ADR-0019)."""
+        await self._conferir_senha(usuario, senha)
+        async with self._banco():
+            await self._usuarios.apagar(usuario.id)
+        logger.info("Conta excluída")
+
+    async def _conferir_senha(self, usuario: UsuarioAutenticado, senha: str) -> None:
+        """Busca o hash pelo caminho do login e confere a senha, com o Argon2 fora do teto."""
+        async with self._banco():
+            credenciais = await self._usuarios.buscar_credenciais(usuario.email)
+        if credenciais is None or credenciais.usuario.id != usuario.id:
+            raise ContaNaoEncontrada()
+        if not await self._hasher.verificar(credenciais.senha_hash, senha):
+            # INFO e sem identificar a conta, como o login recusado.
+            logger.info("Senha da conta recusada")
+            raise SenhaIncorreta()
 
     async def sair(self, token: str) -> None:
         if not token:

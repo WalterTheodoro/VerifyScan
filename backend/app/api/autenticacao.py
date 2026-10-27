@@ -52,8 +52,9 @@ def _gravar_cookie(response: Response, token: str, settings: Settings) -> None:
     )
 
 
-def _apagar_cookie(response: Response, settings: Settings) -> None:
-    # Mesmos atributos da gravação: o navegador só apaga o cookie que bate com eles.
+def apagar_cookie(response: Response, settings: Settings) -> None:
+    # Mesmos atributos da gravação: o navegador só apaga o cookie que bate com eles. Público
+    # porque a exclusão da conta (api/gestao_conta.py) também limpa o cookie.
     response.delete_cookie(
         NOME_DO_COOKIE,
         path="/",
@@ -137,7 +138,7 @@ async def sair(
         )
     else:
         resposta = Response(status_code=status.HTTP_204_NO_CONTENT)
-    _apagar_cookie(resposta, settings)
+    apagar_cookie(resposta, settings)
     return resposta
 
 

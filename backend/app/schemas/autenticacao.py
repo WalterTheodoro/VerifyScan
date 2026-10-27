@@ -1,4 +1,4 @@
-"""Contrato de /api/auth.
+"""Contrato de /api/auth e das ações da conta que pedem senha (ADR-0019).
 
 Os campos têm default vazio de propósito: campo ausente chega ao service e é recusado com frase
 em pt-BR, em vez do 422 padrão do FastAPI, que sai em inglês. O corpo em si continua
@@ -16,6 +16,15 @@ class SolicitacaoCadastro(BaseModel):
 
 class SolicitacaoLogin(BaseModel):
     email: str = ""
+    senha: str = ""
+
+
+class SolicitacaoTrocaSenha(BaseModel):
+    senha_atual: str = ""
+    nova_senha: str = ""
+
+
+class SolicitacaoExclusao(BaseModel):
     senha: str = ""
 
 
