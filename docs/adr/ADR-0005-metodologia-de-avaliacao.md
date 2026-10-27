@@ -1,6 +1,6 @@
 # ADR-0005 — Metodologia de avaliação do motor de risco
 
-**Data:** 2026-08-27 · **Status:** aceito · **Fases:** 2, 9
+**Data:** 2026-08-27 · **Status:** aceito, complementado pelo ADR-0021 · **Fases:** 2, 9
 
 ## Contexto
 
