@@ -63,7 +63,7 @@ uv run alembic check                   # falha se modelo e migração divergirem
 # avaliação do motor de risco contra o corpus rotulado
 uv run python -m tools.avaliar_corpus
 
-# análise com IA contra a API real, 16 amostras sintéticas (fora do CI; usa a chave do .env)
+# análise com IA contra a API real, 20 amostras sintéticas (fora do CI; usa a chave do .env)
 uv run python -m tools.testar_ia
 
 # frontend
