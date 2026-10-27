@@ -206,6 +206,31 @@ uv run pytest -q -m integracao        # só integração
 uv run pytest -q -m "not integracao"  # só unitários, sem banco
 ```
 
+### Avaliação contra o corpus rotulado
+
+```powershell
+Set-Location backend
+uv run python -m tools.avaliar_corpus                            # motor, offline, calibração e teste
+uv run python -m tools.avaliar_corpus --com-ia --divisao teste   # motor + IA real (fora do CI)
+uv run python -m tools.avaliar_corpus --gravar-linha-de-base     # regrava o gate do CI
+uv run python -m tools.sortear_divisao                           # divide só os casos novos
+```
+
+Mede o motor (e, com `--com-ia`, o motor com a IA) nos casos de `corpus/casos/`. O resultado sai
+por divisão, no total e por autor:
+- a matriz de níveis;
+- golpes detectados e alarmes falsos;
+- precisão, recall, F1 e acurácia, com o intervalo de 95% de Wilson;
+- o KPI do §1.6 (precisão e recall acima de 85%, errata 14);
+- a comparação com uma linha de base trivial.
+
+Cada rodada escreve um relatório novo em `docs/avaliacoes/`. Ele leva o carimbo das regras, do
+modelo, do commit, do hash do corpus e da semente, e lista os erros só pelo id do caso.
+
+O `pytest` roda o motor na calibração e falha se ele piorar mais de um caso em relação à
+`tools/linha_de_base_motor.json`. O `--com-ia` usa a chave do `.env` e custa uns 2 centavos de
+dólar por rodada no teste. Decisões e limitações: ADR-0021.
+
 ### Análise com IA contra a API real (fora do CI)
 
 ```powershell
@@ -247,11 +272,11 @@ VerifyScan/
 │  │  ├─ schemas/      Pydantic — o contrato da API
 │  │  └─ core/         config, banco, cache, hash de senha, timeouts
 │  ├─ alembic/         migrações — o esquema só muda por elas
-│  ├─ tools/           scripts: avaliar_corpus (Fase 2), testar_ia e amostras_ia.yaml
+│  ├─ tools/           scripts: avaliar_corpus e sortear_divisao (Fase 2), testar_ia e amostras_ia.yaml
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
-├─ corpus/             base rotulada para medir o motor de risco (Fase 2)
-├─ docs/               RFC, plano de execução, ADRs e diário de bordo
+├─ corpus/             161 casos sintéticos rotulados, divisão fixa calibração/teste (Fase 2)
+├─ docs/               RFC, plano de execução, ADRs, diário de bordo e avaliacoes/ (relatórios)
 └─ docker-compose.yml  Postgres 16 e Redis 7
 ```
 
