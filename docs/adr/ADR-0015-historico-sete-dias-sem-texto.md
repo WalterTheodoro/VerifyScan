@@ -1,6 +1,7 @@
 # ADR-0015 — Histórico: 7 dias, sem texto, desvinculação
 
-**Data:** 2026-10-01 · **Status:** aceito · **Fase:** 8 (fatia 4) · complementa o ADR-0006
+**Data:** 2026-10-01 · **Status:** aceito; item 1 substituído pelo ADR-0018 · **Fase:** 8 (fatia 4) ·
+complementa o ADR-0006
 
 ## Contexto
 

@@ -20,7 +20,7 @@
 | 9 | §2.4 (tabela RNF), RNF03 | "criptografada (bcrypt)" → "com hash Argon2id" | Fase 8 |
 | 10 | §7 (segurança) | "tokens de sessão JWT" → sessão opaca em banco, cookie HttpOnly | Fase 8 |
 | 11 | §5.5 (modelo de dados) | `Usuario`: + `nome_exibicao`, − `plano` | Fase 8 |
-| 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → não armazenado; histórico de 7 dias | 9 |
+| 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → 7 dias, só autenticado, com aviso; anônimo nunca | 9 |
 
 ---
 
@@ -184,10 +184,14 @@ plano pago no escopo do TCC; um campo sem uso é dado sem finalidade.
 
 Na tabela da §7.1, trocar a coluna Armazenamento da linha "Texto enviado":
 
-> de **"Permanente (somente usuários autenticados)"** para **"Não armazenado; o histórico guarda
-> nível, pontuação, fatores e data, ligados à conta por 7 dias"**
+> de **"Permanente (somente usuários autenticados)"** para **"Guardado para usuário autenticado
+> por 7 dias, com aviso visível antes do envio; anônimo nunca"**
 
 **Por quê:** toda mensagem suspeita contém dado de terceiro (remetente, telefone, valor, número de
-conta), e a §2.6 promete não armazenar conteúdo de terceiros. A pessoa reconhece a análise pela
-data, pelo nível e pelos fatores. Depois de 7 dias, a análise deixa de ficar ligada à conta e fica
-idêntica a uma anônima (ADR-0006, ADR-0015).
+conta), e a §2.6 promete não armazenar conteúdo de terceiros. Guardar para sempre contraria isso.
+Não guardar nada (a primeira versão desta errata, ADR-0015) deixava a pessoa sem reconhecer a
+análise no histórico. A versão final guarda a mensagem só para quem está logado, que é avisado
+antes de enviar, e só pela janela do histórico. Depois de 7 dias, o texto é apagado e a análise
+fica idêntica a uma anônima. Ela também pode ser apagada antes, a qualquer momento, e vai junto
+com a conta (ADR-0006, ADR-0015, ADR-0018). O conflito com a §2.6 fica declarado como limitação no
+ADR-0018.
