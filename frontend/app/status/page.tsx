@@ -88,11 +88,14 @@ export default function PaginaSaude() {
       {estado.situacao === "inalcancavel" && (
         <div className="border border-current p-4">
           <p className="font-bold">Não conseguimos falar com o servidor.</p>
-          {/* `--loop none`: no Windows, o loop padrão quebra o psycopg assíncrono (ADR-0007). */}
-          <p className="text-sm">
-            O backend está no ar?{" "}
-            <code>uv run uvicorn app.main:app --port 8000 --loop none</code>
-          </p>
+          {/* A dica é para quem desenvolve: em produção, o visitante vê só a frase acima.
+              `--loop none`: no Windows, o loop padrão quebra o psycopg assíncrono (ADR-0007). */}
+          {process.env.NODE_ENV !== "production" && (
+            <p className="text-sm">
+              O backend está no ar?{" "}
+              <code>uv run uvicorn app.main:app --port 8000 --loop none</code>
+            </p>
+          )}
         </div>
       )}
 

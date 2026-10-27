@@ -15,7 +15,8 @@
 export type Resposta = { doBackend: true; status: number; corpo: unknown } | { doBackend: false };
 
 export type OpcoesDeEspera = {
-  /** Chamado quando a espera começa, para a tela mostrar "O servidor está acordando". */
+  /** Chamado no máximo uma vez por espera, para a tela mostrar "O servidor está acordando": na
+   *  primeira resposta que não veio do backend ou depois de `AVISO_APOS_MS` sem resposta. */
   aoEsperar?: () => void;
   /** Abortado quando a tela sai: para de tentar. */
   signal?: AbortSignal;
@@ -26,6 +27,10 @@ export const INTERVALOS_MS = [2000, 3000, 5000];
 
 /** Depois disto sem resposta, desiste: o Render leva até ~60 s para acordar, com folga. */
 export const LIMITE_ESPERA_MS = 90_000;
+
+/** Sem resposta do backend por este tempo, o aviso sai mesmo com o pedido ainda pendurado: em
+ *  produção, o pedido que acorda o backend não falha, só demora (adendo do ADR-0017). */
+export const AVISO_APOS_MS = 3000;
 
 /** Resposta do backend mais nova que isto dispensa a espera antes de um envio. O Render dorme
  *  15 min depois da última requisição, mesmo com a aba aberta; 10 min deixa margem. */
@@ -103,6 +108,27 @@ function dormir(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** O aviso de uma espera: `avisar` chama `aoEsperar` uma vez só, e o temporizador o chama sozinho
+ *  depois de `AVISO_APOS_MS`. `encerrar` (fim da espera ou abort) cancela tudo. O abort encerra
+ *  na hora porque o pedido pendurado pode demorar a terminar depois dele. */
+function avisoDaEspera(aoEsperar?: () => void, signal?: AbortSignal) {
+  let avisado = false;
+  const avisar = () => {
+    if (!avisado && !signal?.aborted) {
+      avisado = true;
+      aoEsperar?.();
+    }
+  };
+  const timer = setTimeout(avisar, AVISO_APOS_MS);
+  const encerrar = () => {
+    avisado = true;
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", encerrar);
+  };
+  signal?.addEventListener("abort", encerrar, { once: true });
+  return { avisar, encerrar };
+}
+
 const foraDoBackend = (resposta: Resposta) => !resposta.doBackend;
 
 /** GET que tenta de novo sozinho enquanto `repetirSe` (padrão: a resposta não veio do backend),
@@ -116,25 +142,28 @@ export async function lerComRepeticao(
   }: OpcoesDeEspera & { repetirSe?: (resposta: Resposta) => boolean } = {},
 ): Promise<Resposta> {
   const inicio = Date.now();
-  let resposta = await pedir(caminho, { cache: "no-store", signal });
-  for (let tentativa = 0; repetirSe(resposta) && !signal?.aborted; tentativa++) {
-    const intervalo = INTERVALOS_MS[Math.min(tentativa, INTERVALOS_MS.length - 1)];
-    if (Date.now() - inicio + intervalo > LIMITE_ESPERA_MS) {
-      break;
+  const aviso = avisoDaEspera(aoEsperar, signal);
+  try {
+    let resposta = await pedir(caminho, { cache: "no-store", signal });
+    for (let tentativa = 0; repetirSe(resposta) && !signal?.aborted; tentativa++) {
+      const intervalo = INTERVALOS_MS[Math.min(tentativa, INTERVALOS_MS.length - 1)];
+      if (Date.now() - inicio + intervalo > LIMITE_ESPERA_MS) {
+        break;
+      }
+      aviso.avisar();
+      // A cada repetição, não só na primeira: um despertar perdido não pode deixar a espera
+      // inteira sem nenhum. O intervalo mínimo segura a rajada.
+      despertar();
+      await dormir(intervalo, signal);
+      if (signal?.aborted) {
+        break;
+      }
+      resposta = await pedir(caminho, { cache: "no-store", signal });
     }
-    if (tentativa === 0) {
-      aoEsperar?.();
-    }
-    // A cada repetição, não só na primeira: um despertar perdido não pode deixar a espera inteira
-    // sem nenhum. O intervalo mínimo segura a rajada.
-    despertar();
-    await dormir(intervalo, signal);
-    if (signal?.aborted) {
-      break;
-    }
-    resposta = await pedir(caminho, { cache: "no-store", signal });
+    return resposta;
+  } finally {
+    aviso.encerrar();
   }
-  return resposta;
 }
 
 export type SituacaoDaSessao =
@@ -180,13 +209,20 @@ export async function esperarPeloBackend(opcoes: OpcoesDeEspera = {}): Promise<b
     return true;
   }
   despertar();
-  if (aquecimento !== null) {
-    await aquecimento;
-    if (acordadoHaPouco()) {
-      return true;
+  // O aviso cobre também o aquecimento, que pode estar pendurado se o clique vier logo depois de
+  // a página abrir. O `avisar` daqui segue para a leitura: continua sendo um aviso só.
+  const aviso = avisoDaEspera(opcoes.aoEsperar, opcoes.signal);
+  try {
+    if (aquecimento !== null) {
+      await aquecimento;
+      if (acordadoHaPouco()) {
+        return true;
+      }
     }
+    return (await lerComRepeticao("/health", { ...opcoes, aoEsperar: aviso.avisar })).doBackend;
+  } finally {
+    aviso.encerrar();
   }
-  return (await lerComRepeticao("/health", opcoes)).doBackend;
 }
 
 /** POST/DELETE. Nunca repete: o backend pode ter processado o pedido sem a resposta chegar, e

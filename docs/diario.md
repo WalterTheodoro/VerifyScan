@@ -1274,3 +1274,63 @@ O motor de risco não mudou: `avaliar_corpus` não se aplica.
 2. `docs: registra o adendo do ADR-0017 sobre o despertar direto`
 
 Nenhum arquivo aparece em dois commits.
+
+## 2026-10-26 — Correção: aviso aos 3 s
+
+### O problema
+
+Segundo teste em produção, depois do merge do PR #9:
+- **P1**, com os dois serviços dormindo: passou em **58,6 s**. Foram ≈26 s na página de "waking
+  up" do próprio Render, acordando o frontend, e ≈32 s acordando o backend.
+- **P2**, com a página aberta e parada 20 min antes do clique em "Analisar": **46,2 s**. O
+  `GET /health` ficou pendurado 45,3 s e voltou 200, e o `POST /api/analises` levou 0,8 s.
+  - **O aviso "O servidor está acordando" não apareceu.** A pessoa viu só "Analisando…" por 46 s.
+  - Causa: o aviso só saía depois de uma falha, e um pedido que só demora nunca falha.
+- O **429** visto no P1 veio do Render, já que o backend não tem rate limit. O site o trata como
+  "não veio do backend" e repete, como deve.
+- Os **ERR_ABORTED** dos despertares são artefato do teste: o navegador é fechado logo depois do
+  sucesso. Não são cancelamento no código.
+
+**Limitação para a monografia.** A página de "waking up" do Render, em inglês, é do provedor. No
+plano gratuito não temos como alterá-la, e ela aparece antes de qualquer código nosso rodar.
+
+### O que foi feito
+
+- `servidor.ts`: nova constante `AVISO_APOS_MS = 3000` e auxiliar `avisoDaEspera`.
+  - O aviso sai pelo que vier primeiro: a primeira resposta que não veio do backend, ou 3 s sem
+    resposta.
+  - É uma vez só por espera, e o temporizador é cancelado no fim da espera ou no abort.
+  - `esperarPeloBackend` cobre também o aquecimento pendurado.
+  - Adendo no ADR-0017.
+- `/status`: a dica `uv run uvicorn …` só aparece fora de produção
+  (`process.env.NODE_ENV !== "production"`). Ela era mostrada ao visitante do site.
+- **Observação, sem mexer:** os timers de 5 s de `use-carga.ts` e `use-envio-conta.ts`
+  (`ESPERA_ATE_AVISAR_MS`) ficaram redundantes durante a espera. Ainda cobrem o POST lento do
+  login depois de o backend responder. Fica para avaliar se vale unificar.
+
+### Verificação
+
+- Testes escritos antes do código. Com só a constante exportada, `npm test` deu 31 passando e 3
+  falhando: leitura pendurada 45 s, envio com `/health` pendurado e envio com aquecimento
+  pendurado.
+- Os outros três casos novos já passavam e ficam como guarda de regressão: resposta em 1 s sem
+  aviso, falha na hora com um aviso só, e abort aos 2 s sem aviso.
+- Depois do código, **34 passando, 0 falhando**.
+- `npm run lint`, `tsc --noEmit` e `npm run build` limpos.
+- No build de produção, "loop none" não aparece em `.next/static` nem em `.next/server/app`.
+- Backend intocado. O motor de risco não mudou: `avaliar_corpus` não se aplica.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Repetir o P2 em produção: o aviso deve aparecer aos ~3 s | Walter |
+| Avaliar unificar os timers de 5 s dos hooks com o `AVISO_APOS_MS` | observação, fora do escopo |
+
+### Commits
+
+1. `fix(frontend): mostra o aviso de servidor acordando após 3 s sem resposta`
+2. `docs: registra o adendo do ADR-0017 sobre o aviso aos 3 s`
+3. `fix(frontend): esconde a dica de desenvolvedor do /status em produção`
+
+Nenhum arquivo aparece em dois commits.
