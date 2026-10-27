@@ -26,7 +26,9 @@ from tests.conftest import (
 from tests.test_api_autenticacao import CADASTRO, LOGIN, _atributos, _cookie_de_sessao
 
 SENHA_NOVA = "outra senha boa"
-SENHA_ERRADA = {"detail": "A senha atual não confere."}
+# Cada quadro fala do campo que mostra: "Senha atual" na troca, "Sua senha" na exclusão.
+SENHA_ATUAL_ERRADA = {"detail": "A senha atual não confere."}
+SENHA_ERRADA = {"detail": "A senha não confere."}
 
 
 async def _navegador(app: FastAPI) -> AsyncClient:
@@ -86,7 +88,7 @@ async def test_senha_atual_errada_da_400_e_nada_muda(
     )
 
     assert resposta.status_code == 400
-    assert resposta.json() == SENHA_ERRADA
+    assert resposta.json() == SENHA_ATUAL_ERRADA
     assert _hash_atual(usuarios) == hash_antes
     assert len(sessoes.sessoes) == 2
     assert (await outro_aparelho.get("/api/auth/eu")).status_code == 200

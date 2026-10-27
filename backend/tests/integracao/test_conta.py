@@ -195,7 +195,7 @@ async def test_excluir_com_a_senha_errada_da_400_e_nada_some(
     resposta = await maria.post("/api/conta/excluir", json={"senha": "não é esta"})
 
     assert resposta.status_code == 400
-    assert resposta.json() == {"detail": "A senha atual não confere."}
+    assert resposta.json() == {"detail": "A senha não confere."}
     assert await _contagens(fabrica_de_sessoes, "Maria") == antes
     assert antes["usuarios"] == antes["sessoes"] == antes["analises"] == 1
     assert antes["indicadores"] > 0
