@@ -67,7 +67,18 @@ def test_registro_nao_tem_campo_para_url_e_o_texto_so_entra_com_dono() -> None:
     a regra do CHECK `ck_analises_texto_so_com_dono`, repetida no tipo (ADR-0006)."""
     campos = {campo.name for campo in dataclasses.fields(RegistroAnalise)}
 
-    assert campos == {"score", "nivel_risco", "tipo_input", "fatores", "usuario_id", "texto_input"}
+    assert campos == {
+        "score",
+        "nivel_risco",
+        "tipo_input",
+        "fatores",
+        "usuario_id",
+        "texto_input",
+        "nivel_motor",
+        "nivel_ia",
+        "ia_modelo",
+        "explicacao_ia",
+    }
     with pytest.raises(ValueError, match="dono"):
         RegistroAnalise(
             score=0, nivel_risco="BAIXO", tipo_input="texto", fatores=(), texto_input="oi"
@@ -274,3 +285,37 @@ async def test_registro_logado_que_falha_nao_leva_o_texto_ao_log(
     assert "RuntimeError" in caplog.text
     assert "bb-regularize" not in caplog.text
     assert "PIX" not in caplog.text
+
+
+def test_explicacao_da_ia_so_entra_com_dono() -> None:
+    """A regra do CHECK `ck_analises_explicacao_so_com_dono` (0005), repetida no tipo: o que a IA
+    escreveu pode repetir trechos da mensagem e segue a regra do texto (ADR-0020)."""
+    from app.schemas.analise import ExplicacaoIA
+
+    explicacao = ExplicacaoIA(tipo="x", sinais=(), o_que_fazer=("a", "b"))
+
+    with pytest.raises(ValueError, match="dono"):
+        RegistroAnalise(
+            score=0,
+            nivel_risco="ALTO",
+            tipo_input="texto",
+            fatores=(),
+            nivel_motor="BAIXO",
+            nivel_ia="ALTO",
+            ia_modelo="claude-haiku-5-5",
+            explicacao_ia=explicacao,
+        )
+
+
+def test_nivel_final_precisa_ser_o_maior_dos_dois() -> None:
+    """A regra do CHECK `ck_analises_nivel_e_o_maior` (0005), no tipo: a IA nunca baixa."""
+    with pytest.raises(ValueError, match="maior"):
+        RegistroAnalise(
+            score=0,
+            nivel_risco="BAIXO",
+            tipo_input="texto",
+            fatores=(),
+            nivel_motor="MEDIO",
+            nivel_ia="BAIXO",
+            ia_modelo="claude-haiku-5-5",
+        )

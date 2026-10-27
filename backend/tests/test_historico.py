@@ -18,6 +18,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import obter_repositorio_historico, obter_usuario_atual
 from app.core.config import get_settings
+from app.schemas.analise import ExplicacaoIA
+from app.scoring.respostas import carregar_respostas
 from app.services.repositorio_historico import AnaliseDoHistorico, FatorDoHistorico
 from app.services.repositorio_usuarios import UsuarioAutenticado
 from tests.conftest import RelogioFalso, RepositorioHistoricoEmMemoria, settings_de_teste
@@ -93,6 +95,61 @@ async def test_item_traz_o_texto_inteiro_quando_guardado(
     item = (await navegador.get("/api/historico")).json()["analises"][0]
 
     assert item["texto"] == mensagem
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_item_sem_ia_traz_o_plano_b_do_nivel(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """Análises antigas, ou feitas com a IA fora, mostram a resposta fixa do nível (ADR-0020)."""
+    historico.adicionar(MARIA.id, _analise(relogio))
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["explicacao_ia"] is None
+    assert item["orientacao"] == carregar_respostas().para("MEDIO").model_dump(mode="json")
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_item_com_ia_traz_a_mesma_resposta_da_home(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    explicacao = ExplicacaoIA(
+        tipo="falsa central antifraude",
+        sinais=("Pede para transferir para uma conta segura.",),
+        o_que_fazer=("Desligue.", "Ligue para o número do cartão."),
+    )
+    historico.adicionar(
+        MARIA.id,
+        dataclasses.replace(_analise(relogio), nivel_risco="ALTO", explicacao_ia=explicacao),
+    )
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["explicacao_ia"] == explicacao.model_dump(mode="json")
+    assert item["orientacao"]["titulo"] == "Esta mensagem tem fortes sinais de golpe."
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_desvinculacao_apaga_texto_e_explicacao_e_guarda_o_nivel(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """O falso segue a regra do UPDATE real: sem dono, sem texto e sem explicação."""
+    explicacao = ExplicacaoIA(tipo="x", sinais=(), o_que_fazer=("a", "b"))
+    historico.adicionar(
+        MARIA.id,
+        dataclasses.replace(
+            _analise(relogio, horas_atras=8 * 24), texto="oi", explicacao_ia=explicacao
+        ),
+    )
+
+    await navegador.get("/api/historico")
+
+    [linha] = historico.linhas
+    assert linha.dono is None
+    assert linha.analise.texto is None
+    assert linha.analise.explicacao_ia is None
+    assert linha.analise.nivel_risco == "MEDIO"
 
 
 @pytest.mark.usefixtures("como_maria")

@@ -5,43 +5,25 @@ import type { RefObject } from "react";
 
 import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./nivel-risco";
 
+/** A resposta fixa do nível, do `respostas.yaml` do backend (ADR-0020): o plano B inteiro quando
+ *  a IA não entrou, e o título (e o texto do BAIXO) quando ela entrou. */
+export type Orientacao = { titulo: string; texto: string | null; passos: string[] };
+
+/** O que a IA escreveu para esta mensagem, já limpo pelo backend: sem link, e-mail, telefone nem
+ *  HTML. Mesmo assim, é texto: o React escapa, e nada aqui vira link nem HTML. */
+export type ExplicacaoIA = { tipo: string; sinais: string[]; o_que_fazer: string[] };
+
 /** O que a placa precisa. As URLs só existem na resposta da análise: o banco não as guarda
- *  (ADR-0009), e no histórico elas aparecem dentro da própria mensagem. */
+ *  (ADR-0009), e no histórico elas aparecem dentro da própria mensagem.
+ *
+ *  `orientacao` e `explicacao_ia` são opcionais só para um backend anterior à fatia 6 (no deploy,
+ *  o frontend pode subir antes): sem eles, a placa mostra o nível e os fatores. */
 export type DadosDoResultado = {
   nivel_risco: NivelRisco;
   fatores: { categoria: string; descricao: string }[];
   urls_analisadas?: string[];
-};
-
-/** Texto exibido para cada nível; a palavra e o ícone vêm de `nivel-risco`.
- *  O tom acalma sem minimizar: quem lê isto pode estar com medo de já ter perdido dinheiro. */
-export const APRESENTACAO: Record<NivelRisco, { resumo: string; recomendacao: string }> = {
-  BAIXO: {
-    // A segunda frase é obrigatória: hoje só o texto é analisado (sem conferir o site do
-    // link, sem ler imagem, sem consulta externa), então risco baixo quer dizer "não achei
-    // sinais conhecidos", nunca "é seguro".
-    resumo:
-      "Não encontramos sinais conhecidos de golpe nesta mensagem. Isso não é garantia de " +
-      "que ela seja segura: por enquanto, lemos só o texto — ainda não conferimos o site do " +
-      "link, não lemos imagens e não consultamos listas de sites perigosos. Se algo parecer " +
-      "estranho, confie na sua desconfiança.",
-    recomendacao:
-      "Mesmo assim, se ela pedir dinheiro ou dados, confirme com a empresa pelo telefone ou " +
-      "aplicativo oficial antes de responder.",
-  },
-  MEDIO: {
-    resumo: "Esta mensagem tem sinais que pedem cuidado.",
-    recomendacao:
-      "Por enquanto, não clique em links e não passe seus dados. Confirme com a empresa, " +
-      "pelo telefone ou aplicativo oficial, se a mensagem é verdadeira.",
-  },
-  ALTO: {
-    resumo: "Esta mensagem tem sinais fortes de golpe. Você fez bem em conferir antes.",
-    recomendacao:
-      "Não clique no link, não pague nada e não passe seus dados. Apague a mensagem e " +
-      "bloqueie quem enviou. Se já pagou ou passou algum dado, ligue para o seu banco pelo " +
-      "número que está no verso do cartão.",
-  },
+  orientacao?: Orientacao;
+  explicacao_ia?: ExplicacaoIA | null;
 };
 
 /** "Você colou:" e a mensagem, como texto: um link dentro dela nunca vira <a>. Quem chama decide
@@ -76,8 +58,14 @@ export function Resultado({
 }) {
   const Titulo = nivel === 2 ? "h2" : "h3";
   const Subtitulo = nivel === 2 ? "h3" : "h4";
-  const { resumo, recomendacao } = APRESENTACAO[resultado.nivel_risco];
   const urls = resultado.urls_analisadas ?? [];
+  const orientacao = resultado.orientacao;
+  const ia = resultado.explicacao_ia ?? null;
+  // Com a IA, os passos são os dela, para esta mensagem; sem ela, os fixos do nível. O BAIXO do
+  // plano B não tem passos: o texto dele é a recomendação e vai para o quadro "O que fazer".
+  const passos = ia ? ia.o_que_fazer : (orientacao?.passos ?? []);
+  const textoNoQuadro = passos.length === 0 ? (orientacao?.texto ?? null) : null;
+  const textoForaDoQuadro = passos.length > 0 ? (orientacao?.texto ?? null) : null;
 
   return (
     <div
@@ -100,15 +88,52 @@ export function Resultado({
       </div>
 
       <div className="flex flex-col gap-bloco px-5 py-6 sm:p-bloco">
-        <p className="text-destaque font-semibold">{resumo}</p>
+        {orientacao && (
+          <div className="flex flex-col gap-junto">
+            <p className="text-destaque font-semibold">{orientacao.titulo}</p>
+            {ia && (
+              <p className="text-destaque">
+                Parece ser: <strong>{ia.tipo}</strong>.
+              </p>
+            )}
+            {/* O aviso do BAIXO ("isso não garante…") fica visível também com a IA: o sistema
+                nunca diz que a mensagem é segura. */}
+            {textoForaDoQuadro && <p className="text-destaque">{textoForaDoQuadro}</p>}
+          </div>
+        )}
 
-        {/* "O que fazer" vem antes de "Fatores identificados" de propósito: quem chega aqui está
+        {/* "O que fazer" vem antes dos sinais e dos fatores de propósito: quem chega aqui está
             assustado e precisa primeiro saber como se proteger; o porquê vem depois. */}
-        <div className="flex flex-col gap-2 rounded-2xl border-2 border-[var(--risco-forte)]
-          bg-[var(--risco-fundo)] p-5">
-          <Subtitulo className="text-secao font-bold sm:text-secao-lg">O que fazer</Subtitulo>
-          <p className="text-destaque">{recomendacao}</p>
-        </div>
+        {(passos.length > 0 || textoNoQuadro) && (
+          <div className="flex flex-col gap-2 rounded-2xl border-2 border-[var(--risco-forte)]
+            bg-[var(--risco-fundo)] p-5">
+            <Subtitulo className="text-secao font-bold sm:text-secao-lg">O que fazer</Subtitulo>
+            {passos.length > 0 ? (
+              <ul className="flex list-disc flex-col gap-2 pl-6 text-destaque
+                marker:text-[var(--risco-forte)]">
+                {passos.map((passo) => (
+                  <li key={passo}>{passo}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-destaque">{textoNoQuadro}</p>
+            )}
+          </div>
+        )}
+
+        {ia && ia.sinais.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <Subtitulo className="text-secao font-bold sm:text-secao-lg">
+              O que chamou a atenção
+            </Subtitulo>
+            <ul className="flex list-disc flex-col gap-2 pl-6 text-destaque
+              marker:text-[var(--risco-forte)]">
+              {ia.sinais.map((sinal) => (
+                <li key={sinal}>{sinal}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {resultado.fatores.length > 0 && (
           <div className="flex flex-col gap-3">
@@ -152,6 +177,10 @@ export function Resultado({
             </p>
           </div>
         )}
+
+        {/* Discreta e honesta: diz que a IA ajudou, sem selo nem destaque. Na cor do texto, como
+            todo o resto (nada de cinza, globals.css). */}
+        {ia && <p>Análise com apoio de IA.</p>}
       </div>
     </div>
   );

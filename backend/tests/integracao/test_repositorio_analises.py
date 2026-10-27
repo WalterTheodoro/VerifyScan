@@ -7,11 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import obter_servico_analise
+from app.formulator.analisador import AnalisadorIA
 from app.models import Analise, IndicadorRisco
 from app.schemas.analise import Fator
+from app.scoring.respostas import carregar_respostas
 from app.services.orquestrador import OrquestradorAnalise
 from app.services.repositorio_analises import RegistroAnalise, RepositorioAnalisesPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from tests.conftest import ClienteIAFalso, saida_da_ia
 
 pytestmark = pytest.mark.integracao
 
@@ -112,15 +115,19 @@ async def test_texto_de_entrada_nao_aparece_em_nenhuma_coluna_de_texto(
 
     Passa pelo orquestrador, que recebe o texto de verdade. As colunas são lidas do
     `information_schema`, e não listadas à mão: uma coluna de texto criada no futuro entra na
-    varredura sozinha. O marcador também está na query da URL, que o ADR-0009 preserva.
+    varredura sozinha. O marcador também está na query da URL, que o ADR-0009 preserva, e na
+    explicação da IA, que sem dono não vai ao banco (ADR-0020).
     """
     marcador = "XYZZY4242"
     texto = (
         f"URGENTE: sua conta será bloqueada. Faça um PIX para {marcador} e confirme seu CPF "
         f"em http://golpe-exemplo.xyz/pix?email={marcador}"
     )
+    ia = ClienteIAFalso(saida_da_ia(tipo=f"cobrança para {marcador}"))
     orquestrador = OrquestradorAnalise(
         servico=obter_servico_analise(),
+        analisador_ia=AnalisadorIA(ia, timeout_s=15),
+        respostas=carregar_respostas(),
         repositorio=RepositorioAnalisesPostgres(fabrica_de_sessoes),
         sessoes=RepositorioSessoesPostgres(fabrica_de_sessoes),
         timeout_s=5.0,
@@ -129,6 +136,8 @@ async def test_texto_de_entrada_nao_aparece_em_nenhuma_coluna_de_texto(
     resposta = await orquestrador.analisar(texto)
 
     assert resposta.fatores, "a mensagem precisa pontuar, senão o teste não prova nada"
+    assert resposta.explicacao_ia is not None
+    assert marcador in resposta.explicacao_ia.tipo, "a IA precisa citar, senão não prova nada"
     async with fabrica_de_sessoes() as sessao:
         assert await _contar(sessao, IndicadorRisco) == len(resposta.fatores)
         colunas = (
@@ -136,14 +145,14 @@ async def test_texto_de_entrada_nao_aparece_em_nenhuma_coluna_de_texto(
                 text(
                     "SELECT table_name, column_name FROM information_schema.columns "
                     "WHERE table_name IN ('analises', 'indicadores_risco') "
-                    "AND data_type IN ('text', 'character varying')"
+                    "AND data_type IN ('text', 'character varying', 'jsonb')"
                 )
             )
         ).all()
         assert colunas
         for tabela, coluna in colunas:
             achados = await sessao.scalar(
-                text(f"SELECT count(*) FROM {tabela} WHERE {coluna} LIKE :padrao"),
+                text(f"SELECT count(*) FROM {tabela} WHERE {coluna}::text LIKE :padrao"),
                 {"padrao": f"%{marcador}%"},
             )
             assert achados == 0, f"{tabela}.{coluna} contém trecho da mensagem"

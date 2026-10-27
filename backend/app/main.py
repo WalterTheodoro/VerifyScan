@@ -20,7 +20,10 @@ from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine, criar_sessionmaker
+from app.core.logs import configurar_logs
+from app.formulator.cliente import criar_cliente_ia
 from app.scoring.regras import carregar_regras
+from app.scoring.respostas import carregar_respostas
 from app.services.historico import faxina
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
@@ -40,7 +43,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     infraestrutura responde deve chamar /health.
 
     Sem REDIS_URL o cliente não é criado e `app.state.redis` fica `None`: é o Redis desativado,
-    estado de produção até a Fase 4.
+    estado de produção até a Fase 4. Com a IA desligada, `app.state.cliente_ia` também fica
+    `None`, e toda análise sai com o plano B (ADR-0020).
 
     A única I/O da subida é a faxina do que venceu, análises do histórico e sessões (ADR-0015,
     ADR-0019): oportunista, com o teto do registro, e nunca derruba o processo — se o banco
@@ -52,6 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.fabrica_de_sessoes = criar_sessionmaker(engine)
     app.state.redis = redis
+    cliente_ia = criar_cliente_ia(settings)
+    app.state.cliente_ia = cliente_ia
     await faxina(
         RepositorioHistoricoPostgres(app.state.fabrica_de_sessoes),
         RepositorioSessoesPostgres(app.state.fabrica_de_sessoes),
@@ -63,14 +69,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if redis is not None:
             await redis.aclose()
+        if cliente_ia is not None:
+            await cliente_ia.sdk.close()
         await engine.dispose()
 
 
 def criar_app() -> FastAPI:
     settings = get_settings()
-    # Aqui, e não no `lifespan`: um `regras.yaml` quebrado precisa derrubar o processo na
-    # subida, e não a primeira requisição do usuário. Fica antes de qualquer rota existir.
+    configurar_logs(settings.log_level)
+    # Aqui, e não no `lifespan`: um `regras.yaml` ou `respostas.yaml` quebrado precisa derrubar
+    # o processo na subida, e não a primeira requisição do usuário. Fica antes de qualquer rota.
     carregar_regras()
+    carregar_respostas()
     # O hash de mentira do login (ADR-0013) nasce aqui, uma vez por processo: no primeiro login,
     # aquela resposta pagaria o custo e sairia mais lenta que as outras.
     obter_hasher()

@@ -10,8 +10,9 @@ Plataforma web que recebe uma mensagem suspeita (texto, link, print ou e-mail) e
 **nível de risco (BAIXO / MÉDIO / ALTO) + fatores identificados + recomendação**, em português
 acessível a usuários com baixo letramento digital.
 
-O coração do produto é um **pipeline heurístico próprio**. A IA **não decide risco** — ela só
-transforma o resultado estruturado em texto legível.
+O coração do produto é um **pipeline heurístico próprio**. A IA **não decide risco sozinha**:
+ela lê a mensagem, sugere um nível e escreve a explicação, e uma regra fixa deixa o nível final
+no maior dos dois — ela pode subir, nunca baixar (ADR-0020).
 
 Especificação completa: `docs/RFC-VerifyScan-v1.1.pdf`. Plano de execução: `docs/plano-de-execucao.md`.
 Decisões: `docs/adr/`.
@@ -27,7 +28,7 @@ Decisões: `docs/adr/`.
 | Banco | PostgreSQL 16 |
 | Cache | Redis 7 (TTL 24h) |
 | OCR | Tesseract + `pytesseract` (idioma `por`) |
-| LLM | Anthropic API — `claude-haiku-4-5` |
+| LLM | Anthropic API — `claude-haiku-5-5`, SDK `anthropic`, saída estruturada (ADR-0020) |
 | Testes | pytest + pytest-asyncio + httpx.AsyncClient |
 | Lint/format | ruff (lint + format) + mypy no backend |
 | Infra local | Docker Compose (Postgres + Redis) |
@@ -62,6 +63,9 @@ uv run alembic check                   # falha se modelo e migração divergirem
 # avaliação do motor de risco contra o corpus rotulado
 uv run python -m tools.avaliar_corpus
 
+# análise com IA contra a API real, 13 amostras sintéticas (fora do CI; usa a chave do .env)
+uv run python -m tools.testar_ia
+
 # frontend
 cd frontend
 npm install
@@ -90,14 +94,15 @@ verifyscan/
 │     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer, EmailAnalyzer
 │     ├─ ocr/              # OCRProcessor
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
-│     ├─ scoring/          # ScoringEngine + regras.yaml
-│     ├─ formulator/       # AIFormulator (LLM)
+│     ├─ scoring/          # ScoringEngine, regras.yaml, respostas.yaml (plano B), combinar()
+│     ├─ formulator/       # análise com IA: cliente, prompt, saída e limpeza (ADR-0020)
 │     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario
 │     ├─ schemas/          # Pydantic (contrato da API)
-│     └─ core/             # config, segurança (hash Argon2id), cache, timeouts
+│     └─ core/             # config, segurança (hash Argon2id), cache, logs, timeouts
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
-│  │                       #   análise→conta, 0004 texto só com dono); esquema só por aqui
-│  ├─ tools/               # scripts (avaliar_corpus, etc.)
+│  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
+│  │                       #   IA + explicação só com dono); esquema só por aqui
+│  ├─ tools/               # scripts (avaliar_corpus, testar_ia + amostras_ia.yaml, etc.)
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
@@ -112,7 +117,8 @@ verifyscan/
       ├─ _componentes/     # cabeçalho, área de sessão, rodapé, campo de senha, avisos do envio,
       │                    #   raiz-da-pagina (elemento único na raiz; rolagem do Next 16),
       │                    #   nivel-risco (palavra + ícone), aviso-privacidade,
-      │                    #   resultado (placa do resultado: home e histórico, ADR-0018)
+      │                    #   resultado (placa do resultado: home e histórico, ADR-0018; com IA,
+      │                    #   tipo, sinais e passos dela, ADR-0020)
       └─ _lib/             # chamadas ao backend (conta.ts, historico.ts, gestao-conta.ts), aviso de
                            #   conta excluída (sessionStorage) e os hooks de envio e carga
 ```
@@ -122,19 +128,26 @@ verifyscan/
 Estas regras vêm do RFC e são o que sustenta a defesa do trabalho. Se uma tarefa parecer exigir
 quebrar uma delas, **pare e pergunte**.
 
-1. **A LLM nunca vê conteúdo bruto do usuário** (RF13). O `AIFormulator` recebe apenas um objeto
-   tipado com `score`, `nivel_risco` e `fatores[]`. Garanta isso no *tipo*: a função não deve
-   aceitar nenhum parâmetro que contenha texto original, imagem ou e-mail. Existe teste para isso.
+1. **A LLM lê a mensagem só como dado e nunca decide sozinha** (RF13 pela errata 13, ADR-0020).
+   A mensagem vai entre delimitadores, escapada, e o prompt diz que ela nunca é instrução. O nível
+   final é o **maior** entre o do motor e o sugerido pela IA — ela pode subir, nunca baixar —,
+   garantido em `combinar()`, no `RegistroAnalise` e no CHECK `ck_analises_nivel_e_o_maior`. O que
+   ela escreve só chega à tela depois de limpo (sem link, e-mail, telefone nem HTML, e sem
+   afirmação positiva de segurança). As descrições dos fatores do motor seguem sendo só templates
+   do `regras.yaml`, sem trecho da mensagem. Existe teste para cada parte.
 2. **Nenhuma imagem é persistida além do ciclo de vida da requisição** (RNF06): nunca em banco,
    nunca em diretório da aplicação, nunca em log. O teste verifica que (a) nada foi escrito na
    árvore do projeto e (b) o arquivo temporário não sobrevive ao request — redação que mantém
    `pytesseract` viável (ADR-0006).
-3. **O sistema funciona sem a LLM** (RNF08). Se a API cair ou estourar 5s, retorna score + fatores
-   com um flag `explicacao_indisponivel: true`. A análise nunca falha por causa da IA.
+3. **O sistema funciona sem a LLM** (RNF08). Desligada (`IA_ATIVADA=false`), fora do ar, acima de
+   15 s, recusando, cortada ou com resposta inválida: a resposta sai só do motor, com o plano B do
+   nível (`scoring/respostas.yaml`) e `explicacao_indisponivel: true`. A análise nunca falha por
+   causa da IA. A saída da IA e a mensagem nunca vão para log.
 4. **O sistema funciona sem as APIs externas.** VirusTotal e Safe Browsing são *enriquecimento*.
    Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`.
 5. **Pesos e padrões vivem em `scoring/regras.yaml`**, versionado — nunca espalhados como números
-   mágicos no código. Mudar peso não pode exigir mudar código.
+   mágicos no código. Mudar peso não pode exigir mudar código. As respostas do plano B, uma por
+   nível, vivem em `scoring/respostas.yaml`; o sistema nunca diz "não é golpe".
 6. **Toda análise registrada grava todos os seus `IndicadorRisco` na mesma transação** (tipo,
    descrição, peso): nunca análise sem indicador nem conjunto parcial. Sem isso não há auditoria
    nem recalibração. Falha ao registrar não derruba a análise: a transação inteira é descartada,
@@ -142,8 +155,10 @@ quebrar uma delas, **pare e pergunte**.
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
 8. **Orçamento de tempo** (KPI < 30s): OCR ≤ 5s **em série** (o texto extraído é a entrada das
    heurísticas) · depois, em paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa
-   ≤ 5s · por fim LLM ≤ 5s · registro ≤ 2 s, em série, por último (ADR-0012). Pior caso ≈ 17 s.
-   Todo I/O externo tem timeout explícito (ADR-0002).
+   ≤ 5s · por fim LLM ≤ 15 s, uma chamada, sem nova tentativa (ADR-0020) · registro ≤ 2 s, em série,
+   por último (ADR-0012). Pior caso ≈ 27 s (hoje, só texto, ≈ 17 s); o proxy do Next corta em 90 s
+   (ADR-0014). A folga do KPI no desenho completo é de 3 s: com OCR e reputação, o teto da IA baixa
+   para análise com imagem. Todo I/O externo tem timeout explícito (ADR-0002).
 
 ## 6. Convenções de código
 

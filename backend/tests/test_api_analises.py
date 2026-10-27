@@ -1,7 +1,8 @@
 """POST /api/analises — a fatia vertical da Fase 1: texto entra, nível de risco sai.
 
-Sem OCR, sem API externa, sem IA e sem login. As duas flags de degradação já existem no
-contrato e valem `false` aqui: quem as liga são as Fases 4 e 7, e o contrato não muda por isso.
+Sem OCR, sem API externa e sem login. A IA está desligada aqui (o padrão dos testes): a resposta
+é a do motor com o plano B do nível (ADR-0020). A análise com IA está em
+`test_api_analise_com_ia.py`.
 """
 
 from time import perf_counter
@@ -40,10 +41,12 @@ async def test_resposta_traz_as_urls_canonicas(cliente: AsyncClient) -> None:
     assert resposta.json()["urls_analisadas"] == ["http://bb-regularize.xyz/"]
 
 
-async def test_flags_de_degradacao_existem_e_sao_falsas(cliente: AsyncClient) -> None:
+async def test_sem_ia_a_explicacao_fica_indisponivel(cliente: AsyncClient) -> None:
+    """A flag diz à tela que a resposta saiu sem a IA (ADR-0020); a reputação externa ainda não
+    existe, e a flag dela segue falsa."""
     corpo = (await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
-    assert corpo["explicacao_indisponivel"] is False
+    assert corpo["explicacao_indisponivel"] is True
     assert corpo["verificacao_externa_indisponivel"] is False
 
 
@@ -69,7 +72,8 @@ async def test_mensagem_legitima_da_baixo(cliente: AsyncClient) -> None:
 
 
 async def test_fator_nao_expoe_trecho_da_mensagem(cliente: AsyncClient) -> None:
-    """Invariante 1 no contrato: o que sai da API é o que a LLM vai receber na Fase 7."""
+    """A descrição do fator é sempre um template do `regras.yaml`, nunca trecho da mensagem
+    (ADR-0004). É também o que a IA recebe como fatores do motor (ADR-0020)."""
     texto = "URGENTE: faça um PIX para XYZZY4242 e confirme seu CPF."
 
     corpo = (await cliente.post("/api/analises", json={"texto": texto})).json()

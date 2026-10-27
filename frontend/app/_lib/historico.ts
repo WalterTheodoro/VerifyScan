@@ -2,6 +2,7 @@
 // relativo, pelo proxy do Next (ADR-0014). Nada aqui mexe em React.
 
 import type { NivelRisco } from "../_componentes/nivel-risco";
+import type { ExplicacaoIA, Orientacao } from "../_componentes/resultado";
 import { lerDetail, MENSAGEM_SEM_SERVIDOR } from "./conta";
 import { enviarUmaVez, lerComRepeticao, type OpcoesDeEspera } from "./servidor";
 
@@ -15,6 +16,11 @@ export type AnaliseDoHistorico = {
   fatores: FatorDoHistorico[];
   /** A mensagem como foi colada (ADR-0018); `null` nas análises anteriores a ele. */
   texto: string | null;
+  /** A resposta fixa do nível e o que a IA escreveu (ADR-0020), para o histórico mostrar a mesma
+   *  resposta da home. `explicacao_ia` é `null` nas análises sem IA. Opcionais só para um backend
+   *  anterior à fatia 6. */
+  orientacao?: Orientacao;
+  explicacao_ia?: ExplicacaoIA | null;
 };
 
 export type Historico = { dias: number; analises: AnaliseDoHistorico[] };

@@ -8,7 +8,12 @@ import { Cabecalho } from "./_componentes/cabecalho";
 import { Rodape } from "./_componentes/rodape";
 import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./_componentes/nivel-risco";
 import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
-import { APRESENTACAO, MensagemColada, Resultado } from "./_componentes/resultado";
+import {
+  MensagemColada,
+  Resultado,
+  type ExplicacaoIA,
+  type Orientacao,
+} from "./_componentes/resultado";
 import { lerDetail } from "./_lib/conta";
 import { consumirContaExcluida } from "./_lib/conta-excluida";
 import { enviarUmaVez } from "./_lib/servidor";
@@ -38,7 +43,17 @@ type RespostaAnalise = {
   salva_no_historico: boolean;
   // true só quando gravou também a mensagem (ADR-0018). Opcional: backend anterior não o manda.
   texto_salvo?: boolean;
+  // Fatia 6 (ADR-0020). `nivel_risco` é o final: o maior entre o do motor e o da IA. Opcionais
+  // pelo mesmo motivo de `texto_salvo`.
+  nivel_motor?: NivelRisco;
+  nivel_ia?: NivelRisco | null;
+  orientacao?: Orientacao;
+  explicacao_ia?: ExplicacaoIA | null;
 };
+
+// Com a IA, a análise leva em geral 2 a 4 s, e o teto é 15 s (ADR-0020). Depois disto, a tela diz
+// que falta pouco, para ninguém achar que travou.
+const AVISO_DE_DEMORA_MS = 5000;
 
 type Estado =
   | { situacao: "pronta" }
@@ -103,6 +118,8 @@ export default function PaginaAnalise() {
   // Só durante a espera pelo backend dormindo, não durante a análise: com o backend acordado ela
   // pode levar ~17 s (ADR-0002), e "o servidor está acordando" seria falso.
   const [acordando, setAcordando] = useState(false);
+  // Análise que passou de 5 s com o backend acordado: em geral, a IA demorando (ADR-0020).
+  const [demorando, setDemorando] = useState(false);
   // A entrada orquestrada do hero é só da carga da página; depois de "Analisar outra
   // mensagem" o formulário volta sem animar.
   const [animarEntrada, setAnimarEntrada] = useState(true);
@@ -134,8 +151,13 @@ export default function PaginaAnalise() {
     evento.preventDefault();
     setEstado({ situacao: "analisando" });
     setAcordando(false);
+    setDemorando(false);
+    // O timer nasce no envio, não num efeito: é consequência do clique (como em use-envio-conta).
+    const timer = window.setTimeout(() => setDemorando(true), AVISO_DE_DEMORA_MS);
     void analisar(texto, () => setAcordando(true)).then((proximo) => {
+      window.clearTimeout(timer);
       setAcordando(false);
+      setDemorando(false);
       setEstado(proximo);
       // Leva o foco para o resultado: sem isso, quem usa teclado ou leitor de tela continua
       // no botão e não percebe que a resposta chegou.
@@ -252,20 +274,21 @@ export default function PaginaAnalise() {
                         <p id="dica-botao">Cole uma mensagem para poder analisar.</p>
                       )}
                     </div>
-                    {/* Antes de enviar, e só para quem está logado: é o aviso que sustenta a
-                        base legal de guardar a mensagem sem caixa de seleção (ADR-0018). */}
-                    {logado && (
-                      <p>
-                        Como você está na sua conta, esta mensagem fica no seu histórico por 7
-                        dias.{" "}
-                        <Link
-                          href="/privacidade"
-                          className="font-bold text-anil underline underline-offset-4"
-                        >
-                          Saiba mais
-                        </Link>
-                      </p>
-                    )}
+                    {/* Antes de enviar: para todos, para onde a mensagem vai (ADR-0020); para
+                        quem está logado, que ela fica no histórico — o aviso que sustenta a base
+                        legal de guardá-la sem caixa de seleção (ADR-0018). */}
+                    <p>
+                      Para a análise, a mensagem é enviada à inteligência artificial da
+                      Anthropic.
+                      {logado &&
+                        " Como você está na sua conta, ela também fica no seu histórico por 7 dias."}{" "}
+                      <Link
+                        href="/privacidade"
+                        className="font-bold text-anil underline underline-offset-4"
+                      >
+                        Saiba mais
+                      </Link>
+                    </p>
                   </form>
                 </>
               )}
@@ -277,6 +300,13 @@ export default function PaginaAnalise() {
                   <p className="text-destaque">Analisando sua mensagem…</p>
                 )}
                 {estado.situacao === "analisando" && acordando && <AvisoAcordando />}
+                {/* Só sem o aviso do servidor acordando: os dois juntos diriam coisas diferentes
+                    sobre a mesma espera. */}
+                {estado.situacao === "analisando" && demorando && !acordando && (
+                  <p className="font-semibold">
+                    A análise está levando um pouco mais. Só mais alguns segundos.
+                  </p>
+                )}
 
                 {estado.situacao === "falhou" && (
                   <div role="alert" className="cartao border-l-[10px] border-[var(--erro)] p-5">
@@ -446,7 +476,9 @@ function ExemploNoCelular() {
                 </p>
               </div>
               <div className="flex flex-col gap-perto px-4 py-5">
-                <p className="font-bold">{APRESENTACAO.ALTO.resumo}</p>
+                {/* O título do ALTO no `respostas.yaml` do backend: a moldura é ilustração
+                    estática e não chama a API. */}
+                <p className="font-bold">Esta mensagem tem fortes sinais de golpe.</p>
                 <p className="font-bold">Fatores identificados</p>
                 <ul className="flex list-disc flex-col gap-junto pl-5
                   marker:text-[var(--risco-forte)]">
@@ -493,18 +525,23 @@ function FaixaDeContexto() {
             <h3 className="text-secao font-bold sm:text-secao-lg">Quem decide são regras</h3>
             <p className="text-destaque">
               O nível de risco sai de regras escritas para este projeto. Você vê, logo abaixo,
-              quais sinais elas procuram.
+              quais sinais elas procuram. A inteligência artificial pode pedir mais cuidado,
+              nunca menos.
             </p>
           </div>
           <div className="cartao flex flex-col gap-junto p-bloco">
             <h3 className="text-secao font-bold sm:text-secao-lg">
-              Sem conta, sua mensagem não fica guardada
+              Sem conta, não guardamos a sua mensagem
             </h3>
-            {/* Verdadeira para os dois casos (ADR-0018): anônima é descartada; com conta, fica
-                7 dias no histórico. */}
+            {/* Verdadeira para os dois casos (ADR-0018): anônima não vai ao nosso banco; com
+                conta, fica 7 dias no histórico. E diz para onde ela vai (ADR-0020). */}
             <p className="text-destaque">
-              Lemos, analisamos e descartamos. Se você estiver na sua conta, ela fica no seu
-              histórico por 7 dias, e você pode apagá-la antes.
+              Para a análise, ela passa pela inteligência artificial da Anthropic, que não a usa
+              para treinar e a apaga em até 30 dias. Se você estiver na sua conta, ela fica no
+              seu histórico por 7 dias, e você pode apagá-la antes.{" "}
+              <Link href="/privacidade" className="font-bold text-anil underline underline-offset-4">
+                Saiba mais
+              </Link>
             </p>
           </div>
         </div>
@@ -520,11 +557,10 @@ function ComoFunciona() {
     "Regras leem a sua mensagem e procuram sinais conhecidos de golpe: pressa, ameaça de " +
       "bloqueio, pedido de PIX, pedido de dados pessoais.",
     "Cada sinal encontrado aumenta o risco. Quanto mais sinais, mais alto o nível.",
-    // Condicional de propósito: nesta fase o texto do resultado é fixo no frontend e a IA
-    // ainda não é usada (Fase 7). A frase é verdadeira antes e depois.
-    "Quem decide o risco são as regras, não a inteligência artificial. Quando ela é usada, " +
-      "só ajuda a escrever o resultado de um jeito fácil — e nunca recebe a mensagem que " +
-      "você colou.",
+    // A IA lê a mensagem e pode subir o nível, nunca baixar (ADR-0020). Se ela não responder,
+    // o resultado sai só com as regras — a frase continua verdadeira.
+    "Depois, uma inteligência artificial lê a mensagem e explica o que ela parece ser e o " +
+      "que fazer. Ela pode subir o nível de risco, nunca baixar.",
   ];
 
   return (
