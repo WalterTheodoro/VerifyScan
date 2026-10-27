@@ -21,6 +21,9 @@ dependencies = [
     # Senha com Argon2id (ADR-0013). passlib está sem manutenção; bcrypt custo 12 levou 13× o
     # tempo do Argon2id nos parâmetros mínimos da OWASP, medido em 1 vCPU.
     "argon2-cffi>=25.1.0",
+    # SDK oficial da Anthropic para a análise com o Claude (ADR-0020): cliente assíncrono, com
+    # timeout e retry configuráveis. Chamar a API "na mão" refaria isso e o tratamento de erros.
+    "anthropic>=2.3.0",
 ]
 
 [dependency-groups]
@@ -71,6 +74,8 @@ select = [
 # domínio em português, e "EntradaInvalidaError" não é português nem inglês. A exceção é
 # regra de negócio (§2.5 do RFC), não erro técnico.
 "app/services/*.py" = ["N818"]
+# Pelo mesmo motivo: `SaidaRecusada`, `SaidaCortada` são os motivos do plano B da IA (ADR-0020).
+"app/formulator/*.py" = ["N818"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mypy
