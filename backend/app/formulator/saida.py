@@ -15,7 +15,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.formulator.limpeza import afirma_seguranca, limpar_texto
+from app.formulator.limpeza import afirma_seguranca, fala_do_sistema, limpar_texto
 from app.schemas.analise import (
     ITEM_MAX_CARACTERES,
     PASSOS_MAX,
@@ -78,11 +78,12 @@ class SaidaInutilizavel(Exception):
 def explicacao_da_saida(saida: SaidaIA) -> ExplicacaoIA:
     """Limpa cada campo e confere o que sobrou. É o único caminho da IA até a tela.
 
-    O item que afirma segurança sai sozinho, e os outros ficam. Descartar a saída inteira por
-    causa de uma frase jogava fora o nível ALTO junto (defeito da bateria da fatia 6).
+    O item que afirma segurança, ou que fala do motor, do algoritmo, dos fatores ou das pistas
+    (fatia 8), sai sozinho, e os outros ficam. Descartar a saída inteira por causa de uma frase
+    jogava fora o nível ALTO junto (defeito da bateria da fatia 6).
     """
     tipo = limpar_texto(saida.tipo, limite=TIPO_MAX_CARACTERES)
-    if afirma_seguranca(tipo):
+    if _descartavel(tipo):
         tipo = ""
     sinais = _limpar_itens(saida.sinais)
     passos = _limpar_itens(saida.o_que_fazer)
@@ -95,4 +96,8 @@ def explicacao_da_saida(saida: SaidaIA) -> ExplicacaoIA:
 
 def _limpar_itens(itens: tuple[str, ...]) -> tuple[str, ...]:
     limpos = (limpar_texto(item, limite=ITEM_MAX_CARACTERES) for item in itens)
-    return tuple(item for item in limpos if item and not afirma_seguranca(item))
+    return tuple(item for item in limpos if item and not _descartavel(item))
+
+
+def _descartavel(item: str) -> bool:
+    return afirma_seguranca(item) or fala_do_sistema(item)

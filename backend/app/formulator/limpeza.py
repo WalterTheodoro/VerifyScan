@@ -143,6 +143,26 @@ def _afirma_na_oracao(frase: str) -> bool:
     return False
 
 
+# ─── fala do sistema por dentro (pendência da fatia 7) ────────────────────────────────────
+
+# "O motor marcou pressa…": quem lê não sabe o que é o motor, e a frase faz a análise parecer
+# um sistema falando de si. O prompt proíbe estas palavras; isto é a segunda barreira. Os quatro
+# últimos termos o prompt proíbe desde a fatia 6, e a varredura da calibração da fatia 8 ainda os
+# achou na tela ("instruções internas", "sistema de análise").
+_FALA_DO_SISTEMA = re.compile(
+    r"\b(?:motor|algoritmo|fator(?:es)?|pistas?|prompt|injecao|instrucoes internas"
+    r"|sistemas? de analise)\b"
+)
+
+
+def fala_do_sistema(texto: str) -> bool:
+    """`True` quando o texto fala do motor, do algoritmo, dos fatores, das pistas ou usa o jargão
+    de injeção ("prompt", "injeção", "instruções internas", "sistema de análise").
+
+    Palavra inteira, sem acento e sem caixa: "Os FATORES" conta, "fatorar" não."""
+    return _FALA_DO_SISTEMA.search(normalizar(texto)) is not None
+
+
 def _relatada_ou_condicional(anteriores: list[str]) -> bool:
     relato = not _RELATO.isdisjoint(anteriores[-_JANELA_RELATO:])
     return relato or "se" in anteriores[-_JANELA_CONDICAO:]
