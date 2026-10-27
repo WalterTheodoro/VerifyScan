@@ -40,7 +40,9 @@ O público divide o celular com a família, e o frontend trata qualquer 401 como
   e um 401 faria a tela trocar tudo por "Entrar" (ADR-0017 §3).
 
 **2. `POST /api/conta/excluir` `{senha}`**, exige login.
-- Com a senha errada, a resposta é 400 com a mesma frase, e nada some.
+- Com a senha errada, a resposta é 400, e nada some. A frase é "A senha não confere.", porque ali
+  o campo se chama "Sua senha" (correção de 27/10; a frase vem do service, que sabe qual senha
+  pediu, e a rota segue só mapeando o tipo para o status).
 - Com a senha certa, `DELETE FROM usuarios`. As sessões, as análises ligadas (com o texto,
   ADR-0018) e os indicadores vão pelos `ON DELETE CASCADE` das migrações 0001, 0002 e 0003: quem
   apaga é o banco. A resposta é 204 com o cookie limpo (`Max-Age=0`, os mesmos atributos da
