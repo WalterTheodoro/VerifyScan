@@ -1,0 +1,22 @@
+{
+  "divisao": "calibracao",
+  "versao_regras": 3,
+  "hash_corpus": "4f0be10b30ef93c13c55d67de9958a26f8177d8e89daa7ea3e583aed3850e154",
+  "semente": 20261027,
+  "golpes_medio_ou_mais": {
+    "sucessos": 17,
+    "total": 67
+  },
+  "golpes_alto": {
+    "sucessos": 11,
+    "total": 67
+  },
+  "alarme_medio_ou_mais": {
+    "sucessos": 2,
+    "total": 46
+  },
+  "alarme_alto": {
+    "sucessos": 0,
+    "total": 46
+  }
+}
