@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, mock, test } from "node:test";
 
 import {
   aquecer,
+  AVISO_APOS_MS,
   despertar,
   enviarUmaVez,
   esperarPeloBackend,
@@ -31,7 +32,7 @@ type Chamada = {
 let chamadas: Chamada[] = [];
 
 /** Troca o `fetch` global por um que responde conforme `responder`. Lançar = falha de rede. */
-function fingirFetch(responder: (chamada: Chamada, ordem: number) => Response) {
+function fingirFetch(responder: (chamada: Chamada, ordem: number) => Response | Promise<Response>) {
   globalThis.fetch = async (entrada: string | URL | Request, init?: RequestInit) => {
     const chamada = {
       caminho: String(entrada),
@@ -58,6 +59,10 @@ const html = (status: number) =>
 const semRede = (): Response => {
   throw new TypeError("fetch failed");
 };
+
+/** Pedido pendurado: a resposta só chega depois de `ms`, no relógio falso. */
+const depois = (ms: number, resposta: () => Response) =>
+  new Promise<Response>((resolver) => setTimeout(() => resolver(resposta()), ms));
 
 /** Deixa rodar as promessas pendentes. `setImmediate` não é falsificado, `setTimeout` é. */
 const esvaziar = () => new Promise((resolver) => setImmediate(resolver));
@@ -167,6 +172,105 @@ describe("leituras repetem sozinhas", () => {
     controle.abort();
     await avancar(LIMITE_ESPERA_MS);
     assert.equal(chamadas.length, 2);
+  });
+});
+
+describe("aviso aos 3 s sem resposta do backend", () => {
+  // Medido em produção (P2): o pedido não falha, fica pendurado 45 s enquanto o backend acorda.
+  test("leitura pendurada 45 s: avisa uma vez, aos 3 s", async () => {
+    fingirFetch(() => depois(45_000, () => json(200, { dias: 7, analises: [] })));
+    let avisos = 0;
+    let fim: unknown = null;
+    void lerComRepeticao("/api/historico", { aoEsperar: () => avisos++ }).then((r) => {
+      fim = r;
+    });
+
+    await avancar(AVISO_APOS_MS - 1);
+    assert.equal(avisos, 0);
+    await avancar(1);
+    assert.equal(avisos, 1, "aos 3 s, com o pedido ainda pendurado");
+    await avancar(45_000);
+    assert.notEqual(fim, null);
+    assert.equal(chamadas.length, 1);
+    assert.equal(avisos, 1);
+  });
+
+  test("backend responde em 1 s: sem aviso", async () => {
+    fingirFetch(() => depois(1000, () => json(200, { dias: 7, analises: [] })));
+    let avisos = 0;
+    void lerComRepeticao("/api/historico", { aoEsperar: () => avisos++ });
+    await avancar(10_000);
+    assert.equal(avisos, 0);
+  });
+
+  test("falha na hora sem JSON: avisa uma vez, não de novo aos 3 s", async () => {
+    fingirFetch(() => html(502));
+    let avisos = 0;
+    void lerComRepeticao("/api/historico", { aoEsperar: () => avisos++ });
+    await esvaziar();
+    assert.equal(avisos, 1);
+    await avancar(AVISO_APOS_MS);
+    assert.equal(avisos, 1);
+    await avancar(10_000);
+    assert.equal(avisos, 1);
+  });
+
+  test("abortada aos 2 s: sem aviso, nem depois", async () => {
+    fingirFetch(() => depois(45_000, () => json(200, {})));
+    const controle = new AbortController();
+    let avisos = 0;
+    void lerComRepeticao("/api/historico", {
+      aoEsperar: () => avisos++,
+      signal: controle.signal,
+    });
+    await avancar(2000);
+    controle.abort();
+    await avancar(60_000);
+    assert.equal(avisos, 0);
+  });
+
+  test("envio com /health pendurado 45 s: avisa aos 3 s e envia uma vez depois", async () => {
+    fingirFetch((chamada) =>
+      chamada.caminho === "/health"
+        ? depois(45_000, () => json(200, { status: "ok" }))
+        : json(201, { id: 1 }),
+    );
+    let avisos = 0;
+    let fim: unknown = null;
+    void enviarUmaVez("/api/analises", { method: "POST" }, { aoEsperar: () => avisos++ }).then(
+      (r) => {
+        fim = r;
+      },
+    );
+
+    await avancar(AVISO_APOS_MS - 1);
+    assert.equal(avisos, 0);
+    await avancar(1);
+    assert.equal(avisos, 1);
+    await avancar(40_000);
+    assert.equal(metodo("POST"), 0, "não envia antes de o /health responder");
+    await avancar(5000);
+    assert.equal(metodo("POST"), 1);
+    assert.deepEqual(fim, { doBackend: true, status: 201, corpo: { id: 1 } });
+    assert.equal(avisos, 1);
+  });
+
+  test("envio logo depois de abrir, com o aquecimento pendurado: avisa aos 3 s, uma vez", async () => {
+    fingirFetch((chamada) =>
+      chamada.caminho === "/health"
+        ? depois(45_000, () => json(200, { status: "ok" }))
+        : json(201, { id: 1 }),
+    );
+    aquecer();
+    let avisos = 0;
+    void enviarUmaVez("/api/analises", { method: "POST" }, { aoEsperar: () => avisos++ });
+
+    await avancar(AVISO_APOS_MS);
+    assert.equal(avisos, 1);
+    await avancar(50_000);
+    assert.equal(aoCaminho("/health"), 1, "aproveita o aquecimento");
+    assert.equal(metodo("POST"), 1);
+    assert.equal(avisos, 1);
   });
 });
 
