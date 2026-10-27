@@ -76,7 +76,11 @@ class OrquestradorAnalise:
 
     def _com_ia(self, resposta: RespostaAnalise, resultado: ResultadoIA) -> RespostaAnalise:
         """A regra fixa decide: o nível final é o maior dos dois (ADR-0020). A IA pode subir o
-        nível, nunca baixar; a orientação fixa acompanha o nível final."""
+        nível, nunca baixar; a orientação fixa acompanha o nível final.
+
+        O nível da IA entra mesmo quando a explicação dela foi descartada: aí a tela mostra o
+        plano B do nível final, e `nivel_ia` preenchido com `explicacao_indisponivel` diz isso.
+        """
         nivel_final = combinar(resposta.nivel_motor, resultado.nivel_sugerido)
         return resposta.model_copy(
             update={
@@ -84,7 +88,7 @@ class OrquestradorAnalise:
                 "nivel_ia": resultado.nivel_sugerido,
                 "orientacao": self._respostas.para(nivel_final),
                 "explicacao_ia": resultado.explicacao,
-                "explicacao_indisponivel": False,
+                "explicacao_indisponivel": resultado.explicacao is None,
             }
         )
 

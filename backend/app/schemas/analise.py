@@ -34,10 +34,13 @@ CategoriaFator = Literal[
     "premio_falso",
     "solicitacao_financeira",
     "dados_pessoais",
+    "instrucao_ao_analisador",
 ]
 """Unidade de agregação: cada categoria pontua no máximo uma vez (ADR-0004).
 
-As seis são as da §5.4.1 do RFC. As categorias de domínio e reputação entram nas Fases 3 e 4.
+As seis primeiras são as da §5.4.1 do RFC. `instrucao_ao_analisador` não está no RFC: é a defesa
+em profundidade contra injeção de prompt, para quando a IA cai (ADR-0020). As categorias de
+domínio e reputação entram nas Fases 3 e 4.
 """
 
 
@@ -144,8 +147,10 @@ class RespostaAnalise(BaseModel):
     explicacao_indisponivel: bool = Field(
         default=True,
         description=(
-            "`true` sempre que a resposta saiu sem a IA: desligada, fora do ar, acima do teto "
-            "de tempo ou com uma resposta inválida (RNF08). A tela mostra então o plano B."
+            "`true` sempre que a resposta saiu sem a explicação da IA: desligada, fora do ar, "
+            "acima do teto de tempo ou com uma resposta inválida (RNF08), ou com a explicação "
+            "descartada na limpeza. A tela mostra então o plano B do nível final. Com "
+            "`nivel_ia` preenchido, a IA deu o nível e só a explicação foi descartada."
         ),
     )
     verificacao_externa_indisponivel: bool = Field(

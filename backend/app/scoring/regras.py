@@ -28,8 +28,8 @@ from app.scoring.descricoes import ModeloDescricao
 CAMINHO_REGRAS = Path(__file__).parent / "regras.yaml"
 
 CATEGORIAS_DE_TEXTO: tuple[CategoriaFator, ...] = get_args(CategoriaFator)
-"""As seis da §5.4.1. Nas Fases 3 e 4 entram categorias de domínio e reputação, e aí esta
-tupla deixa de ser igual a `get_args(CategoriaFator)`."""
+"""As seis da §5.4.1 mais `instrucao_ao_analisador` (ADR-0020). Nas Fases 3 e 4 entram categorias
+de domínio e reputação, e aí esta tupla deixa de ser igual a `get_args(CategoriaFator)`."""
 
 # `\D`, `\S`, `\W`, `\B` viram `\d`, `\s`, `\w`, `\b` ao passar pelo `.lower()` do normalizador —
 # a regex continua compilando e passa a significar o oposto. Preferimos falhar no boot.
@@ -106,7 +106,7 @@ class ConfiguracaoURLs(BaseModel):
 
 
 class CategoriaTexto(BaseModel):
-    """Uma das seis categorias da §5.4.1: peso, descrição e os padrões que a disparam."""
+    """Uma categoria de texto (§5.4.1 e ADR-0020): peso, descrição e os padrões que a disparam."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -128,11 +128,11 @@ class Regras(BaseModel):
     categorias: tuple[CategoriaTexto, ...]
 
     @model_validator(mode="after")
-    def _seis_categorias_sem_repetir(self) -> Self:
+    def _categorias_completas_sem_repetir(self) -> Self:
         presentes = [categoria.id for categoria in self.categorias]
         faltando = sorted(set(CATEGORIAS_DE_TEXTO) - set(presentes))
         if faltando:
-            raise ValueError(f"categorias da §5.4.1 ausentes no regras.yaml: {faltando}")
+            raise ValueError(f"categorias de texto ausentes no regras.yaml: {faltando}")
         if len(presentes) != len(set(presentes)):
             raise ValueError(f"categoria repetida no regras.yaml: {presentes}")
         return self

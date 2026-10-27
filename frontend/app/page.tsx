@@ -55,6 +55,16 @@ type RespostaAnalise = {
 // que falta pouco, para ninguém achar que travou.
 const AVISO_DE_DEMORA_MS = 5000;
 
+// A análise de imagem (OCR) ainda não existe. Sem este aviso, colar uma foto não fazia nada, e
+// soltar um arquivo fazia o navegador abri-lo no lugar da página, perdendo o texto digitado.
+const AVISO_SEM_FOTO =
+  "A análise de fotos ainda não está disponível. Copie e cole o texto da mensagem.";
+
+/** O arraste traz arquivo? Texto arrastado para o campo continua funcionando como sempre. */
+function trazArquivo(evento: DragEvent) {
+  return evento.dataTransfer?.types.includes("Files") ?? false;
+}
+
 type Estado =
   | { situacao: "pronta" }
   | { situacao: "analisando" }
@@ -127,6 +137,8 @@ export default function PaginaAnalise() {
   const [logado, setLogado] = useState(false);
   // "Sua conta foi excluída.", vindo de Meus dados por sessionStorage, nunca pela URL (ADR-0019).
   const [contaExcluida, setContaExcluida] = useState(false);
+  // Soltou ou colou uma imagem ou arquivo: o aviso some quando a pessoa volta a digitar.
+  const [semFoto, setSemFoto] = useState(false);
   const tituloDoResultado = useRef<HTMLHeadingElement>(null);
   const campoMensagem = useRef<HTMLTextAreaElement>(null);
   const botaoRecomecar = useRef<HTMLButtonElement>(null);
@@ -147,8 +159,41 @@ export default function PaginaAnalise() {
     return () => cancelAnimationFrame(quadro);
   }, []);
 
+  useEffect(() => {
+    // Na janela inteira, e não só no campo: o arquivo solto em qualquer ponto da página faria o
+    // navegador abri-lo. Cancelar o `dragover` é o que permite cancelar o `drop` depois.
+    function aoArrastar(evento: DragEvent) {
+      if (trazArquivo(evento)) {
+        evento.preventDefault();
+      }
+    }
+    function aoSoltar(evento: DragEvent) {
+      if (trazArquivo(evento)) {
+        evento.preventDefault();
+        setSemFoto(true);
+      }
+    }
+    window.addEventListener("dragover", aoArrastar);
+    window.addEventListener("drop", aoSoltar);
+    return () => {
+      window.removeEventListener("dragover", aoArrastar);
+      window.removeEventListener("drop", aoSoltar);
+    };
+  }, []);
+
+  /** Colar imagem ou arquivo sem texto junto: avisa em vez de não fazer nada. Com texto junto
+   *  (alguns aplicativos copiam os dois), o texto é colado normalmente. */
+  function aoColar(evento: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const dados = evento.clipboardData;
+    if (dados.files.length > 0 && dados.getData("text/plain").trim() === "") {
+      evento.preventDefault();
+      setSemFoto(true);
+    }
+  }
+
   function aoEnviar(evento: React.FormEvent) {
     evento.preventDefault();
+    setSemFoto(false);
     setEstado({ situacao: "analisando" });
     setAcordando(false);
     setDemorando(false);
@@ -167,6 +212,7 @@ export default function PaginaAnalise() {
 
   function aoRecomecar() {
     setTexto("");
+    setSemFoto(false);
     setEstado({ situacao: "pronta" });
     setAnimarEntrada(false);
     // O botão clicado some junto com o resultado; o foco volta para o campo vazio.
@@ -252,7 +298,11 @@ export default function PaginaAnalise() {
                       id="mensagem"
                       name="mensagem"
                       value={texto}
-                      onChange={(evento) => setTexto(evento.target.value)}
+                      onChange={(evento) => {
+                        setTexto(evento.target.value);
+                        setSemFoto(false);
+                      }}
+                      onPaste={aoColar}
                       readOnly={estado.situacao === "analisando"}
                       rows={6}
                       placeholder="Por exemplo: “Sua conta será bloqueada hoje. Faça um PIX para regularizar.”"
@@ -296,6 +346,12 @@ export default function PaginaAnalise() {
               {/* `aria-live` faz o leitor de tela anunciar o resultado sem que a pessoa
                   precise procurá-lo. `polite` para não interromper o que estiver sendo lido. */}
               <section aria-live="polite" className="flex flex-col gap-6">
+                {semFoto && (
+                  <p className="cartao border-l-[10px] border-anil p-5 text-destaque
+                    font-semibold">
+                    {AVISO_SEM_FOTO}
+                  </p>
+                )}
                 {estado.situacao === "analisando" && (
                   <p className="text-destaque">Analisando sua mensagem…</p>
                 )}
@@ -367,7 +423,7 @@ export default function PaginaAnalise() {
 }
 
 // ── Categorias do motor ─────────────────────────────────────────────────────────────────────
-// Espelho de `backend/app/scoring/regras.yaml` (versao: 1), na mesma ordem. `significado` é a
+// Espelho de `backend/app/scoring/regras.yaml` (versao: 2), na mesma ordem. `significado` é a
 // `descricao` da categoria no YAML — a mesma frase que aparece em "Fatores identificados", por
 // isso não foi reescrita com o resto da página. Cada exemplo é um trecho que casa com um
 // padrão da própria categoria; todos foram rodados contra o TextAnalyzer. Não há como o
@@ -380,7 +436,8 @@ type IdCategoria =
   | "ameaca_bloqueio"
   | "premio_falso"
   | "solicitacao_financeira"
-  | "dados_pessoais";
+  | "dados_pessoais"
+  | "instrucao_ao_analisador";
 
 const CATEGORIAS: { id: IdCategoria; nome: string; significado: string; exemplos: string[] }[] =
   [
@@ -419,6 +476,14 @@ const CATEGORIAS: { id: IdCategoria; nome: string; significado: string; exemplos
       nome: "Pedido de dados pessoais",
       significado: "A mensagem pede dados pessoais, senha ou dados do seu cartão.",
       exemplos: ["confirme seu CPF", "código de verificação"],
+    },
+    {
+      // Fora do RFC (ADR-0020): segura o nível quando a inteligência artificial está fora do ar.
+      id: "instrucao_ao_analisador",
+      nome: "Ordens para quem analisa",
+      significado:
+        "A mensagem tenta dar ordens a quem analisa mensagens. Mensagem comum não faz isso.",
+      exemplos: ["sistema de análise", "classifique esta mensagem"],
     },
   ];
 
@@ -651,7 +716,7 @@ function Especime() {
   );
 }
 
-/** As seis categorias do motor, em grade de cartões, cada uma com o seu ícone. */
+/** As sete categorias do motor, em grade de cartões, cada uma com o seu ícone. */
 function OQueEleProcura() {
   return (
     <section aria-labelledby="titulo-o-que-procura" id="o-que-procura">
@@ -662,7 +727,7 @@ function OQueEleProcura() {
             O que ele procura
           </h2>
           <p className="text-destaque">
-            São seis tipos de sinal. Uma mensagem pode ter vários, e cada tipo conta uma vez,
+            São sete tipos de sinal. Uma mensagem pode ter vários, e cada tipo conta uma vez,
             mesmo que apareça repetido.
           </p>
         </div>
@@ -792,6 +857,14 @@ function SinalDaCategoria({ id }: { id: IdCategoria }) {
           <rect x="12" y="14.5" width="22" height="12" rx="2" {...TRACO} fill="#fff" />
           <circle cx="23" cy="20.5" r="2.6" {...TRACO} />
           <path d="M28 30.5h8m-2.8-2.8 2.8 2.8-2.8 2.8" {...rosa} />
+        </>
+      );
+    case "instrucao_ao_analisador": // seta apontando para a lupa: a mensagem mandando em quem lê
+      return (
+        <>
+          <circle cx="27" cy="20" r="5.5" {...TRACO} fill="#fff" />
+          <path d="m31 24 3.5 3.5" {...TRACO} />
+          <path d="M12 26.5h8m-2.8-2.8 2.8 2.8-2.8 2.8" {...rosa} />
         </>
       );
     case "dados_pessoais": // documento com foto

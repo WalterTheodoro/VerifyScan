@@ -92,19 +92,57 @@ _AFIRMACAO = re.compile(
     r"\b(?:e|esta) (?:segur[ao]|confiavel|verdadeir[ao]|legitim[ao])\b|\bpode confiar\b"
 )
 _NEGACOES = frozenset({"nao", "nunca", "nem", "jamais"})
+# Fala relatada não é afirmação: "a mensagem diz que é segura" descreve o golpe, e é o que a IA
+# escreve quando cita a injeção como sinal. Conta se um destes verbos vier até `_JANELA_RELATO`
+# palavras antes, na mesma oração.
+_RELATO = frozenset(
+    {
+        "diz", "dizem", "disse", "dizer", "dizendo",
+        "afirma", "afirmam", "afirmar", "afirmando",
+        "alega", "alegam", "alegar", "alegando",
+        "promete", "prometem", "prometer", "prometendo",
+        "garante", "garantem", "garantir", "garantindo",
+        "jura", "juram", "jurando",
+        "confirmar", "confirmando", "confirme", "confirma",
+        "informar", "informada", "informado",
+    }
+)  # fmt: skip
+_JANELA_RELATO = 6
+# Condição não é afirmação: "confira se o boleto é verdadeiro" é conselho. Janela curta — o "se"
+# precisa estar colado no sujeito — para que "se for do banco ela é segura" continue contando.
+_JANELA_CONDICAO = 4
+# Aspas simples curvas e travessão curto vão em escape (U+2018, U+2019, U+2013): à vista, o
+# ruff os confunde com acento grave e hífen.
+_ORACAO = re.compile(r"[.,;:!?()\[\]{}\"“”\u2018\u2019«»—\u2013…]")
 _PONTUACAO = re.compile(r"[^\w\s]")
 
 
 def afirma_seguranca(texto: str) -> bool:
     """`True` quando o texto afirma que a mensagem é segura — o que o sistema nunca diz.
 
-    Comparado sem acento e sem pontuação: "Não é golpe." e "nao e golpe" são a mesma frase.
+    Comparado sem acento e sem pontuação: "Não é golpe." e "nao e golpe" são a mesma frase. A
+    pontuação separa as orações antes: o relato e a condição só valem dentro da oração deles.
     """
-    frase = _ESPACOS.sub(" ", _PONTUACAO.sub(" ", normalizar(texto))).strip()
-    if _NAO_E_GOLPE.search(frase):
-        return True
-    for casamento in _AFIRMACAO.finditer(frase):
-        anteriores = frase[: casamento.start()].split()
-        if not anteriores or anteriores[-1] not in _NEGACOES:
+    for oracao in _ORACAO.split(normalizar(texto)):
+        frase = _ESPACOS.sub(" ", _PONTUACAO.sub(" ", oracao)).strip()
+        if _afirma_na_oracao(frase):
             return True
     return False
+
+
+def _afirma_na_oracao(frase: str) -> bool:
+    for casamento in _NAO_E_GOLPE.finditer(frase):
+        if not _relatada_ou_condicional(frase[: casamento.start()].split()):
+            return True
+    for casamento in _AFIRMACAO.finditer(frase):
+        anteriores = frase[: casamento.start()].split()
+        if anteriores and anteriores[-1] in _NEGACOES:
+            continue
+        if not _relatada_ou_condicional(anteriores):
+            return True
+    return False
+
+
+def _relatada_ou_condicional(anteriores: list[str]) -> bool:
+    relato = not _RELATO.isdisjoint(anteriores[-_JANELA_RELATO:])
+    return relato or "se" in anteriores[-_JANELA_CONDICAO:]

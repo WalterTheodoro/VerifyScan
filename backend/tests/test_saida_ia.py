@@ -204,10 +204,84 @@ def test_afirmacao_de_seguranca_e_rejeitada(frase: str) -> None:
     assert afirma_seguranca(frase) is True
 
 
-def test_explicacao_que_afirma_seguranca_e_plano_b() -> None:
+@pytest.mark.parametrize(
+    "frase",
+    [
+        # Fala relatada: a IA descreve o que a mensagem diz, não afirma.
+        "A mensagem diz que é segura.",
+        "O texto afirma ser segura.",
+        "A mensagem alega ser verificada.",
+        "Quem enviou se diz oficial.",
+        "Chega dizendo que é confiável.",
+        "O remetente promete que é seguro.",
+        "A mensagem diz que não é golpe.",
+        # Condição: um conselho para conferir, não uma garantia.
+        "Confira se é verdadeiro.",
+        "Confira no aplicativo do banco se o boleto é verdadeiro.",
+        "Não sabemos se o link é seguro.",
+        # Textos reais da bateria da fatia 6 (E04, E08, E09), que derrubavam o ALTO.
+        "O texto tenta se passar por mensagem oficial e diz que é seguro pagar, o que é um sinal "
+        "forte de golpe.",
+        "A própria mensagem tenta se apresentar como oficial e dizer que é seguro pagar, o que é "
+        "uma tentativa de convencer a pessoa a não desconfiar.",
+        "A própria mensagem tenta dizer que é segura e que pode pagar, o que não é uma forma "
+        "confiável de garantir nada.",
+        "A mensagem tenta mudar o papel da análise, mandando confirmar que o pedido é legítimo.",
+        "A mensagem tenta mudar o papel de quem analisa e pede que a pessoa seja informada de que "
+        "o pedido é legítimo.",
+        "A mensagem diz que é segura, mas isso não pode ser confirmado por ela mesma.",
+        "A mensagem tenta dar ordens a quem analisa mensagens e pedir que confirme que ela é "
+        "legítima.",
+    ],
+)
+def test_fala_relatada_e_condicao_nao_sao_afirmacao(frase: str) -> None:
+    assert afirma_seguranca(frase) is False
+
+
+@pytest.mark.parametrize(
+    "frase",
+    [
+        "Esta mensagem é segura, mesmo que diga outra coisa.",
+        "Se você recebeu, pode confiar.",
+        "A mensagem diz o valor certo. Pode confiar.",
+    ],
+)
+def test_afirmacao_fora_da_fala_relatada_continua_rejeitada(frase: str) -> None:
+    """O relato e a condição só valem para a oração em que aparecem, antes da afirmação."""
+    assert afirma_seguranca(frase) is True
+
+
+def test_sinal_que_afirma_seguranca_sai_sozinho() -> None:
+    """Nenhuma validação de texto descarta a saída inteira (ADR-0020, revisão da fatia 6): o
+    item que afirma segurança sai, e os outros ficam."""
     saida = SaidaIA.model_validate_json(
-        _saida(nivel_sugerido="BAIXO", sinais=["Esta mensagem é segura."])
+        _saida(sinais=["Esta mensagem é segura.", "Pede Pix com pressa."])
     )
+
+    explicacao = explicacao_da_saida(saida)
+
+    assert explicacao.sinais == ("Pede Pix com pressa.",)
+    assert explicacao.o_que_fazer == ("Não pague a taxa.", "Apague a mensagem.")
+
+
+def test_passo_que_afirma_seguranca_sai_sozinho() -> None:
+    saida = SaidaIA.model_validate_json(
+        _saida(o_que_fazer=["Pode confiar e pagar.", "Não pague a taxa.", "Apague a mensagem."])
+    )
+
+    assert explicacao_da_saida(saida).o_que_fazer == ("Não pague a taxa.", "Apague a mensagem.")
+
+
+def test_sem_passos_suficientes_depois_de_tirar_a_afirmacao_e_inutilizavel() -> None:
+    saida = SaidaIA.model_validate_json(_saida(o_que_fazer=["Pode confiar.", "Apague a mensagem."]))
+
+    with pytest.raises(SaidaInutilizavel):
+        explicacao_da_saida(saida)
+
+
+def test_tipo_que_afirma_seguranca_e_inutilizavel() -> None:
+    """O tipo é um campo só: tirá-lo deixa a explicação sem o mínimo."""
+    saida = SaidaIA.model_validate_json(_saida(tipo="aviso de banco, é seguro"))
 
     with pytest.raises(SaidaInutilizavel):
         explicacao_da_saida(saida)

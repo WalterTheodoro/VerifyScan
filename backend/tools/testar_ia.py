@@ -8,9 +8,10 @@ raiz, pelo mesmo `Settings` da aplicação, e liga a IA só neste processo — n
 `IA_ATIVADA`. A chave nunca é impressa.
 
 Para cada amostra: o nível do motor, o sugerido pela IA, o final (a regra fixa), o tipo que a IA
-escreveu, a latência e, quando a IA não entrou, o motivo do plano B. No fim, tokens e custo.
+escreveu, a latência e, quando a IA (ou só a explicação dela) não entrou, o motivo do plano B. No
+fim, tokens e custo.
 
-Isto não substitui o corpus da Fase 2: são 13 casos sintéticos, sem rótulo independente.
+Isto não substitui o corpus da Fase 2: são 16 casos sintéticos, sem rótulo independente.
 """
 
 import asyncio
@@ -122,6 +123,12 @@ async def main() -> int:
                 tokens_entrada += cliente.ultima.tokens_entrada
                 tokens_saida += cliente.ultima.tokens_saida
             nivel_ia = resultado.nivel_sugerido if resultado else None
+            if resultado is None:
+                plano_b = f"sim ({motivo.motivo})"
+            elif resultado.explicacao is None:
+                plano_b = f"só a explicação ({motivo.motivo})"
+            else:
+                plano_b = "não"
             linhas.append(
                 Linha(
                     id=amostra["id"],
@@ -130,8 +137,8 @@ async def main() -> int:
                     ia=nivel_ia or "—",
                     final=combinar(resposta.nivel_motor, nivel_ia),
                     latencia_ms=latencia_ms,
-                    plano_b="não" if resultado else f"sim ({motivo.motivo})",
-                    tipo=resultado.explicacao.tipo if resultado else "—",
+                    plano_b=plano_b,
+                    tipo=resultado.explicacao.tipo if resultado and resultado.explicacao else "—",
                 )
             )
             print(f"  {amostra['id']}: {latencia_ms} ms")

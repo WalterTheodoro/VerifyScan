@@ -213,7 +213,7 @@ Set-Location backend
 uv run python -m tools.testar_ia
 ```
 
-Roda as 13 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic, com a chave do
+Roda as 16 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic, com a chave do
 `.env`, mesmo com `IA_ATIVADA=false`, e imprime motor, IA, nível final, tipo, latência e plano B.
 Custa centavos de dólar e **não substitui o corpus** da Fase 2. Os testes (`pytest`) nunca chamam
 a API: usam um cliente falso.
