@@ -10,8 +10,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  para que, o que, por quanto tempo, onde, com quem e quais são os direitos.
  *
  *  O mesmo componente em /privacidade e em /conta/privacidade. O que está aqui precisa bater com
- *  o banco: models/, ADR-0006 e ADR-0015 (análise sem texto, vínculo de 7 dias), ADR-0013 (conta
- *  e sessão), ADR-0011 (Neon). `nivel` mantém a hierarquia de títulos de quem o usa. */
+ *  o banco: models/, ADR-0006 e ADR-0015 (anônima sem texto, vínculo de 7 dias), ADR-0018 (a
+ *  mensagem de quem tem conta, pelos mesmos 7 dias), ADR-0013 e ADR-0019 (conta, sessão e
+ *  exclusão), ADR-0011 (Neon). `nivel` mantém a hierarquia de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
   const titulo = "text-secao font-bold sm:text-secao-lg";
@@ -29,8 +30,8 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
       <section aria-labelledby="para-que" className="flex flex-col gap-junto">
         <Titulo id="para-que" className={titulo}>Para que usamos</Titulo>
         <p>
-          Para você entrar na sua conta e ver o histórico das suas análises. A análise em si
-          funciona sem conta.
+          Para você entrar na sua conta e ver o histórico das suas análises, com a mensagem que
+          você analisou. A análise em si funciona sem conta.
         </p>
       </section>
 
@@ -52,20 +53,27 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
 
       <section aria-labelledby="analises" className="flex flex-col gap-junto">
         <Titulo id="analises" className={titulo}>Das análises, guardamos</Titulo>
+        <p>O nível de risco, a pontuação, os sinais encontrados e a data.</p>
         <p>
-          Só o nível de risco, a pontuação, os sinais encontrados e a data.{" "}
-          <strong>Nunca o texto da mensagem que você colou.</strong>
+          <strong>Sem conta, nunca guardamos o texto da mensagem que você colou.</strong>
         </p>
         <p>
-          As análises feitas com a conta aberta ficam ligadas a ela por 7 dias, para aparecer no
-          seu histórico. Depois disso, deixam de ficar ligadas a você.
+          Com a conta aberta, guardamos também a mensagem, para ela aparecer no seu histórico.
+          Isso faz parte do histórico que você usa ao criar a conta, e a tela de análise avisa
+          antes de enviar. Depois de 7 dias, a mensagem é apagada e a análise deixa de ficar
+          ligada a você. Você pode apagá-la antes, a qualquer momento.
+        </p>
+        <p>
+          A mensagem pode ter dados de outras pessoas, como o nome ou o telefone de quem a
+          enviou. Por isso ela fica só esses 7 dias.
         </p>
       </section>
 
       <section aria-labelledby="tempo" className="flex flex-col gap-junto">
         <Titulo id="tempo" className={titulo}>Por quanto tempo</Titulo>
         <ul className="flex list-disc flex-col gap-junto pl-6">
-          <li>a conta, até você pedir para apagar;</li>
+          <li>a conta, até você excluí-la;</li>
+          <li>a mensagem que você analisou com a conta aberta, 7 dias;</li>
           <li>a ligação das análises com a sua conta, 7 dias.</li>
         </ul>
       </section>
@@ -94,9 +102,13 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
             ver o seu histórico, em{" "}
             <Link href="/conta/historico" className={LINK}>Minha conta</Link>;
           </li>
-          <li>apagar uma análise ou todas, no próprio histórico;</li>
+          <li>apagar uma análise ou todas, com a mensagem, no próprio histórico;</li>
           <li>
-            pedir para apagar a sua conta e os seus dados:{" "}
+            excluir a sua conta e todo o histórico, em{" "}
+            <Link href="/conta/dados" className={LINK}>Minha conta → Meus dados</Link>;
+          </li>
+          <li>
+            ou pedir para apagar a sua conta e os seus dados:{" "}
             {CONTATO ? (
               <>
                 escreva para{" "}
