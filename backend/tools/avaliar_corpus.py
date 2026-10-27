@@ -558,7 +558,7 @@ async def _rodar_com_ia(casos: list[Caso]) -> tuple[list[Execucao], str]:
                     mensagem=caso.conteudo,
                     nivel_motor=resposta.nivel_motor,
                     fatores=tuple(resposta.fatores),
-                    urls=tuple(resposta.urls_analisadas),
+                    links=tuple(resposta.links),
                 )
             )
             latencia_ms = round((time.perf_counter() - inicio) * 1000)

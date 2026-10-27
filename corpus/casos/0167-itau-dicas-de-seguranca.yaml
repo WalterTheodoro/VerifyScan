@@ -1,0 +1,11 @@
+id: '0167'
+conteudo: |-
+  Itaú: conheça as dicas para se proteger de golpes em https://www.itau.com.br/seguranca. Nunca pedimos sua senha por telefone ou mensagem.
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "dica de segurança do Itaú, palavra-isca no caminho do domínio oficial"
+canal: sms
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 8 (2026-10-27): legítima com link, para medir alarme falso dos sinais de link; link real só para domínio oficial ou encurtador, nunca aberto"
+divisao: teste

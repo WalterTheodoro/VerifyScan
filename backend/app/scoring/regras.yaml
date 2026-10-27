@@ -18,7 +18,7 @@
 # (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-versao: 3
+versao: 4
 
 # Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
 # dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
@@ -30,7 +30,7 @@ faixas:
   baixo_ate: 30
   medio_ate: 60
 
-# Extração de links (§5.4.2). Não pontua nada — os pesos de URL são das Fases 3 e 4.
+# Extração de links (§5.4.2). Não pontua nada — os pesos de link estão na seção `dominios`.
 urls:
   # Teto por análise: limita o trabalho que as Fases 3 e 4 herdam de mensagem cheia de links.
   maximo_por_analise: 20
@@ -71,6 +71,21 @@ urls:
     - us
     - uk
     - ar
+    # Terminações abusadas (seção `dominios`): precisam estar aqui, senão `golpe.cfd` escrito
+    # sem `http://` nem é extraído. O carregamento confere.
+    - help
+    - garden
+    - wiki
+    - cfd
+    - qpon
+    - xin
+    - loan
+    - bid
+    - rest
+    - ml
+    - ga
+    - cf
+    - gq
 
 categorias:
   # ── §5.4.1, +10 ────────────────────────────────────────────────────────────────────────────
@@ -103,6 +118,10 @@ categorias:
       - '(banco do brasil|bradesco|itaú|caixa|santander|nubank|banco inter|picpay|mercado pago|correios|serasa|receita federal|detran|inss)\b.{0,30}\b(informa|informamos|comunica|comunicamos|avisa|notifica)\b'
       - 'encomenda (retida|parada|pendente|aguardando)'
       - 'pacote (retido|parado|pendente)'
+      # Versão 4 (fatia 8): até três palavras no meio — "pacote está retido", "encomenda ainda
+      # está parada". Só os verbos de bloqueio; "pendente" e "aguardando" seguem colados ao
+      # substantivo, porque "encomenda aguardando retirada" é aviso comum de portaria.
+      - '\b(encomenda|pacote|objeto) (\w+ ){0,3}(retid[oa]|parad[oa]|taxad[oa])\b'
       - 'setor (antifraude|de segurança)'
       - 'central (antifraude|de segurança)'
       - 'departamento (antifraude|de segurança)'
@@ -148,6 +167,11 @@ categorias:
       - 'comprovante de (pagamento|transferência|depósito)'
       - 'taxa de (liberação|entrega|alfândega|desbloqueio|transferência|regularização)'
       - '(pague|pagar|pagamento d[ea]) (uma |a |o )?taxa'
+      # Versão 4 (fatia 8): o pedido de PIX com o meio no fim ("pague com PIX", "pagando agora
+      # pelo Pix", "mandar R$ 320 no Pix"). Não casa "você recebeu um Pix" nem "manda o pix".
+      - '\b(pague|pagar|pagando|pagamento|mande|mandar|envie|enviar)\b.{0,40}\b(pelo|via|por|com|no) pix\b'
+      - '\btaxa\b.{0,40}\bpara (liberar|liberação|desbloquear|receber|retirar)\b'
+      - '\bliberar (a|o|sua|seu) (entrega|encomenda|pacote|objeto)\b'
 
   # ── §5.4.1, +25 ────────────────────────────────────────────────────────────────────────────
   - id: dados_pessoais
@@ -195,3 +219,217 @@ categorias:
       - '\bnivel_sugerido\b'
       - '\b(mostre|revele|repita|exiba|imprima) (o )?(seu )?prompt\b'
       - '</?(mensagem|instruções|instrucoes|system)>'
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Links e domínios — DomainAnalyzer (Fase 3, ADR-0022)
+#
+# PRINCÍPIO: o sistema NUNCA abre o link da mensagem — nem GET, nem HEAD, nem DNS, nem seguir
+# redirecionamento. Abrir pode avisar o golpista, baixar conteúdo malicioso ou servir de SSRF.
+# Tudo abaixo é sobre o TEXTO do endereço. Reputação externa (RDAP, listas) é outra fatia.
+#
+# Cada sinal é uma categoria e pontua uma vez por análise, por mais links que a mensagem tenha
+# (a mesma agregação do texto, ADR-0004). Link para domínio oficial de uma marca abaixo não
+# dispara nenhum sinal: vira informação para a IA, sem baixar o nível do motor.
+#
+# As descrições só podem usar {marca}, que vem da lista fechada de marcas. O domínio vem da
+# mensagem, e o fator é gravado também em análise anônima; por isso ele não entra (fatia 8). O
+# carregamento recusa {dominio} aqui.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+dominios:
+  sinais:
+    # O nome inteiro da marca no endereço, fora do domínio oficial: `correios-rastreio.example`,
+    # `bradesco.conta-segura.com`. RFC "subdomínio enganoso" +30, subido a 35 para que sozinho,
+    # sem nenhum sinal de texto, saia de BAIXO.
+    - id: link_marca_nao_oficial
+      peso: 35
+      descricao: 'O link usa o nome {marca}, mas não é um endereço oficial.'
+      no_link: 'usa o nome {marca}, mas não é um endereço oficial'
+    # Letra trocada, dígito no lugar de letra ou acento a mais: `bradesc0`, `ltau`, `nubamk`.
+    # RFC "typosquatting" +35.
+    - id: link_parecido_com_oficial
+      peso: 35
+      descricao: 'O endereço do link imita o nome {marca}, com letras trocadas.'
+      no_link: 'imita o nome {marca}, com letras trocadas'
+    # Punycode (`xn--`), letra de fora do ASCII (o "a" cirílico, U+0430) ou caractere invisível.
+    - id: link_caracteres_enganosos
+      peso: 35
+      descricao: 'O endereço do link tem letras de outro alfabeto ou caracteres escondidos, que imitam um endereço comum.'
+      no_link: 'tem letras de outro alfabeto ou caracteres escondidos'
+    - id: link_ip
+      peso: 35
+      descricao: 'O link leva a um número (endereço IP) em vez do nome de um site. Empresas sérias não fazem isso.'
+      no_link: 'é um número, e não o nome de um site'
+    # "@" antes do host, porta fora do comum, subdomínio demais.
+    - id: link_truque_endereco
+      peso: 25
+      descricao: 'O endereço do link foi montado para confundir: o site de verdade não é o que aparece primeiro.'
+      no_link: 'foi montado para confundir'
+    # Marketing legítimo também usa encurtador: sozinho, fica em BAIXO.
+    - id: link_encurtado
+      peso: 15
+      descricao: 'A mensagem usa um link encurtado, que esconde para onde ele leva.'
+      no_link: 'é um link encurtado, que esconde para onde leva'
+    # RFC "TLD de alto risco" +15.
+    - id: link_tld_abusado
+      peso: 15
+      descricao: 'O link termina numa terminação de endereço muito usada em golpes.'
+      no_link: 'tem uma terminação muito usada em golpes'
+    - id: link_palavra_isca
+      peso: 15
+      descricao: 'O endereço do link usa palavras como "segurança", "taxa" ou "liberação", comuns em golpes.'
+      no_link: 'usa palavras comuns em golpes'
+    # Só quando a pessoa escreveu `http://`: o extrator completa "gov.br" com `http://`, e isso
+    # não pode virar sinal.
+    - id: link_sem_https
+      peso: 10
+      descricao: 'O link não usa conexão protegida: começa com "http://", sem o "s".'
+      no_link: 'não usa conexão protegida'
+
+  # O bloco "Links que aparecem na mensagem" mostra o domínio, como texto, e ao lado o `no_link`
+  # de cada sinal. Sem sinal, uma destas. A do link sem sinal não pode soar como garantia: o
+  # sistema nunca diz que um site é seguro.
+  link_oficial: 'endereço oficial: {marca}'
+  link_sem_sinal: 'nada estranho no endereço, mas isso não garante que o site é verdadeiro'
+
+  # Domínio registrável (eTLD+1) dos encurtadores mais comuns no Brasil.
+  encurtadores:
+    - bit.ly
+    - bit.do
+    - tinyurl.com
+    - cutt.ly
+    - is.gd
+    - v.gd
+    - encurtador.com.br
+    - abre.ai
+    - rb.gy
+    - t.ly
+    - t.co
+    - goo.gl
+    - ow.ly
+    - rebrand.ly
+    - shorturl.at
+    - tiny.cc
+
+  # Fonte (ADR-0022): Cybercrime Information Center (Interisle), "Spam Activity in TLDs, March 1 –
+  # May 31, 2026" — as 10 primeiras por concentração (domínios de spam a cada 10 mil, de 3.256
+  # em .help a 864 em .rest). Mais as do antigo Freenom (tk, ml, ga, cf, gq), fonte histórica:
+  # Cybercrime Information Center (Interisle), "Phishing Landscape 2023" — 14% dos ataques de
+  # phishing no mundo em anos anteriores. O Freenom parou de registrar em janeiro de 2023: as
+  # cinco ficam porque domínio antigo ainda circula, não porque haja abuso novo medido.
+  tlds_abusados:
+    - help
+    - garden
+    - wiki
+    - cfd
+    - qpon
+    - xin
+    - top
+    - loan
+    - bid
+    - rest
+    - tk
+    - ml
+    - ga
+    - cf
+    - gq
+
+  # Procuradas no host e no caminho (sem a query), já sem acento e com 0→o e 1→l. São radicais:
+  # "atualiza" pega "atualizar" e "atualizacao".
+  palavras_isca:
+    - 'segurança'
+    - 'atualiza'
+    - 'regulariz'
+    - 'verifica'
+    - 'login'
+    - 'libera'
+    - 'taxa'
+
+  # Porta explícita fora destas é truque de endereço.
+  portas_comuns: [80, 443]
+
+  # Subdomínios antes do domínio registrável, sem contar o "www".
+  subdominios_suspeitos_a_partir_de: 3
+
+  # ADR-0004 §3: distância de edição proporcional ao tamanho do nome da marca. Nome com menos
+  # de 4 letras (bb, gov) não entra: a uma letra de distância casaria com metade da internet.
+  semelhanca:
+    minimo_de_letras: 4
+    curto_ate: 6
+    distancia_curto: 1
+    distancia_longo: 2
+
+  # `nomes`: como o endereço escreve a marca, comparado com cada pedaço do host separado por
+  # "." ou "-" (e com o rótulo inteiro sem hífen). Pedaço inteiro, não trecho: "inter" não casa
+  # com "internet". `semelhanca: false` para nome que é palavra comum.
+  # `oficiais`: domínio registrável; cobre os subdomínios (gov.br vale para detran.sp.gov.br).
+  marcas:
+    - nome: Correios
+      nomes: [correios]
+      semelhanca: true
+      oficiais: [correios.com.br]
+    # O gov.br vem antes das outras marcas sob gov.br: num empate de domínio oficial, quem está
+    # primeiro é o dono (`www.gov.br/inss` é "oficial do gov.br").
+    - nome: gov.br
+      nomes: [gov, govbr]
+      semelhanca: false
+      oficiais: [gov.br]
+    - nome: Caixa
+      nomes: [caixa, fgts]
+      semelhanca: false
+      oficiais: [caixa.gov.br, gov.br]
+    - nome: INSS
+      nomes: [inss, meuinss]
+      semelhanca: false
+      oficiais: [gov.br]
+    - nome: Receita Federal
+      nomes: [receita, receitafederal]
+      semelhanca: false
+      oficiais: [gov.br]
+    - nome: Detran
+      nomes: [detran]
+      semelhanca: true
+      oficiais: [gov.br]
+    - nome: Banco do Brasil
+      nomes: [bb, bancodobrasil]
+      semelhanca: false
+      oficiais: [bb.com.br]
+    - nome: Itaú
+      nomes: [itau]
+      semelhanca: true
+      oficiais: [itau.com.br]
+    - nome: Bradesco
+      nomes: [bradesco]
+      semelhanca: true
+      oficiais: [bradesco.com.br]
+    - nome: Santander
+      nomes: [santander]
+      semelhanca: true
+      oficiais: [santander.com.br]
+    - nome: Nubank
+      nomes: [nubank]
+      semelhanca: true
+      oficiais: [nubank.com.br]
+    - nome: Inter
+      nomes: [inter, bancointer]
+      semelhanca: false
+      oficiais: [inter.co, bancointer.com.br]
+    - nome: Mercado Pago
+      nomes: [mercadopago]
+      semelhanca: true
+      oficiais: [mercadopago.com.br, mercadopago.com]
+    - nome: PicPay
+      nomes: [picpay]
+      semelhanca: true
+      oficiais: [picpay.com]
+    - nome: Serasa
+      nomes: [serasa]
+      semelhanca: true
+      oficiais: [serasa.com.br, serasaexperian.com.br]
+    - nome: WhatsApp
+      nomes: [whatsapp]
+      semelhanca: true
+      oficiais: [whatsapp.com, wa.me]
+    - nome: Instagram
+      nomes: [instagram]
+      semelhanca: true
+      oficiais: [instagram.com]

@@ -1,7 +1,7 @@
 """Contrato de /api/historico e /api/conta (ADR-0015).
 
-O item do histórico traz a mensagem analisada enquanto ela existe no banco (ADR-0018). As URLs
-não vêm: o banco não as guarda (ADR-0009), e elas continuam visíveis dentro do próprio texto.
+O item do histórico traz a mensagem analisada enquanto ela existe no banco (ADR-0018). Os links
+não são guardados (ADR-0009): o bloco de links é recalculado do texto, pelo domínio (fatia 8).
 """
 
 import uuid
@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.analise import ExplicacaoIA, NivelRisco, Orientacao
+from app.schemas.analise import ExplicacaoIA, LinkDaMensagem, NivelRisco, Orientacao
 
 
 class FatorHistorico(BaseModel):
@@ -34,6 +34,11 @@ class ItemHistorico(BaseModel):
             "O que a IA escreveu, quando ela entrou. `null` nas análises sem IA e nas "
             "anteriores ao ADR-0020: a tela mostra então o plano B."
         )
+    )
+    # Campo aditivo da fatia 8 (ADR-0022), recalculado do texto com as regras de hoje.
+    links: list[LinkDaMensagem] = Field(
+        default_factory=list,
+        description="O bloco de links da home. Vazio quando o texto não foi guardado.",
     )
 
 

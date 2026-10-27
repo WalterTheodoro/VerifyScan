@@ -1,0 +1,11 @@
+id: '0168'
+conteudo: |-
+  Detran: o licenciamento 2026 do veículo de placa [PLACA] já pode ser pago. Consulte os valores em https://www.detran.sp.gov.br
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso do Detran com link gov.br estadual"
+canal: sms
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 8 (2026-10-27): legítima com link, para medir alarme falso dos sinais de link; link real só para domínio oficial ou encurtador, nunca aberto"
+divisao: calibracao

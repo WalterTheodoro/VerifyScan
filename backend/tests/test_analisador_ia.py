@@ -27,7 +27,7 @@ ENTRADA = EntradaIA(
             peso=25,
         ),
     ),
-    urls=(),
+    links=(),
 )
 PEDIDO = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 CHAVE = "sk-ant-teste-NAO-E-CHAVE-REAL-789"
@@ -52,7 +52,7 @@ async def test_sucesso_devolve_nivel_e_explicacao() -> None:
     sistema, entrada = cliente.chamadas[0]
     assert sistema == PROMPT_SISTEMA
     assert MENSAGEM in entrada
-    assert "nivel: BAIXO" in entrada
+    assert "nivel_estimado: BAIXO" in entrada
 
 
 async def test_nivel_com_outra_caixa_e_aceito() -> None:

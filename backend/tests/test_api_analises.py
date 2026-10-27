@@ -11,8 +11,9 @@ from httpx import AsyncClient
 
 from app.core.config import get_settings
 
-# A mensagem do Gate 1. Dispara urgência (+10), ameaça de bloqueio (+15), solicitação
-# financeira (+25) e dados pessoais (+25) — 75, portanto ALTO.
+# A mensagem do Gate 1. No texto: urgência (+10), ameaça de bloqueio (+15), solicitação
+# financeira (+25) e dados pessoais (+25). No link, desde a Fase 3 (ADR-0022): a marca "bb" fora
+# do domínio oficial (+35) e a palavra-isca "regularize" (+15). 125, portanto ALTO.
 GOLPE_DE_PIX = (
     "URGENTE: sua conta será bloqueada hoje. Faça um PIX de R$ 49,90 para regularizar "
     "e confirme seu CPF em bb-regularize.xyz"
@@ -25,20 +26,60 @@ async def test_golpe_de_pix_da_alto_com_os_fatores(cliente: AsyncClient) -> None
     assert resposta.status_code == 200
     corpo = resposta.json()
     assert corpo["nivel_risco"] == "ALTO"
-    assert corpo["score"] == 75
+    assert corpo["score"] == 125
     assert {fator["categoria"] for fator in corpo["fatores"]} == {
         "urgencia",
         "ameaca_bloqueio",
         "solicitacao_financeira",
         "dados_pessoais",
+        "link_marca_nao_oficial",
+        "link_palavra_isca",
     }
 
 
-async def test_resposta_traz_as_urls_canonicas(cliente: AsyncClient) -> None:
-    """Campo populado desde a Fase 1, embora só a Fase 3 vá pontuar em cima dele."""
-    resposta = await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})
+async def test_fator_de_link_vem_com_tipo_dominio(cliente: AsyncClient) -> None:
+    corpo = (await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
-    assert resposta.json()["urls_analisadas"] == ["http://bb-regularize.xyz/"]
+    tipos = {fator["categoria"]: fator["tipo"] for fator in corpo["fatores"]}
+    assert tipos["link_marca_nao_oficial"] == "dominio"
+    assert tipos["urgencia"] == "texto"
+
+
+async def test_link_sozinho_com_marca_fora_do_oficial_da_medio(cliente: AsyncClient) -> None:
+    """Sem nenhum sinal de texto, só o link. Antes da Fase 3 isto saía BAIXO com score 0."""
+    texto = "Acompanhe em https://correios-entrega.example"
+
+    corpo = (await cliente.post("/api/analises", json={"texto": texto})).json()
+
+    assert corpo["nivel_risco"] == "MEDIO"
+
+
+async def test_resposta_traz_o_dominio_de_cada_link_e_o_que_se_achou(cliente: AsyncClient) -> None:
+    """Fatia 8: a tela mostra o domínio registrável e o que o sistema achou dele, nunca o link
+    inteiro. `urls_analisadas` saiu do contrato."""
+    corpo = (await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
+
+    assert "urls_analisadas" not in corpo
+    assert corpo["links"] == [
+        {
+            "dominio": "bb-regularize.xyz",
+            "observacoes": [
+                "usa o nome Banco do Brasil, mas não é um endereço oficial",
+                "usa palavras comuns em golpes",
+            ],
+        }
+    ]
+
+
+async def test_resposta_nunca_traz_o_link_inteiro(cliente: AsyncClient) -> None:
+    """Caminho, query e subdomínio são o "atalho pronto" para o golpe: não saem em campo
+    nenhum. (A mensagem não volta na resposta da análise; só o histórico a devolve.)"""
+    texto = "Pague em https://pagamento.correios-xyzzy.example/taxa-42?cpf=QWERTY"
+
+    resposta = await cliente.post("/api/analises", json={"texto": texto})
+
+    for trecho in ("pagamento.correios", "taxa-42", "QWERTY", "https://"):
+        assert trecho not in resposta.text
 
 
 async def test_sem_ia_a_explicacao_fica_indisponivel(cliente: AsyncClient) -> None:
@@ -68,7 +109,7 @@ async def test_mensagem_legitima_da_baixo(cliente: AsyncClient) -> None:
     assert corpo["nivel_risco"] == "BAIXO"
     assert corpo["score"] == 0
     assert corpo["fatores"] == []
-    assert corpo["urls_analisadas"] == []
+    assert corpo["links"] == []
 
 
 async def test_fator_nao_expoe_trecho_da_mensagem(cliente: AsyncClient) -> None:
