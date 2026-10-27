@@ -11,7 +11,7 @@ Para cada amostra: o nível do motor, o sugerido pela IA, o final (a regra fixa)
 escreveu, a latência e, quando a IA (ou só a explicação dela) não entrou, o motivo do plano B. No
 fim, tokens e custo.
 
-Isto não substitui o corpus da Fase 2: são 16 casos sintéticos, sem rótulo independente.
+Isto não substitui o corpus da Fase 2: são 20 casos sintéticos, sem rótulo independente.
 """
 
 import asyncio
