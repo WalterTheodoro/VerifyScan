@@ -32,6 +32,10 @@ EMAIL_MAXIMO = 254
 SENHA_MINIMA = 8
 SENHA_MAXIMA = 128
 
+# Cada frase fala do campo que a tela mostra: "Senha atual" na troca, "Sua senha" na exclusão.
+SENHA_ATUAL_NAO_CONFERE = "A senha atual não confere."
+SENHA_NAO_CONFERE = "A senha não confere."
+
 
 class CredenciaisInvalidas(Exception):
     """A mesma mensagem para e-mail inexistente e senha errada: não revela se a conta existe."""
@@ -44,8 +48,8 @@ class SenhaIncorreta(Exception):
     """Senha errada numa ação de quem JÁ está logado (trocar senha, excluir conta). Vira 400, e
     nunca 401: o frontend trata 401 como "deslogado" e trocaria a tela por "Entrar" (ADR-0019)."""
 
-    def __init__(self) -> None:
-        super().__init__("A senha atual não confere.")
+    def __init__(self, mensagem: str) -> None:
+        super().__init__(mensagem)
 
 
 class ContaNaoEncontrada(Exception):
@@ -152,7 +156,7 @@ class ServicoAutenticacao:
         precisar entrar de novo onde está (ADR-0019). A nova senha segue as regras do cadastro.
         """
         self._validar_senha(nova_senha)
-        await self._conferir_senha(usuario, senha_atual)
+        await self._conferir_senha(usuario, senha_atual, SENHA_ATUAL_NAO_CONFERE)
         # Comparar o texto basta: a senha atual acabou de ser conferida contra o hash.
         if nova_senha == senha_atual:
             raise EntradaInvalida("A nova senha precisa ser diferente da atual.")
@@ -164,13 +168,18 @@ class ServicoAutenticacao:
     async def excluir_conta(self, usuario: UsuarioAutenticado, senha: str) -> None:
         """Pede a senha mesmo com a sessão aberta: no celular dividido com a família, sessão
         aberta sozinha não basta para apagar a conta (ADR-0019)."""
-        await self._conferir_senha(usuario, senha)
+        await self._conferir_senha(usuario, senha, SENHA_NAO_CONFERE)
         async with self._banco():
             await self._usuarios.apagar(usuario.id)
         logger.info("Conta excluída")
 
-    async def _conferir_senha(self, usuario: UsuarioAutenticado, senha: str) -> None:
-        """Busca o hash pelo caminho do login e confere a senha, com o Argon2 fora do teto."""
+    async def _conferir_senha(
+        self, usuario: UsuarioAutenticado, senha: str, frase_se_errada: str
+    ) -> None:
+        """Busca o hash pelo caminho do login e confere a senha, com o Argon2 fora do teto.
+
+        A frase vem de quem chama: só a operação sabe qual campo a tela mostrou.
+        """
         async with self._banco():
             credenciais = await self._usuarios.buscar_credenciais(usuario.email)
         if credenciais is None or credenciais.usuario.id != usuario.id:
@@ -178,7 +187,7 @@ class ServicoAutenticacao:
         if not await self._hasher.verificar(credenciais.senha_hash, senha):
             # INFO e sem identificar a conta, como o login recusado.
             logger.info("Senha da conta recusada")
-            raise SenhaIncorreta()
+            raise SenhaIncorreta(frase_se_errada)
 
     async def sair(self, token: str) -> None:
         if not token:

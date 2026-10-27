@@ -1465,3 +1465,100 @@ O motor de risco não mudou: `avaliar_corpus` não se aplica.
 7. `docs: atualiza CLAUDE.md, README e diário da fatia 5`
 
 Nenhum arquivo aparece em dois commits.
+
+## 2026-10-27 — Correção pós-fatia 5: frase da exclusão e campo de senha em 320 px
+
+### Teste em produção (27/10, 08:21–08:26)
+
+- Os itens 3 a 9 do roteiro passaram. As duas contas de teste foram apagadas pela própria tela.
+- Com o backend acordado, as análises levaram de 0,3 a 0,9 s.
+
+### Achados do teste, registrados sem conclusão
+
+**a) Despertar do backend no Render.**
+- 08:14: um script em Node chamou o `/health` do backend dormindo a cada ~10 s, por 3 minutos.
+  - A resposta foi sempre 503, da página "Service waking up" do Render, e não do app.
+  - Cada resposta levou ~4 s, e o servidor não acordou.
+- 08:19: abrir o mesmo `/health` no navegador acordou o backend em ~22 s.
+- **Hipótese a verificar:** o Render agora só liga a instância para pedidos de navegador.
+  - Foi uma observação só, sem repetição; não sustenta conclusão.
+  - Precisa ser medido de novo contra o `despertar()` do ADR-0017, que é um fetch `no-cors` do
+    navegador, e não um script.
+
+**b) Calibração.** "Seu pacote está retido nos Correios. Pague a taxa de R$ 9,90 hoje pelo PIX
+para liberar a entrega." saiu como **BAIXO**. O motor de risco não foi mexido nesta correção: o
+caso vai para a fila de calibração.
+
+### O que foi feito
+
+1. **Frase do 400 na exclusão.** Com a senha errada, o quadro "Excluir minha conta" dizia "A senha
+   atual não confere.", mas ali o campo se chama "Sua senha".
+   - A exclusão passou a dizer "A senha não confere."; a troca de senha segue com "A senha atual
+     não confere.". As duas continuam 400, nunca 401.
+   - **A frase muda no service, não na rota.** A rota só mapeia tipo de erro para status e repassa
+     a mensagem do service; escolher a frase por rota seria regra na `api/`. Quem sabe qual senha
+     foi pedida é a operação: `_conferir_senha` recebe a frase de `trocar_senha` e de
+     `excluir_conta`, e `SenhaIncorreta` passou a receber a mensagem. O status continua vindo do
+     tipo.
+   - Adendo no ADR-0019.
+2. **Campo de senha estreito.** No `CampoSenha`, a linha do campo ganhou `flex-wrap`, e o campo,
+   `grow basis-[9rem]`. Sem 9rem (162 px) para o campo ao lado do "Mostrar", o botão desce para
+   baixo dele.
+   - Vale para os quatro campos: entrar, cadastro, troca de senha e exclusão.
+   - Decide a largura do quadro, e não a da tela: em 390 px, o campo da troca fica largo e o da
+     exclusão, dentro do quadro lavanda, não. Uma media query não distinguiria os dois.
+   - Tirar o espaço interno do quadro ganharia ~18 px, e o campo continuaria abaixo de 90 px.
+   - Sem mudança de cor, nada de texto cinza; o botão segue com 44 px de alvo.
+   - Resolve a pendência "em 320 px, o campo de senha fica com ~115 px" da fatia 3.
+
+### O que deu errado no caminho
+
+- A primeira versão usou `min-w-[9rem]` e a medição de depois saiu **idêntica** à de antes. O
+  `.alvo-de-toque` do `globals.css` fica fora de camada, e o `min-width: 44px` dele vence qualquer
+  utilitário do Tailwind (que mora em `@layer utilities`).
+  - Pelo mesmo motivo, o `min-w-0` que o campo tinha antes nunca valeu.
+  - Troquei para `basis`, que o `.alvo-de-toque` não define. Sem a medição, o "conserto" teria
+    ido para o commit sem efeito.
+- O primeiro `next start` não morreu ao parar a tarefa e segurou a porta 3001; foi encerrado pelo
+  PID.
+
+### Medição (build de produção na 3001, backend local na 8000, Edge headless por CDP)
+
+Largura do campo / área de texto (sem o padding) / posição do "Mostrar", em px. O botão mede
+105 × 54 ao lado do campo e 105 × 44 embaixo dele.
+
+| Campo | 320 antes | 320 depois | 390 antes | 390 depois | 1280 antes → depois |
+|---|---|---|---|---|---|
+| Entrar — Senha | 116 / 67 / ao lado | 230 / 181 / embaixo | 186 / 137 / ao lado | igual | 390 / 341 / ao lado, igual |
+| Cadastro — Senha | 116 / 67 / ao lado | 230 / 181 / embaixo | 186 / 137 / ao lado | igual | 390 / 341 / ao lado, igual |
+| Trocar senha — Senha atual | 116 / 67 / ao lado | 230 / 181 / embaixo | 186 / 137 / ao lado | igual | 575 / 526 / ao lado, igual |
+| Trocar senha — Nova senha | 116 / 67 / ao lado | 230 / 181 / embaixo | 186 / 137 / ao lado | igual | 575 / 526 / ao lado, igual |
+| Excluir — Sua senha | **71 / 22** / ao lado | 185 / 136 / embaixo | 141 / 92 / ao lado | 255 / 206 / embaixo | 530 / 481 / ao lado, igual |
+
+Em todos os casos, antes e depois: sem rolagem lateral e nada fora da tela. A captura do quadro
+de exclusão em 320 px foi conferida a olho.
+
+### Verificação
+
+- Teste antes do código: os testes de exclusão com a senha errada (unitário e de integração)
+  passaram a esperar "A senha não confere." e falharam primeiro (2 falhando, 16 passando).
+  Depois do código, 18 passando. O da troca não mudou e prova que a frase dela ficou.
+- Backend: `ruff format`, `ruff check` e `mypy app` limpos; `pytest -q` com 304 passando e 1
+  xfail; `-m integracao` com 49.
+- Frontend: `npm test` 34/34; `npm run lint`, `npx tsc --noEmit` e `npm run build` limpos.
+- O motor de risco não mudou: `avaliar_corpus` não se aplica.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Medir de novo o despertar do backend: script × navegador × `despertar()` do ADR-0017 | Walter, em produção |
+| "Pacote retido nos Correios… taxa de R$ 9,90… PIX" sai BAIXO | calibração do motor, fora desta correção |
+
+### Commits
+
+1. `fix(conta): a exclusão diz "A senha não confere."`
+2. `fix(frontend): o botão Mostrar desce quando o campo de senha fica estreito`
+3. `docs: registra o teste em produção de 27/10 e os achados do despertar e do pacote retido`
+
+Nenhum arquivo aparece em dois commits.

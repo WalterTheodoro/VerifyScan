@@ -38,7 +38,10 @@ export function CampoSenha({
         {rotulo}
       </label>
       {dica && <p id={idDica}>{dica}</p>}
-      <div className="flex items-stretch gap-2">
+      {/* Sem 9rem para o campo ao lado do botão, o botão desce: decide a largura do quadro, não
+          a da tela (o mesmo campo fica estreito no quadro de exclusão e largo no de troca).
+          `basis`, e não `min-w`: o `min-width` do `.alvo-de-toque`, fora de camada, venceria. */}
+      <div className="flex flex-wrap items-stretch gap-2">
         <input
           id={id}
           name={nome}
@@ -51,7 +54,7 @@ export function CampoSenha({
           onChange={(evento) => aoMudar(evento.target.value)}
           readOnly={somenteLeitura}
           aria-describedby={dica ? idDica : undefined}
-          className="campo alvo-de-toque min-w-0 flex-1 px-5 py-2 text-destaque"
+          className="campo alvo-de-toque grow basis-[9rem] px-5 py-2 text-destaque"
         />
         <button
           type="button"
