@@ -12,7 +12,8 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  O mesmo componente em /privacidade e em /conta/privacidade. O que está aqui precisa bater com
  *  o banco: models/, ADR-0006 e ADR-0015 (anônima sem texto, vínculo de 7 dias), ADR-0018 (a
  *  mensagem de quem tem conta, pelos mesmos 7 dias), ADR-0013 e ADR-0019 (conta, sessão e
- *  exclusão), ADR-0011 (Neon). `nivel` mantém a hierarquia de títulos de quem o usa. */
+ *  exclusão), ADR-0011 (Neon), ADR-0020 (a mensagem vai à Anthropic; o que a IA escreveu segue a
+ *  regra da mensagem). `nivel` mantém a hierarquia de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
   const titulo = "text-secao font-bold sm:text-secao-lg";
@@ -30,8 +31,38 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
       <section aria-labelledby="para-que" className="flex flex-col gap-junto">
         <Titulo id="para-que" className={titulo}>Para que usamos</Titulo>
         <p>
-          Para você entrar na sua conta e ver o histórico das suas análises, com a mensagem que
-          você analisou. A análise em si funciona sem conta.
+          Para analisar a mensagem que você colou e dizer o que fazer. A análise funciona sem
+          conta.
+        </p>
+        <p>
+          Se você criar uma conta, também para você entrar nela e ver o histórico das suas
+          análises, com a mensagem que você analisou.
+        </p>
+      </section>
+
+      <section aria-labelledby="ia" className="flex flex-col gap-junto">
+        <Titulo id="ia" className={titulo}>A análise com inteligência artificial</Titulo>
+        <p>
+          Para dizer o que a mensagem parece ser e o que fazer, enviamos o texto que você colou à
+          Anthropic, a empresa que faz a inteligência artificial Claude.{" "}
+          <strong>Isso vale com ou sem conta.</strong>
+        </p>
+        <p>
+          Vão só a mensagem, os sinais que as nossas regras encontraram nela e os links que ela
+          tem. Não vão o seu nome, o seu e-mail nem nada da sua conta.
+        </p>
+        <p>
+          Pelas regras da Anthropic para empresas que usam a inteligência artificial dela, ela
+          não usa esse conteúdo para treinar os seus modelos e o apaga em até 30 dias. Ela pode
+          guardar por mais tempo, até 2 anos, o que os sistemas dela marcarem como violação das
+          suas regras de uso, e também o que a lei exigir.
+        </p>
+        <p>
+          A Anthropic fica nos Estados Unidos. Enviar a mensagem para ela é, por isso, uma
+          transferência internacional de dados (Lei Geral de Proteção de Dados, art. 33).
+        </p>
+        <p>
+          Se a inteligência artificial não responder, a análise sai só com as nossas regras.
         </p>
       </section>
 
@@ -53,15 +84,19 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
 
       <section aria-labelledby="analises" className="flex flex-col gap-junto">
         <Titulo id="analises" className={titulo}>Das análises, guardamos</Titulo>
-        <p>O nível de risco, a pontuação, os sinais encontrados e a data.</p>
+        <p>
+          O nível de risco, a pontuação, os sinais encontrados, o nível que a inteligência
+          artificial sugeriu e a data.
+        </p>
         <p>
           <strong>Sem conta, nunca guardamos o texto da mensagem que você colou.</strong>
         </p>
         <p>
-          Com a conta aberta, guardamos também a mensagem, para ela aparecer no seu histórico.
-          Isso faz parte do histórico que você usa ao criar a conta, e a tela de análise avisa
-          antes de enviar. Depois de 7 dias, a mensagem é apagada e a análise deixa de ficar
-          ligada a você. Você pode apagá-la antes, a qualquer momento.
+          Com a conta aberta, guardamos também a mensagem e o que a inteligência artificial
+          escreveu sobre ela, para os dois aparecerem no seu histórico. Isso faz parte do
+          histórico que você usa ao criar a conta, e a tela de análise avisa antes de enviar.
+          Depois de 7 dias, os dois são apagados e a análise deixa de ficar ligada a você. Você
+          pode apagá-la antes, a qualquer momento.
         </p>
         <p>
           A mensagem pode ter dados de outras pessoas, como o nome ou o telefone de quem a
@@ -73,7 +108,11 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
         <Titulo id="tempo" className={titulo}>Por quanto tempo</Titulo>
         <ul className="flex list-disc flex-col gap-junto pl-6">
           <li>a conta, até você excluí-la;</li>
-          <li>a mensagem que você analisou com a conta aberta, 7 dias;</li>
+          <li>
+            a mensagem que você analisou com a conta aberta, e o que a inteligência artificial
+            escreveu sobre ela, 7 dias;
+          </li>
+          <li>na Anthropic, a mensagem enviada para a análise, até 30 dias;</li>
           <li>a ligação das análises com a sua conta, 7 dias.</li>
         </ul>
       </section>
@@ -89,9 +128,10 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
       <section aria-labelledby="onde" className="flex flex-col gap-junto">
         <Titulo id="onde" className={titulo}>Onde ficam e com quem</Titulo>
         <p>
-          Em servidores nos Estados Unidos, de duas empresas: a Render, onde o site roda, e a
-          Neon, onde fica o banco de dados. Elas só guardam e rodam o sistema. Não vendemos nem
-          repassamos os seus dados a mais ninguém.
+          Em servidores nos Estados Unidos, de três empresas: a Render, onde o site roda; a
+          Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
+          artificial, como explicado acima. Não vendemos nem repassamos os seus dados a mais
+          ninguém.
         </p>
       </section>
 
