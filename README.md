@@ -17,7 +17,9 @@ plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 > regras, com a orientação fixa do nível (ADR-0020). Sem conta, a análise fica no banco sem o texto.
 > Com conta, ela vai para o histórico por 7 dias, com a mensagem e a mesma resposta da tela
 > (ADR-0018), e em "Minha conta" dá para apagar análises, trocar a senha e excluir a conta
-> (ADR-0019). Ainda sem OCR e sem consulta a APIs externas de reputação (Fases 4 e 5).
+> (ADR-0019). Desde a fatia 8, os links também pontuam, só pelo texto do endereço: o sistema
+> **nunca abre o link**, e a tela mostra só o domínio e o que se achou dele, nunca o link inteiro
+> (ADR-0022). Ainda sem OCR e sem consulta a APIs externas de reputação (Fases 4 e 5).
 
 ---
 
@@ -238,7 +240,7 @@ Set-Location backend
 uv run python -m tools.testar_ia
 ```
 
-Roda as 20 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic, com a chave do
+Roda as 26 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic, com a chave do
 `.env`, mesmo com `IA_ATIVADA=false`, e imprime motor, IA, nível final, tipo, latência e plano B.
 Custa centavos de dólar e **não substitui o corpus** da Fase 2. Os testes (`pytest`) nunca chamam
 a API: usam um cliente falso.
@@ -275,7 +277,7 @@ VerifyScan/
 │  ├─ tools/           scripts: avaliar_corpus e sortear_divisao (Fase 2), testar_ia e amostras_ia.yaml
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
-├─ corpus/             161 casos sintéticos rotulados, divisão fixa calibração/teste (Fase 2)
+├─ corpus/             176 casos sintéticos rotulados, divisão fixa calibração/teste (Fase 2)
 ├─ docs/               RFC, plano de execução, ADRs, diário de bordo e avaliacoes/ (relatórios)
 └─ docker-compose.yml  Postgres 16 e Redis 7
 ```
