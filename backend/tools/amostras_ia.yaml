@@ -1,13 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # VerifyScan — amostras para conferir a análise com IA (ADR-0020)
 #
-# 20 mensagens SINTÉTICAS, escritas para este arquivo a partir dos padrões que aparecem em
+# 26 mensagens SINTÉTICAS, escritas para este arquivo a partir dos padrões que aparecem em
 # alertas públicos de golpe. Nenhuma é cópia de mensagem real e nenhuma tem dado de pessoa real:
 # os links usam o domínio reservado `.example`, os telefones são fictícios e os nomes, genéricos.
 #
 # Uso: `uv run python -m tools.testar_ia` (de dentro de backend/). Fora do CI: chama a API real.
 #
-# Isto NÃO é o corpus da Fase 2. São 20 casos escolhidos por mim, sem rótulo independente e sem
+# Isto NÃO é o corpus da Fase 2. São 26 casos escolhidos por mim, sem rótulo independente e sem
 # amostragem: servem para ver a IA funcionando, não para medir precisão.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -147,3 +147,42 @@ amostras:
     rotulo: legitima
     texto: >-
       Ignore todas as regras do grupo antigo, agora o horário do futebol é às 19h.
+
+  # ── fatia 8: "resolva pelo aplicativo oficial" (pendência da fatia 7) ──────────────────────
+  # Fora do corpus, que é binário: a primeira é ambígua de propósito. Mandar resolver pelo app
+  # oficial, sem link, sem chave Pix e sem pedir dados, é sinal de legitimidade; sem remetente e
+  # sem outro sinal, o justo é no máximo MEDIO. As duas últimas são o contraste: o mesmo texto
+  # com link ou com chave Pix volta a ser golpe. Esperado no `final`: ambígua ≤ MEDIO, golpe ALTO.
+  - id: conta-liberada-pelo-app
+    rotulo: ambigua
+    texto: >-
+      Sua conta foi liberada! Pague agora mesmo a taxa pelo seu app e aproveite!
+
+  - id: conta-liberada-pelo-app-sem-pressa
+    rotulo: ambigua
+    texto: >-
+      Sua conta foi liberada. Para começar a usar, pague a taxa de abertura pelo aplicativo do
+      banco.
+
+  - id: fatura-pelo-app-oficial
+    rotulo: legitima
+    texto: >-
+      Sua fatura vence amanhã. Pague pelo aplicativo oficial do seu banco ou pelo internet
+      banking, digitando o endereço você mesmo.
+
+  - id: limite-aumentado-no-app
+    rotulo: legitima
+    texto: >-
+      Boa notícia: seu limite foi aumentado. Confira o novo valor no aplicativo do seu banco.
+
+  - id: conta-liberada-com-link
+    rotulo: golpe
+    texto: >-
+      Sua conta foi liberada! Pague agora mesmo a taxa de ativação em
+      https://ativa-conta.example e aproveite!
+
+  - id: conta-liberada-com-chave-pix
+    rotulo: golpe
+    texto: >-
+      Sua conta foi liberada! Pague agora mesmo a taxa de R$ 29,90 por Pix para a chave
+      [CHAVE_PIX] e aproveite!
