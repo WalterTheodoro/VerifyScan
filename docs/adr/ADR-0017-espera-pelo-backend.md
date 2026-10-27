@@ -79,7 +79,7 @@ CU-h/mês do Neon. Esta solução **só acorda o backend quando alguém usa o si
   ainda está acordado (entre 10 e 15 min). Com o backend acordado, custa centenas de milissegundos.
   O `/health` faz `SELECT 1`, mas pela regra acima só existe quando alguém usa o site.
 - **Até 90 s de espera no pior caso**, contra o erro imediato de antes. O aviso aparece logo na
-  primeira repetição, e a tela não trava.
+  primeira repetição ou depois de 3 s sem resposta (adendo "aviso aos 3 s"), e a tela não trava.
 - **Se o backend processar um envio e a resposta se perder**, a pessoa vê o erro e pode tentar de
   novo à mão. No cadastro, essa segunda tentativa dá 409. É o mesmo custo do ADR-0013 §4,
   agora só no caso raro em que a resposta se perde com o backend já acordado.
@@ -138,3 +138,33 @@ nos mesmos momentos em que a espera já pedia `/health`. Não há agendador nem 
   cada 10 s, e só enquanto alguém espera.
 - Se o Render deixar de acordar também pelo navegador, nada desta solução funciona. O caminho
   passa a ser um plano pago (o serviço não dorme) ou um domínio próprio (ADR-0014).
+
+## Adendo — 26/10: aviso aos 3 s
+
+**Medição em produção (P2), depois do PR #9.** A página ficou aberta e parada por 20 min, e então
+veio o clique em "Analisar".
+- O `GET /health` pelo proxy ficou **pendurado 45,3 s** e voltou 200: o despertar acordou o
+  backend, e o Render segurou o pedido até ele subir.
+- O `POST /api/analises` respondeu em 0,8 s. **Total: 46,2 s.**
+- O aviso "O servidor está acordando" **não apareceu**. A pessoa viu só "Analisando…" por 46 s.
+
+**Causa.** O `aoEsperar()` só era chamado na primeira repetição, ou seja, depois de uma resposta
+que não veio do backend. Um pedido que só demora nunca falha, e o aviso nunca saía.
+
+**Decisão.** Em toda espera (`lerComRepeticao`, `esperarPeloBackend` e o que é construído sobre
+elas), o aviso sai pelo que vier **primeiro**:
+- (a) a primeira resposta que não veio do backend, como antes; ou
+- (b) `AVISO_APOS_MS` (3 s) sem resposta do backend desde o início da espera, mesmo com o pedido
+  ainda pendurado.
+
+Regras do aviso:
+- Sai no máximo **uma vez** por espera.
+- O temporizador é cancelado quando a espera termina (com sucesso, esgotada ou por abort) e nunca
+  dispara depois disso.
+- Se o backend responde em menos de 3 s, não há aviso.
+
+As telas não mudam, só o momento em que o aviso aparece. Intervalos, limite de 90 s, despertar e
+janela de 10 min continuam iguais.
+
+**Custo de estar errado.** Quem tem conexão lenta pode ver o aviso por um instante sem o servidor
+estar dormindo. A frase não é alarmista, e a alternativa medida era 46 s de silêncio.
