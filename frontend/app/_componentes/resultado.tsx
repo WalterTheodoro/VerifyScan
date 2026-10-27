@@ -13,15 +13,19 @@ export type Orientacao = { titulo: string; texto: string | null; passos: string[
  *  HTML. Mesmo assim, é texto: o React escapa, e nada aqui vira link nem HTML. */
 export type ExplicacaoIA = { tipo: string; sinais: string[]; o_que_fazer: string[] };
 
-/** O que a placa precisa. As URLs só existem na resposta da análise: o banco não as guarda
- *  (ADR-0009), e no histórico elas aparecem dentro da própria mensagem.
+/** Um link da mensagem como a placa o mostra (fatia 8, ADR-0022): só o domínio registrável e o
+ *  que o sistema achou dele, em frases do `regras.yaml`. Nunca o link inteiro. */
+export type LinkDaMensagem = { dominio: string; observacoes: string[] };
+
+/** O que a placa precisa. Os links não são guardados (ADR-0009): no histórico, o backend os
+ *  recalcula do texto.
  *
- *  `orientacao` e `explicacao_ia` são opcionais só para um backend anterior à fatia 6 (no deploy,
+ *  `orientacao`, `explicacao_ia` e `links` são opcionais só para um backend anterior (no deploy,
  *  o frontend pode subir antes): sem eles, a placa mostra o nível e os fatores. */
 export type DadosDoResultado = {
   nivel_risco: NivelRisco;
   fatores: { categoria: string; descricao: string }[];
-  urls_analisadas?: string[];
+  links?: LinkDaMensagem[];
   orientacao?: Orientacao;
   explicacao_ia?: ExplicacaoIA | null;
 };
@@ -58,7 +62,7 @@ export function Resultado({
 }) {
   const Titulo = nivel === 2 ? "h2" : "h3";
   const Subtitulo = nivel === 2 ? "h3" : "h4";
-  const urls = resultado.urls_analisadas ?? [];
+  const links = resultado.links ?? [];
   const orientacao = resultado.orientacao;
   const ia = resultado.explicacao_ia ?? null;
   // Com a IA, os passos são os dela, para esta mensagem; sem ela, os fixos do nível. O BAIXO do
@@ -151,29 +155,34 @@ export function Resultado({
           </div>
         )}
 
-        {urls.length > 0 && (
+        {links.length > 0 && (
           <div className="flex flex-col gap-3">
             <Subtitulo className="text-secao font-bold sm:text-secao-lg">
               Links que aparecem na mensagem
             </Subtitulo>
-            {/* Texto, nunca <a>: um link clicável aqui seria um atalho para o próprio golpe.
-                A grafia é a forma canônica da API (ADR-0009), que pode diferir da colada. */}
+            {/* Só o domínio, como texto, nunca <a> nem o link inteiro: caminho e query são o
+                atalho pronto para o golpe (fatia 8). As frases são do `regras.yaml`. */}
             <ul className="flex flex-col gap-2">
-              {urls.map((url) => (
+              {links.map((link) => (
                 <li
-                  key={url}
-                  className="break-all rounded-xl border-2 border-tinta/40 bg-fundo px-4 py-2
-                    font-mono"
+                  key={link.dominio}
+                  className="flex flex-col gap-1 rounded-xl border-2 border-tinta/40 bg-fundo
+                    px-4 py-3"
                 >
-                  {url}
+                  <span className="font-mono font-semibold [overflow-wrap:anywhere]">
+                    {link.dominio}
+                  </span>
+                  <ul className="flex list-disc flex-col gap-1 pl-6">
+                    {link.observacoes.map((observacao) => (
+                      <li key={observacao}>{observacao}</li>
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>
             <p>
-              {urls.length === 1
-                ? "Ainda não conferimos se este site é verdadeiro. "
-                : "Ainda não conferimos se estes sites são verdadeiros. "}
-              Não abra antes de confirmar com a empresa pelo telefone ou aplicativo oficial.
+              Conferimos só o endereço, sem abrir o link. Não abra antes de confirmar com a
+              empresa pelo telefone ou aplicativo oficial.
             </p>
           </div>
         )}

@@ -12,6 +12,7 @@ import {
   MensagemColada,
   Resultado,
   type ExplicacaoIA,
+  type LinkDaMensagem,
   type Orientacao,
 } from "./_componentes/resultado";
 import { lerDetail } from "./_lib/conta";
@@ -36,7 +37,7 @@ type RespostaAnalise = {
   score: number;
   nivel_risco: NivelRisco;
   fatores: Fator[];
-  urls_analisadas: string[];
+  links?: LinkDaMensagem[];
   explicacao_indisponivel: boolean;
   verificacao_externa_indisponivel: boolean;
   // true só quando o backend gravou a análise ligada à conta (ADR-0015).
@@ -753,7 +754,9 @@ function OQueEleProcura() {
           ))}
         </ul>
         <p className="max-w-[42rem]">
-          Os links da mensagem ainda não são conferidos. Essa parte está sendo construída.
+          Os links também são conferidos, só pelo endereço e sem abri-los: nome de empresa fora
+          do site oficial, letras trocadas, link encurtado. Listas de sites perigosos ainda não
+          são consultadas.
         </p>
       </div>
     </section>
