@@ -21,6 +21,7 @@
 | 10 | §7 (segurança) | "tokens de sessão JWT" → sessão opaca em banco, cookie HttpOnly | Fase 8 |
 | 11 | §5.5 (modelo de dados) | `Usuario`: + `nome_exibicao`, − `plano` | Fase 8 |
 | 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → 7 dias, só autenticado, com aviso; anônimo nunca | 9 |
+| 13 | §2.3 (RF13), §5.4.8 e §7.1 | a LLM passa a ler a mensagem como dado e só pode subir o nível | Fase 7 |
 
 ---
 
@@ -195,3 +196,23 @@ antes de enviar, e só pela janela do histórico. Depois de 7 dias, o texto é a
 fica idêntica a uma anônima. Ela também pode ser apagada antes, a qualquer momento, e vai junto
 com a conta (ADR-0006, ADR-0015, ADR-0018). O conflito com a §2.6 fica declarado como limitação no
 ADR-0018.
+
+### 13 — §2.3 (RF13), §5.4.8 (AIFormulator) e §7.1
+
+Trocar o RF13 por:
+
+> **RF13** — O sistema envia a mensagem a um modelo de linguagem, delimitada como dado e nunca como
+> instrução, junto com o nível e os fatores do motor. O modelo sugere um nível e escreve o tipo da
+> mensagem, os sinais e os passos. **O nível final é o maior entre o do motor e o sugerido**: o
+> modelo pode subir o nível, nunca baixar. Antes de ir para a tela, o texto do modelo perde links,
+> e-mails e telefones. Sem o modelo, a resposta é a do motor com a orientação fixa do nível.
+
+Na §5.4.8, o `AIFormulator` deixa de receber "apenas score e fatores": recebe também a mensagem e
+os links, e o teto da chamada é de 15 s, sem nova tentativa. Na §7.1, acrescentar a linha "Envio ao
+provedor da LLM": a mensagem, com ou sem conta, ao provedor nos EUA (transferência internacional,
+LGPD art. 33), que a retém por até 30 dias e não a usa para treino, segundo os termos dele.
+
+**Por quê:** sem ler a mensagem, o modelo não percebe o contexto que as regras perdem. "Pacote está
+retido… taxa de R$ 9,90… PIX" saía BAIXO. A garantia que o RF13 dava ("a IA não decide risco")
+continua de pé por outro caminho: a regra fixa de combinação, fora do alcance do modelo. Uma
+mensagem que convença o modelo de que é segura não baixa o nível que o motor deu (ADR-0020).
