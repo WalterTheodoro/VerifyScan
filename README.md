@@ -4,18 +4,20 @@ Plataforma web que recebe uma mensagem suspeita — texto, link, print ou e-mail
 **nível de risco (BAIXO / MÉDIO / ALTO), os fatores identificados e uma recomendação**, em
 português acessível a quem tem pouco letramento digital.
 
-O coração do produto é um pipeline heurístico próprio. A IA **não decide risco**: ela só
-transforma o resultado estruturado em texto legível.
+O coração do produto é um pipeline heurístico próprio. A IA **não decide risco sozinha**: ela
+lê a mensagem, sugere um nível e explica o que a mensagem parece ser e o que fazer, e uma regra
+fixa deixa o nível final no maior dos dois — a IA pode subir o nível, nunca baixar (ADR-0020).
 
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: Fase 8, fatia 5 (conta e histórico completos).** Você cola uma mensagem na tela
-> e recebe nível de risco, fatores identificados e o que fazer. Sem conta, a análise fica no banco
-> sem o texto da mensagem. Com conta, ela vai para o histórico por 7 dias, com a mensagem e o
-> mesmo resultado da tela, e a página avisa isso antes do envio (ADR-0018). Em "Minha conta" dá
-> para apagar análises, trocar a senha e excluir a conta (ADR-0019). Ainda sem OCR, sem consulta a
-> APIs externas e sem explicação por IA: isso vem nas Fases 4 a 7.
+> **Estado atual: fatia 6 (análise com o Claude).** Você cola uma mensagem e recebe o nível de
+> risco, o que ela parece ser, o que fazer e os sinais encontrados. Depois das regras, uma chamada
+> ao Claude Haiku 5.5 lê a mensagem e pode subir o nível, nunca baixar; sem a IA, a resposta é a das
+> regras, com a orientação fixa do nível (ADR-0020). Sem conta, a análise fica no banco sem o texto.
+> Com conta, ela vai para o histórico por 7 dias, com a mensagem e a mesma resposta da tela
+> (ADR-0018), e em "Minha conta" dá para apagar análises, trocar a senha e excluir a conta
+> (ADR-0019). Ainda sem OCR e sem consulta a APIs externas de reputação (Fases 4 e 5).
 
 ---
 
@@ -86,6 +88,10 @@ Abra o `.env` e preencha, no mínimo, o que a Fase 0 usa:
 
 O `.env` nunca é versionado. Todas as demais variáveis estão comentadas por fase no
 `.env.example` e só passam a ser lidas quando a fase correspondente chegar.
+
+Para a análise com IA (ADR-0020), preencha também `ANTHROPIC_API_KEY` e ponha `IA_ATIVADA=true`.
+Sem isso, tudo funciona com as regras sozinhas. Com `IA_ATIVADA=true` e sem a chave, o backend
+não sobe, e o erro diz qual variável falta.
 
 ### 2. Subir Postgres e Redis
 
@@ -200,6 +206,18 @@ uv run pytest -q -m integracao        # só integração
 uv run pytest -q -m "not integracao"  # só unitários, sem banco
 ```
 
+### Análise com IA contra a API real (fora do CI)
+
+```powershell
+Set-Location backend
+uv run python -m tools.testar_ia
+```
+
+Roda as 13 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic, com a chave do
+`.env`, mesmo com `IA_ATIVADA=false`, e imprime motor, IA, nível final, tipo, latência e plano B.
+Custa centavos de dólar e **não substitui o corpus** da Fase 2. Os testes (`pytest`) nunca chamam
+a API: usam um cliente falso.
+
 ### Infraestrutura
 
 ```powershell
@@ -223,13 +241,13 @@ VerifyScan/
 │  │  ├─ analyzers/    TextAnalyzer, URLExtractor, DomainAnalyzer, EmailAnalyzer (Fases 1, 3, 6)
 │  │  ├─ ocr/          OCRProcessor (Fase 5)
 │  │  ├─ reputation/   URLChecker e provedores externos (Fase 4)
-│  │  ├─ scoring/      ScoringEngine e regras.yaml (Fase 1)
-│  │  ├─ formulator/   AIFormulator (Fase 7)
+│  │  ├─ scoring/      ScoringEngine, regras.yaml, respostas.yaml (plano B) e a combinação
+│  │  ├─ formulator/   análise com o Claude: cliente, prompt, saída e limpeza (ADR-0020)
 │  │  ├─ models/       SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario (Fase 8)
 │  │  ├─ schemas/      Pydantic — o contrato da API
 │  │  └─ core/         config, banco, cache, hash de senha, timeouts
 │  ├─ alembic/         migrações — o esquema só muda por elas
-│  ├─ tools/           scripts, incluindo avaliar_corpus (Fase 2)
+│  ├─ tools/           scripts: avaliar_corpus (Fase 2), testar_ia e amostras_ia.yaml
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
 ├─ corpus/             base rotulada para medir o motor de risco (Fase 2)
@@ -268,9 +286,20 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    estiverem no painel do Render, podem ser apagadas.
    O histórico (ADR-0015) também já vem no default de produção: `HISTORICO_DIAS=7`, por quantos
    dias a análise feita logado fica ligada à conta, com a mensagem (ADR-0018). As migrações
-   `0003` e `0004` rodam sozinhas no build. `TEXTO_MAX_CARACTERES` não pode passar de 5000: o
+   `0003` a `0005` rodam sozinhas no build. `TEXTO_MAX_CARACTERES` não pode passar de 5000: o
    CHECK da `0004` limita o texto guardado, e o backend não sobe com valor maior.
-7. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
+7. **Análise com IA (ADR-0020).** No serviço **VerifyScan** (o backend) → **Environment**:
+   - `IA_ATIVADA=true` — liga a chamada ao Claude. Sem ela (ou com `false`), a análise sai só com
+     as regras, e é assim que se desliga a IA sem novo deploy de código;
+   - `ANTHROPIC_API_KEY` — a chave da API, **como segredo** (o Render não a mostra depois de
+     salva). Obrigatória com a IA ligada: sem ela, o backend não sobe;
+   - opcionais, com estes defaults: `IA_MODELO=claude-haiku-5-5`, `IA_TIMEOUT_S=15` (máximo 15 —
+     o backend não sobe com mais), `IA_MAX_TOKENS=700`;
+   - `LOG_LEVEL=INFO` já é o default: é ele que mostra, nos logs do Render, a latência e os tokens
+     de cada análise com IA. O texto da mensagem e a resposta da IA nunca vão para o log.
+
+   A migração `0005` roda no build, como as outras.
+8. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;
    - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
