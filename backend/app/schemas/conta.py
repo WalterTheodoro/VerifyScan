@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.analise import NivelRisco
+from app.schemas.analise import ExplicacaoIA, NivelRisco, Orientacao
 
 
 class FatorHistorico(BaseModel):
@@ -26,6 +26,14 @@ class ItemHistorico(BaseModel):
     fatores: list[FatorHistorico]
     texto: str | None = Field(
         description="A mensagem como foi colada. `null` nas análises anteriores ao ADR-0018."
+    )
+    # Campos aditivos da fatia 6 (ADR-0020): o histórico mostra a mesma resposta da home.
+    orientacao: Orientacao = Field(description="A resposta fixa do nível guardado (plano B).")
+    explicacao_ia: ExplicacaoIA | None = Field(
+        description=(
+            "O que a IA escreveu, quando ela entrou. `null` nas análises sem IA e nas "
+            "anteriores ao ADR-0020: a tela mostra então o plano B."
+        )
     )
 
 

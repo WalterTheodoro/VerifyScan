@@ -20,6 +20,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
+    obter_analisador_ia,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
@@ -32,7 +33,7 @@ from app.services.repositorio_analises import RegistroAnalise, RepositorioAnalis
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres, UsuarioAutenticado
-from tests.conftest import settings_de_teste
+from tests.conftest import ia_desligada, settings_de_teste
 from tests.test_api_analises import GOLPE_DE_PIX
 
 pytestmark = pytest.mark.integracao
@@ -56,6 +57,7 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()
+    app.dependency_overrides[obter_analisador_ia] = ia_desligada
     return app
 
 
@@ -406,8 +408,14 @@ class AnalisesQueViolamUmCheck(RepositorioAnalisesPostgres):
     ("Failing row contains ..."), com o texto dentro. É o pior caso para vazar no log."""
 
     async def registrar(self, registro: RegistroAnalise) -> uuid.UUID:
+        # Sem o nível do motor, o `RegistroAnalise` não confere a combinação (é a linha antiga
+        # do ADR-0020) e o valor inválido chega ao banco, que é quem tem de recusar aqui.
         return await super().registrar(
-            dataclasses.replace(registro, nivel_risco="INVALIDO")  # type: ignore[arg-type]
+            dataclasses.replace(
+                registro,
+                nivel_risco="INVALIDO",  # type: ignore[arg-type]
+                nivel_motor=None,
+            )
         )
 
 

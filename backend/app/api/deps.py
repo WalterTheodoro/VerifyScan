@@ -14,8 +14,11 @@ from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor
 from app.core.config import Settings, get_settings
 from app.core.seguranca import HasherSenha
+from app.formulator.analisador import AnalisadorIA
+from app.formulator.cliente import ClienteIA
 from app.scoring.motor import ScoringEngine
 from app.scoring.regras import carregar_regras
+from app.scoring.respostas import carregar_respostas
 from app.services.analise import ServicoAnalise
 from app.services.autenticacao import ServicoAutenticacao, ServicoIndisponivel
 from app.services.health import (
@@ -69,6 +72,7 @@ def obter_servico_analise() -> ServicoAnalise:
         analisador=TextAnalyzer(regras),
         extrator=URLExtractor(regras.urls),
         motor=ScoringEngine(regras),
+        respostas=carregar_respostas(),
         maximo_de_caracteres=get_settings().texto_max_caracteres,
     )
 
@@ -88,12 +92,27 @@ def obter_repositorio_historico(request: Request) -> RepositorioHistorico:
     return RepositorioHistoricoPostgres(fabrica)
 
 
+def obter_analisador_ia(request: Request) -> AnalisadorIA:
+    """O cliente da Anthropic nasce no `lifespan` (`None` com a IA desligada). Os testes trocam
+    esta dependência por um falso: o `lifespan` não roda neles (ADR-0020)."""
+    cliente: ClienteIA | None = request.app.state.cliente_ia
+    return AnalisadorIA(cliente, get_settings().ia_timeout_s)
+
+
 def obter_orquestrador(
     servico: ServicoAnalise = Depends(obter_servico_analise),
+    analisador_ia: AnalisadorIA = Depends(obter_analisador_ia),
     repositorio: RepositorioAnalises = Depends(obter_repositorio_analises),
     sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
 ) -> OrquestradorAnalise:
-    return OrquestradorAnalise(servico, repositorio, sessoes, get_settings().timeout_persistencia_s)
+    return OrquestradorAnalise(
+        servico=servico,
+        analisador_ia=analisador_ia,
+        respostas=carregar_respostas(),
+        repositorio=repositorio,
+        sessoes=sessoes,
+        timeout_s=get_settings().timeout_persistencia_s,
+    )
 
 
 def ler_token_de_sessao(

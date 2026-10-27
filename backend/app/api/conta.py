@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.api.deps import obter_servico_autenticacao, obter_servico_historico, obter_usuario_atual
 from app.api.erros import ERRO_401, ERRO_404_ANALISE, ERRO_503
 from app.schemas.conta import FatorHistorico, ItemHistorico, RespostaConta, RespostaHistorico
+from app.scoring.respostas import carregar_respostas
 from app.services.autenticacao import ServicoAutenticacao, ServicoIndisponivel
 from app.services.historico import AnaliseNaoEncontrada, ServicoHistorico
 from app.services.repositorio_historico import AnaliseDoHistorico
@@ -39,6 +40,8 @@ def _item(analise: AnaliseDoHistorico) -> ItemHistorico:
             for f in analise.fatores
         ],
         texto=analise.texto,
+        orientacao=carregar_respostas().para(analise.nivel_risco),
+        explicacao_ia=analise.explicacao_ia,
     )
 
 
