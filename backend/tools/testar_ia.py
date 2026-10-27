@@ -115,7 +115,7 @@ async def main() -> int:
                     mensagem=amostra["texto"],
                     nivel_motor=resposta.nivel_motor,
                     fatores=tuple(resposta.fatores),
-                    urls=tuple(resposta.urls_analisadas),
+                    links=tuple(resposta.links),
                 )
             )
             latencia_ms = round((time.perf_counter() - inicio) * 1000)

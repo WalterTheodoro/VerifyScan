@@ -5,12 +5,14 @@ número mágico em `.py`. Os pesos conferidos aqui vêm da §5.4.1 do RFC (p. 22
 """
 
 import re
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.analise import CategoriaFator
 from app.scoring.descricoes import PLACEHOLDERS_PERMITIDOS, ModeloDescricao
-from app.scoring.regras import Regras, carregar_regras
+from app.scoring.regras import CATEGORIAS_DE_LINK, CATEGORIAS_DE_TEXTO, Regras, carregar_regras
 
 # §5.4.1 do RFC, tabela "Categoria / Exemplos de padrões detectados / Peso".
 PESOS_DO_RFC = {
@@ -23,6 +25,20 @@ PESOS_DO_RFC = {
 }
 # Fora do RFC (ADR-0020): sozinha leva a ALTO, então o peso é o primeiro ponto acima de MÉDIO.
 PESOS = {**PESOS_DO_RFC, "instrucao_ao_analisador": 61}
+
+# Sinais de link (ADR-0022). Do RFC: typosquatting +35, TLD de alto risco +15. "Marca no
+# endereço" é o subdomínio enganoso (+30) subido a 35 para que, sozinho, saia de BAIXO.
+PESOS_DE_LINK = {
+    "link_marca_nao_oficial": 35,
+    "link_parecido_com_oficial": 35,
+    "link_caracteres_enganosos": 35,
+    "link_ip": 35,
+    "link_truque_endereco": 25,
+    "link_encurtado": 15,
+    "link_tld_abusado": 15,
+    "link_palavra_isca": 15,
+    "link_sem_https": 10,
+}
 
 
 def test_regras_carregam_do_yaml() -> None:
@@ -47,6 +63,41 @@ def test_instrucao_ao_analisador_sozinha_leva_a_alto() -> None:
     [categoria] = [c for c in regras.categorias if c.id == "instrucao_ao_analisador"]
 
     assert regras.faixas.classificar(categoria.peso) == "ALTO"
+
+
+def test_sinais_de_link_existem_com_os_pesos_propostos() -> None:
+    regras = carregar_regras()
+
+    assert {sinal.id: sinal.peso for sinal in regras.dominios.sinais} == PESOS_DE_LINK
+
+
+def test_categorias_de_texto_e_de_link_cobrem_o_contrato_sem_sobrepor() -> None:
+    """Toda categoria do contrato é de texto ou de link, nunca das duas."""
+    assert set(CATEGORIAS_DE_TEXTO) | set(CATEGORIAS_DE_LINK) == set(get_args(CategoriaFator))
+    assert not set(CATEGORIAS_DE_TEXTO) & set(CATEGORIAS_DE_LINK)
+
+
+def test_marca_fora_do_oficial_e_imitacao_sozinhas_saem_de_baixo() -> None:
+    """Link com o nome da marca fora do domínio oficial é o golpe típico: sozinho, MÉDIO."""
+    regras = carregar_regras()
+    pesos = {sinal.id: sinal.peso for sinal in regras.dominios.sinais}
+
+    for categoria in ("link_marca_nao_oficial", "link_parecido_com_oficial"):
+        assert regras.faixas.classificar(pesos[categoria]) == "MEDIO"
+
+
+def test_descricao_de_link_so_usa_a_marca() -> None:
+    """Fatia 8: o fator vai para o banco também em análise anônima, então o domínio da mensagem
+    não entra na descrição — só o nome da marca, que vem da lista fechada."""
+    for sinal in carregar_regras().dominios.sinais:
+        assert sinal.descricao.placeholders <= {"marca"}
+
+
+def test_toda_terminacao_abusada_e_extraida_sem_protocolo() -> None:
+    """Sem isso, `golpe.cfd` escrito sem `http://` nem chegaria ao DomainAnalyzer."""
+    regras = carregar_regras()
+
+    assert regras.dominios.tlds_abusados <= regras.urls.tlds_conhecidos
 
 
 def test_faixas_sao_as_do_rfc() -> None:
@@ -139,9 +190,52 @@ def _regras_validas() -> dict[str, object]:
         "versao": 1,
         "agregacao": "por_categoria",
         "faixas": {"baixo_ate": 30, "medio_ate": 60},
-        "urls": {"maximo_por_analise": 20, "tlds_conhecidos": ["com", "br"]},
+        "urls": {"maximo_por_analise": 20, "tlds_conhecidos": ["com", "br", "top"]},
         "categorias": categorias,
+        "dominios": _dominios_validos(),
     }
+
+
+def _dominios_validos() -> dict[str, object]:
+    return {
+        "sinais": [
+            {"id": id_, "peso": peso, "descricao": "Descrição.", "no_link": "frase"}
+            for id_, peso in PESOS_DE_LINK.items()
+        ],
+        "link_oficial": "endereço oficial: {marca}",
+        "link_sem_sinal": "nada estranho",
+        "encurtadores": ["bit.ly"],
+        "tlds_abusados": ["top"],
+        "palavras_isca": ["taxa"],
+        "portas_comuns": [80, 443],
+        "subdominios_suspeitos_a_partir_de": 3,
+        "semelhanca": {
+            "minimo_de_letras": 4,
+            "curto_ate": 6,
+            "distancia_curto": 1,
+            "distancia_longo": 2,
+        },
+        "marcas": [
+            {
+                "nome": "Correios",
+                "nomes": ["correios"],
+                "semelhanca": True,
+                "oficiais": ["correios.com.br"],
+            },
+        ],
+    }
+
+
+def _dominios(dados: dict[str, object]) -> dict[str, object]:
+    dominios = dados["dominios"]
+    assert isinstance(dominios, dict)
+    return dominios
+
+
+def _lista(dados: dict[str, object], chave: str) -> list[dict[str, object]]:
+    lista = _dominios(dados)[chave]
+    assert isinstance(lista, list)
+    return lista
 
 
 def _primeira_categoria(dados: dict[str, object]) -> Categoria:
@@ -217,3 +311,60 @@ def test_recusa_classe_de_regex_maiuscula() -> None:
 
     with pytest.raises(ValidationError, match="maiúscula"):
         Regras.model_validate(dados)
+
+
+def test_recusa_sinal_de_link_faltando() -> None:
+    dados = _regras_validas()
+    _dominios(dados)["sinais"] = _lista(dados, "sinais")[:-1]
+
+    with pytest.raises(ValidationError, match="link_sem_https"):
+        Regras.model_validate(dados)
+
+
+def test_recusa_categoria_de_link_na_secao_de_texto() -> None:
+    dados = _regras_validas()
+    categorias = dados["categorias"]
+    assert isinstance(categorias, list)
+    categorias.append({"id": "link_ip", "peso": 5, "descricao": "x", "padroes": ["a"]})
+
+    with pytest.raises(ValidationError, match="link_ip"):
+        Regras.model_validate(dados)
+
+
+def test_recusa_dominio_na_descricao_de_link() -> None:
+    dados = _regras_validas()
+    _lista(dados, "sinais")[0]["descricao"] = "O endereço {dominio} usa a marca {marca}."
+
+    with pytest.raises(ValidationError, match="dominio"):
+        Regras.model_validate(dados)
+
+
+def test_recusa_terminacao_abusada_que_o_extrator_nao_conhece() -> None:
+    dados = _regras_validas()
+    _dominios(dados)["tlds_abusados"] = ["top", "cfd"]
+
+    with pytest.raises(ValidationError, match="cfd"):
+        Regras.model_validate(dados)
+
+
+def test_recusa_nome_de_marca_com_hifen_ou_maiuscula() -> None:
+    """O nome é comparado com pedaços do host já separados por "-" e ".": "Itau" ou
+    "banco-inter" nunca casariam, e o erro ficaria silencioso."""
+    dados = _regras_validas()
+    _lista(dados, "marcas")[0]["nomes"] = ["banco-inter"]
+
+    with pytest.raises(ValidationError, match="banco-inter"):
+        Regras.model_validate(dados)
+
+
+def test_frases_do_bloco_de_links_so_usam_a_marca() -> None:
+    """O que a tela escreve ao lado do domínio também é template, e também sem {dominio}: o
+    domínio já está ao lado, como texto, e não precisa entrar na frase."""
+    dominios = carregar_regras().dominios
+    modelos = [s.no_link for s in dominios.sinais] + [
+        dominios.link_oficial,
+        dominios.link_sem_sinal,
+    ]
+
+    for modelo in modelos:
+        assert modelo.placeholders <= {"marca"}

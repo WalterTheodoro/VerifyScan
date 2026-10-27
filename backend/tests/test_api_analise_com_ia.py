@@ -16,10 +16,11 @@ from app.scoring.respostas import carregar_respostas
 from tests.conftest import ClienteIAFalso, RepositorioAnalisesEmMemoria, saida_da_ia
 from tests.test_api_analises import GOLPE_DE_PIX
 
-# O caso que abriu a fatia: o motor só acha o pedido de pagamento (25 pontos, BAIXO).
-PACOTE_RETIDO = (
-    "Seu pacote está retido nos Correios. Pague a taxa de R$ 9,90 hoje pelo PIX para liberar a "
-    "entrega."
+# Golpe em que o motor só acha o pedido de pagamento (25 pontos, BAIXO) e a IA sobe. Até a
+# fatia 8 era o "pacote está retido", que os padrões flexíveis da versão 4 passaram a pegar.
+PENDENCIA_DOS_CORREIOS = (
+    "Correios: a entrega do seu objeto tem uma pendência. Pague a taxa de R$ 9,90 respondendo "
+    "esta mensagem ainda hoje."
 )
 # Urgência (+10) e pedido de pagamento (+25): 35, MEDIO.
 PIX_URGENTE = "Urgente: faça um PIX hoje."
@@ -49,10 +50,12 @@ async def test_sem_ia_a_resposta_e_o_plano_b_do_nivel(cliente: AsyncClient) -> N
     assert corpo["orientacao"] == carregar_respostas().para("ALTO").model_dump(mode="json")
 
 
-async def test_ia_sobe_o_nivel_do_pacote_retido(app: FastAPI, cliente: AsyncClient) -> None:
+async def test_ia_sobe_o_nivel_que_o_motor_deixou_em_baixo(
+    app: FastAPI, cliente: AsyncClient
+) -> None:
     _ligar_ia(app, ClienteIAFalso(saida_da_ia(nivel_sugerido="ALTO")))
 
-    corpo = await _analisar(cliente, PACOTE_RETIDO)
+    corpo = await _analisar(cliente, PENDENCIA_DOS_CORREIOS)
 
     assert corpo["nivel_motor"] == "BAIXO"
     assert corpo["nivel_ia"] == "ALTO"
@@ -109,7 +112,7 @@ async def test_ia_alto_com_sinal_sobre_seguranca_fica_alto(
     o final saía o BAIXO do motor. Nenhuma validação de texto pode reduzir o nível (ADR-0020)."""
     _ligar_ia(app, ClienteIAFalso(saida_da_ia(nivel_sugerido="ALTO", sinais=[sinal])))
 
-    corpo = await _analisar(cliente, PACOTE_RETIDO)
+    corpo = await _analisar(cliente, PENDENCIA_DOS_CORREIOS)
 
     assert corpo["nivel_motor"] == "BAIXO"
     assert corpo["nivel_ia"] == "ALTO"
@@ -124,7 +127,7 @@ async def test_explicacao_descartada_usa_o_plano_b_do_nivel_final(
     saida = saida_da_ia(nivel_sugerido="ALTO", o_que_fazer=["Pode confiar.", "Pague a taxa."])
     _ligar_ia(app, ClienteIAFalso(saida))
 
-    corpo = await _analisar(cliente, PACOTE_RETIDO)
+    corpo = await _analisar(cliente, PENDENCIA_DOS_CORREIOS)
 
     assert corpo["nivel_ia"] == "ALTO"
     assert corpo["nivel_risco"] == "ALTO"
@@ -141,18 +144,21 @@ async def test_explicacao_descartada_usa_o_plano_b_do_nivel_final(
     assert registro.explicacao_ia is None
 
 
-async def test_a_ia_recebe_a_mensagem_os_fatores_e_os_links(
+async def test_a_ia_recebe_a_mensagem_e_as_pistas_sem_o_endereco(
     app: FastAPI, cliente: AsyncClient
 ) -> None:
+    """Fatia 8: o link vai como pista do que se achou dele; o endereço só aparece dentro da
+    própria mensagem, como dado."""
     ia = _ligar_ia(app, ClienteIAFalso())
 
     await _analisar(cliente, GOLPE_DE_PIX)
 
     [(_, entrada)] = ia.chamadas
-    assert "nivel: ALTO" in entrada
-    assert "solicitacao_financeira:" in entrada
-    assert "http://bb-regularize.xyz/" in entrada
+    assert "nivel_estimado: ALTO" in entrada
+    assert "- A mensagem pede um pagamento, transferência ou comprovante." in entrada
+    assert "- um link: usa o nome Banco do Brasil, mas não é um endereço oficial" in entrada
     assert GOLPE_DE_PIX in entrada
+    assert entrada.count("bb-regularize.xyz") == 1
 
 
 async def test_o_link_que_a_ia_repetir_nao_chega_a_tela(app: FastAPI, cliente: AsyncClient) -> None:
@@ -225,7 +231,7 @@ async def test_sucesso_com_ia_nao_leva_mensagem_nem_saida_ao_log(
     _ligar_ia(app, ClienteIAFalso(saida_da_ia(tipo="TIPO-QUE-NAO-VAI-PARA-O-LOG")))
 
     with caplog.at_level(logging.DEBUG):
-        await _analisar(cliente, PACOTE_RETIDO)
+        await _analisar(cliente, PENDENCIA_DOS_CORREIOS)
 
     assert "Correios" not in caplog.text
     assert "9,90" not in caplog.text
@@ -251,7 +257,7 @@ async def test_anonima_grava_os_niveis_mas_nao_a_explicacao(
     pode repetir trechos da mensagem: sem dono, nunca vai ao banco (como o texto, ADR-0018)."""
     _ligar_ia(app, ClienteIAFalso(saida_da_ia(nivel_sugerido="ALTO")))
 
-    await _analisar(cliente, PACOTE_RETIDO)
+    await _analisar(cliente, PENDENCIA_DOS_CORREIOS)
 
     [registro] = repositorio.registros
     assert registro.nivel_risco == "ALTO"
@@ -268,7 +274,7 @@ async def test_com_dono_grava_a_explicacao(
     _ligar_ia(app, ClienteIAFalso(saida_da_ia(nivel_sugerido="ALTO")))
     assert (await navegador.post("/api/auth/cadastro", json=CADASTRO)).status_code == 201
 
-    corpo = await _analisar(navegador, PACOTE_RETIDO)
+    corpo = await _analisar(navegador, PENDENCIA_DOS_CORREIOS)
 
     [registro] = repositorio.registros
     assert registro.usuario_id is not None

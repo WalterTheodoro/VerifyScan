@@ -32,7 +32,7 @@ from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
 from tests.conftest import ClienteIAFalso, saida_da_ia, settings_de_teste
-from tests.test_api_analise_com_ia import PACOTE_RETIDO
+from tests.test_api_analise_com_ia import PENDENCIA_DOS_CORREIOS
 
 pytestmark = pytest.mark.integracao
 
@@ -260,7 +260,7 @@ async def _linhas(fabrica: async_sessionmaker[AsyncSession]) -> list[Any]:
 async def test_logada_grava_niveis_e_explicacao_e_o_historico_mostra_igual(
     maria: AsyncClient, fabrica_de_sessoes: async_sessionmaker[AsyncSession]
 ) -> None:
-    corpo = (await maria.post("/api/analises", json={"texto": PACOTE_RETIDO})).json()
+    corpo = (await maria.post("/api/analises", json={"texto": PENDENCIA_DOS_CORREIOS})).json()
 
     [linha] = await _linhas(fabrica_de_sessoes)
     assert (linha.nivel_risco, linha.nivel_motor, linha.nivel_ia) == ("ALTO", "BAIXO", "ALTO")
@@ -276,7 +276,7 @@ async def test_logada_grava_niveis_e_explicacao_e_o_historico_mostra_igual(
 async def test_anonima_grava_os_niveis_sem_explicacao(
     anonimo: AsyncClient, fabrica_de_sessoes: async_sessionmaker[AsyncSession]
 ) -> None:
-    await anonimo.post("/api/analises", json={"texto": PACOTE_RETIDO})
+    await anonimo.post("/api/analises", json={"texto": PENDENCIA_DOS_CORREIOS})
 
     [linha] = await _linhas(fabrica_de_sessoes)
     assert (linha.nivel_motor, linha.nivel_ia, linha.ia_modelo) == (
@@ -292,7 +292,7 @@ async def test_desvinculacao_zera_a_explicacao_e_guarda_os_niveis(
     maria: AsyncClient, fabrica_de_sessoes: async_sessionmaker[AsyncSession]
 ) -> None:
     """Os níveis ficam para medir quantas vezes a IA subiu; o conteúdo sai com o dono."""
-    await maria.post("/api/analises", json={"texto": PACOTE_RETIDO})
+    await maria.post("/api/analises", json={"texto": PENDENCIA_DOS_CORREIOS})
     async with fabrica_de_sessoes() as sessao, sessao.begin():
         await sessao.execute(text("UPDATE analises SET created_at = now() - interval '8 days'"))
 
@@ -313,7 +313,7 @@ async def test_explicacao_descartada_grava_o_nivel_da_ia_sem_explicacao(
         ClienteIAFalso(saida), timeout_s=15
     )
 
-    corpo = (await maria.post("/api/analises", json={"texto": PACOTE_RETIDO})).json()
+    corpo = (await maria.post("/api/analises", json={"texto": PENDENCIA_DOS_CORREIOS})).json()
 
     assert (corpo["nivel_risco"], corpo["explicacao_indisponivel"]) == ("ALTO", True)
     [linha] = await _linhas(fabrica_de_sessoes)

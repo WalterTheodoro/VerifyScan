@@ -66,7 +66,7 @@ uv run python -m tools.avaliar_corpus --com-ia --divisao teste   # motor + IA re
 uv run python -m tools.avaliar_corpus --gravar-linha-de-base     # só se o corpus ou o motor mudou
 uv run python -m tools.sortear_divisao                           # divide só os casos novos
 
-# análise com IA contra a API real, 20 amostras sintéticas (fora do CI; usa a chave do .env)
+# análise com IA contra a API real, 26 amostras sintéticas (fora do CI; usa a chave do .env)
 uv run python -m tools.testar_ia
 
 # frontend
@@ -96,7 +96,8 @@ verifyscan/
 │  └─ app/
 │     ├─ api/              # rotas FastAPI (finas, sem regra de negócio)
 │     ├─ services/         # a regra de negócio mora aqui — é o destino do que api/ não pode ter
-│     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer, EmailAnalyzer
+│     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer (léxico, PSL embutida,
+│     │                    #   ADR-0022), EmailAnalyzer
 │     ├─ ocr/              # OCRProcessor
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
 │     ├─ scoring/          # ScoringEngine, regras.yaml, respostas.yaml (plano B), combinar()
@@ -124,7 +125,8 @@ verifyscan/
       │                    #   raiz-da-pagina (elemento único na raiz; rolagem do Next 16),
       │                    #   nivel-risco (palavra + ícone), aviso-privacidade,
       │                    #   resultado (placa do resultado: home e histórico, ADR-0018; com IA,
-      │                    #   tipo, sinais e passos dela, ADR-0020)
+      │                    #   tipo, sinais e passos dela, ADR-0020; links só pelo domínio,
+      │                    #   ADR-0022)
       └─ _lib/             # chamadas ao backend (conta.ts, historico.ts, gestao-conta.ts), aviso de
                            #   conta excluída (sessionStorage) e os hooks de envio e carga
 ```
@@ -138,9 +140,11 @@ quebrar uma delas, **pare e pergunte**.
    A mensagem vai entre delimitadores, escapada, e o prompt diz que ela nunca é instrução. O nível
    final é o **maior** entre o do motor e o sugerido pela IA — ela pode subir, nunca baixar —,
    garantido em `combinar()`, no `RegistroAnalise` e no CHECK `ck_analises_nivel_e_o_maior`. O que
-   ela escreve só chega à tela depois de limpo (sem link, e-mail, telefone nem HTML, e sem
-   afirmação positiva de segurança). As descrições dos fatores do motor seguem sendo só templates
-   do `regras.yaml`, sem trecho da mensagem. Existe teste para cada parte.
+   ela escreve só chega à tela depois de limpo (sem link, e-mail, telefone nem HTML, sem
+   afirmação positiva de segurança e sem item que fale do motor, do algoritmo, dos fatores ou das
+   pistas). As descrições dos fatores do motor seguem sendo só templates do `regras.yaml`, sem
+   trecho da mensagem; as de link usam só `{marca}`, nunca o domínio (ADR-0022). Os links chegam
+   à IA como pista do que se achou deles, nunca como endereço. Existe teste para cada parte.
 2. **Nenhuma imagem é persistida além do ciclo de vida da requisição** (RNF06): nunca em banco,
    nunca em diretório da aplicação, nunca em log. O teste verifica que (a) nada foi escrito na
    árvore do projeto e (b) o arquivo temporário não sobrevive ao request — redação que mantém
@@ -150,7 +154,10 @@ quebrar uma delas, **pare e pergunte**.
    nível (`scoring/respostas.yaml`) e `explicacao_indisponivel: true`. A análise nunca falha por
    causa da IA. A saída da IA e a mensagem nunca vão para log.
 4. **O sistema funciona sem as APIs externas.** VirusTotal e Safe Browsing são *enriquecimento*.
-   Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`.
+   Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`. E **o sistema
+   nunca abre o link da mensagem**: nem GET, nem HEAD, nem DNS, nem seguir redirecionamento
+   (aviso ao golpista, conteúdo malicioso, SSRF). O DomainAnalyzer é só léxico (ADR-0022). A tela
+   nunca mostra o link inteiro: só o domínio registrável, como texto.
 5. **Pesos e padrões vivem em `scoring/regras.yaml`**, versionado — nunca espalhados como números
    mágicos no código. Mudar peso não pode exigir mudar código. As respostas do plano B, uma por
    nível, vivem em `scoring/respostas.yaml`; o sistema nunca diz "não é golpe".

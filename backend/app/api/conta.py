@@ -7,10 +7,17 @@ lento.
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.deps import obter_servico_autenticacao, obter_servico_historico, obter_usuario_atual
+from app.api.deps import (
+    obter_servico_analise,
+    obter_servico_autenticacao,
+    obter_servico_historico,
+    obter_usuario_atual,
+)
 from app.api.erros import ERRO_401, ERRO_404_ANALISE, ERRO_503
+from app.schemas.analise import LinkDaMensagem
 from app.schemas.conta import FatorHistorico, ItemHistorico, RespostaConta, RespostaHistorico
 from app.scoring.respostas import carregar_respostas
+from app.services.analise import ServicoAnalise
 from app.services.autenticacao import ServicoAutenticacao, ServicoIndisponivel
 from app.services.historico import AnaliseNaoEncontrada, ServicoHistorico
 from app.services.repositorio_historico import AnaliseDoHistorico
@@ -29,7 +36,7 @@ def _http(erro: ServicoIndisponivel | AnaliseNaoEncontrada) -> HTTPException:
     return HTTPException(status_code=codigo, detail=str(erro))
 
 
-def _item(analise: AnaliseDoHistorico) -> ItemHistorico:
+def _item(analise: AnaliseDoHistorico, links: list[LinkDaMensagem]) -> ItemHistorico:
     return ItemHistorico(
         id=analise.id,
         created_at=analise.criada_em,
@@ -42,6 +49,7 @@ def _item(analise: AnaliseDoHistorico) -> ItemHistorico:
         texto=analise.texto,
         orientacao=carregar_respostas().para(analise.nivel_risco),
         explicacao_ia=analise.explicacao_ia,
+        links=links,
     )
 
 
@@ -54,12 +62,16 @@ def _item(analise: AnaliseDoHistorico) -> ItemHistorico:
 async def listar_historico(
     usuario: UsuarioAutenticado = Depends(obter_usuario_atual),
     servico: ServicoHistorico = Depends(obter_servico_historico),
+    analise: ServicoAnalise = Depends(obter_servico_analise),
 ) -> RespostaHistorico:
     try:
         analises = await servico.listar(usuario)
     except ServicoIndisponivel as erro:
         raise _http(erro) from erro
-    return RespostaHistorico(dias=servico.dias, analises=[_item(a) for a in analises])
+    return RespostaHistorico(
+        dias=servico.dias,
+        analises=[_item(a, analise.links_do_texto(a.texto)) for a in analises],
+    )
 
 
 @router.delete(

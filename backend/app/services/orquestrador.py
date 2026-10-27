@@ -52,7 +52,7 @@ class OrquestradorAnalise:
                 mensagem=texto,
                 nivel_motor=resposta.nivel_motor,
                 fatores=tuple(resposta.fatores),
-                urls=tuple(resposta.urls_analisadas),
+                links=tuple(resposta.links),
             )
         )
         if resultado_ia is not None:

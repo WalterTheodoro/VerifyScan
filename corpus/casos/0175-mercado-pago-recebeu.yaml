@@ -1,0 +1,11 @@
+id: '0175'
+conteudo: |-
+  Mercado Pago: você recebeu R$ 75,00 de [NOME]. Veja os detalhes no app ou em https://www.mercadopago.com.br/activities
+rotulo: legitimo
+fonte: sintetico
+autor: claude
+padrao: "aviso de recebimento do Mercado Pago com link oficial"
+canal: notificacao
+data: 2026-10-27
+observacoes: "novo, escrito para o corpus na fatia 8 (2026-10-27): legítima com link, para medir alarme falso dos sinais de link; link real só para domínio oficial ou encurtador, nunca aberto"
+divisao: calibracao

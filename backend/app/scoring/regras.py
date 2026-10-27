@@ -27,9 +27,16 @@ from app.scoring.descricoes import ModeloDescricao
 
 CAMINHO_REGRAS = Path(__file__).parent / "regras.yaml"
 
-CATEGORIAS_DE_TEXTO: tuple[CategoriaFator, ...] = get_args(CategoriaFator)
-"""As seis da §5.4.1 mais `instrucao_ao_analisador` (ADR-0020). Nas Fases 3 e 4 entram categorias
-de domínio e reputação, e aí esta tupla deixa de ser igual a `get_args(CategoriaFator)`."""
+CATEGORIAS_DE_LINK: tuple[CategoriaFator, ...] = tuple(
+    categoria for categoria in get_args(CategoriaFator) if categoria.startswith("link_")
+)
+"""Os sinais léxicos do DomainAnalyzer (ADR-0022): pesos na seção `dominios` do `regras.yaml`."""
+
+CATEGORIAS_DE_TEXTO: tuple[CategoriaFator, ...] = tuple(
+    categoria for categoria in get_args(CategoriaFator) if categoria not in CATEGORIAS_DE_LINK
+)
+"""As seis da §5.4.1 mais `instrucao_ao_analisador` (ADR-0020): pesos e padrões na seção
+`categorias` do `regras.yaml`."""
 
 # `\D`, `\S`, `\W`, `\B` viram `\d`, `\s`, `\w`, `\b` ao passar pelo `.lower()` do normalizador —
 # a regex continua compilando e passa a significar o oposto. Preferimos falhar no boot.
@@ -116,6 +123,133 @@ class CategoriaTexto(BaseModel):
     padroes: tuple[PadraoNormalizado, ...] = Field(min_length=1)
 
 
+_NOME_DE_MARCA = re.compile(r"[a-z0-9]+")
+
+
+class SinalLink(BaseModel):
+    """Um sinal do DomainAnalyzer (ADR-0022): peso e descrição. Quem o detecta é o código; o que
+    ele procura (listas, limiares) fica no resto da seção `dominios`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: CategoriaFator
+    peso: int = Field(gt=0)
+    descricao: ModeloDescricao
+    no_link: ModeloDescricao = Field(
+        description="A frase curta que a tela escreve ao lado do domínio, no bloco de links."
+    )
+
+    @field_validator("descricao", "no_link")
+    @classmethod
+    def _so_a_marca(cls, descricao: ModeloDescricao) -> ModeloDescricao:
+        return _so_a_marca(descricao)
+
+
+def _so_a_marca(modelo: ModeloDescricao) -> ModeloDescricao:
+    """O fator vai para o banco também em análise anônima (ADR-0012). O nome da marca vem da lista
+    fechada; o domínio viria da mensagem, e por isso fica de fora (fatia 8)."""
+    proibidos = sorted(modelo.placeholders - {"marca"})
+    if proibidos:
+        raise ValueError(f"frase de link só pode usar {{marca}}, não {proibidos}")
+    return modelo
+
+
+class Marca(BaseModel):
+    """Uma empresa ou órgão que golpe imita, com os nomes que o endereço usaria e os domínios
+    oficiais dela. Um domínio oficial cobre os subdomínios: `gov.br` vale para `detran.sp.gov.br`.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    nome: str = Field(min_length=1, description="Como a tela e a descrição escrevem a marca.")
+    nomes: frozenset[str] = Field(min_length=1)
+    semelhanca: bool = Field(
+        description=(
+            "Entra na comparação por letras trocadas? Não para nome que é palavra comum "
+            "(caixa, inter, receita): 'caixas' e 'intel' virariam imitação."
+        )
+    )
+    oficiais: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("nomes")
+    @classmethod
+    def _minusculos_sem_separador(cls, nomes: frozenset[str]) -> frozenset[str]:
+        """O nome é comparado com pedaços do host já separados por "-" e ".": "Itau" ou
+        "banco-inter" nunca casariam, e o erro seria silencioso."""
+        invalidos = sorted(nome for nome in nomes if not _NOME_DE_MARCA.fullmatch(nome))
+        if invalidos:
+            raise ValueError(
+                f"nome de marca deve ser minúsculo, sem acento e sem hífen: {invalidos}"
+            )
+        return nomes
+
+
+class LimiaresSemelhanca(BaseModel):
+    """Distância de edição tolerada (ADR-0004 §3): proporcional ao tamanho do nome da marca."""
+
+    model_config = ConfigDict(frozen=True)
+
+    minimo_de_letras: int = Field(gt=0, description="Nome mais curto que isto não é comparado.")
+    curto_ate: int = Field(gt=0)
+    distancia_curto: int = Field(ge=1)
+    distancia_longo: int = Field(ge=1)
+
+    def limite(self, nome: str) -> int:
+        """Quantas letras trocadas ainda contam como imitação; 0 desliga a comparação."""
+        if len(nome) < self.minimo_de_letras:
+            return 0
+        return self.distancia_curto if len(nome) <= self.curto_ate else self.distancia_longo
+
+
+class ConfiguracaoDominios(BaseModel):
+    """Seção `dominios` do `regras.yaml`: o que o DomainAnalyzer procura e quanto cada sinal pesa.
+
+    Tudo aqui é sobre o texto do endereço. O sistema nunca abre o link (ADR-0022).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    sinais: tuple[SinalLink, ...]
+    link_oficial: ModeloDescricao = Field(description="No bloco de links, o domínio oficial.")
+    link_sem_sinal: ModeloDescricao = Field(description="No bloco de links, o link sem sinal.")
+    encurtadores: frozenset[str] = Field(min_length=1)
+    tlds_abusados: frozenset[str] = Field(min_length=1)
+    palavras_isca: tuple[str, ...] = Field(min_length=1)
+    portas_comuns: frozenset[int] = Field(min_length=1)
+    subdominios_suspeitos_a_partir_de: int = Field(gt=0)
+    semelhanca: LimiaresSemelhanca
+    marcas: tuple[Marca, ...] = Field(min_length=1)
+
+    @field_validator("link_oficial", "link_sem_sinal")
+    @classmethod
+    def _frases_so_com_a_marca(cls, modelo: ModeloDescricao) -> ModeloDescricao:
+        return _so_a_marca(modelo)
+
+    @field_validator("palavras_isca", mode="before")
+    @classmethod
+    def _iscas_normalizadas(cls, iscas: object) -> object:
+        """Escritas com acento no YAML, comparadas com o host sem acento."""
+        if isinstance(iscas, list):
+            return [normalizar(isca) if isinstance(isca, str) else isca for isca in iscas]
+        return iscas
+
+    @model_validator(mode="after")
+    def _sinais_completos_sem_repetir(self) -> Self:
+        presentes = [sinal.id for sinal in self.sinais]
+        fora = sorted(set(presentes) - set(CATEGORIAS_DE_LINK))
+        if fora:
+            raise ValueError(f"categoria que não é de link na seção dominios: {fora}")
+        faltando = sorted(set(CATEGORIAS_DE_LINK) - set(presentes))
+        if faltando:
+            raise ValueError(f"sinais de link ausentes no regras.yaml: {faltando}")
+        if len(presentes) != len(set(presentes)):
+            raise ValueError(f"sinal de link repetido no regras.yaml: {presentes}")
+        return self
+
+    def sinal(self, categoria: CategoriaFator) -> SinalLink:
+        return next(sinal for sinal in self.sinais if sinal.id == categoria)
+
+
 class Regras(BaseModel):
     """O `regras.yaml` inteiro, validado."""
 
@@ -126,15 +260,27 @@ class Regras(BaseModel):
     faixas: Faixas
     urls: ConfiguracaoURLs
     categorias: tuple[CategoriaTexto, ...]
+    dominios: ConfiguracaoDominios
 
     @model_validator(mode="after")
     def _categorias_completas_sem_repetir(self) -> Self:
         presentes = [categoria.id for categoria in self.categorias]
+        fora = sorted(set(presentes) - set(CATEGORIAS_DE_TEXTO))
+        if fora:
+            raise ValueError(f"categoria que não é de texto na seção categorias: {fora}")
         faltando = sorted(set(CATEGORIAS_DE_TEXTO) - set(presentes))
         if faltando:
             raise ValueError(f"categorias de texto ausentes no regras.yaml: {faltando}")
         if len(presentes) != len(set(presentes)):
             raise ValueError(f"categoria repetida no regras.yaml: {presentes}")
+        return self
+
+    @model_validator(mode="after")
+    def _terminacoes_abusadas_sao_extraidas(self) -> Self:
+        """Sem isso, `golpe.cfd` escrito sem `http://` nem chegaria ao DomainAnalyzer."""
+        fora = sorted(self.dominios.tlds_abusados - self.urls.tlds_conhecidos)
+        if fora:
+            raise ValueError(f"terminação abusada fora de urls.tlds_conhecidos: {fora}")
         return self
 
 

@@ -4,8 +4,9 @@ Base de mensagens usada para **medir** o motor de risco, e o motor com a IA. É 
 KPI do RFC: número de precisão só vale se vier do script de avaliação sobre este corpus
 (`uv run python -m tools.avaliar_corpus`, ADR-0005 e ADR-0021).
 
-> **Status: 161 casos sintéticos** (95 golpes, 66 legítimas), divisão fixa: 113 casos na
-> calibração e 48 no teste. Ainda **sem mensagens reais**. A coleta de mensagens de pessoas espera
+> **Status: 176 casos sintéticos** (95 golpes, 81 legítimas), divisão fixa: 124 casos na
+> calibração e 52 no teste. Os 15 últimos (0162–0176, fatia 8) são legítimas com link, para
+> medir o alarme falso dos sinais de link (ADR-0022). Ainda **sem mensagens reais**. A coleta de mensagens de pessoas espera
 > a resposta da coordenação sobre o comitê de ética (pendência no `docs/diario.md`).
 
 ## Por que sintético (ADR-0021)
@@ -59,9 +60,11 @@ relatar.
 ## Anonimização: obrigatória antes do commit
 
 Substituir por placeholder, sem exceção: `[NOME]`, `[TELEFONE]`, `[EMAIL]`, `[CPF]`,
-`[CHAVE_PIX]`, `[CONTA]`, `[AGENCIA]`, `[RASTREIO]`, `[PLACA]`. Link vai para o domínio reservado
-`.example`. Marca e órgão (Correios, INSS, nome de banco) ficam, porque são o sinal de
-personificação.
+`[CHAVE_PIX]`, `[CONTA]`, `[AGENCIA]`, `[RASTREIO]`, `[PLACA]`. Link de golpe e de site comum vai
+para o domínio reservado `.example`. A exceção são as legítimas que existem para testar o link
+oficial ou o encurtador (fatia 8): elas usam o domínio real da marca (`correios.com.br`, `gov.br`)
+ou do encurtador, que não é dado de pessoa. Ninguém abre esses links, nem o sistema (ADR-0022).
+Marca e órgão (Correios, INSS, nome de banco) ficam, porque são o sinal de personificação.
 
 O `backend/tests/test_corpus.py` reprova, no CI, qualquer caso com padrão de CPF, telefone ou
 e-mail (ADR-0006). Valor em reais só passa em caso com `fonte: sintetico`, onde ele é fictício e

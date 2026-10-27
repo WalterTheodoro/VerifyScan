@@ -102,6 +102,50 @@ def test_mensagem_legitima_nao_gera_fator(analisador: TextAnalyzer, texto: str) 
     assert analisador.analisar(texto) == []
 
 
+# ─── fatia 8: padrões mais flexíveis, cada um tirado de golpe perdido na calibração ───────
+
+
+@pytest.mark.parametrize(
+    ("texto", "esperada"),
+    [
+        ("Seu pacote está retido no centro de distribuição.", "personificacao_marca"),
+        ("O pacote foi retido na fiscalização.", "personificacao_marca"),
+        ("Sua encomenda ainda está parada aguardando o pagamento.", "personificacao_marca"),
+        ("Pague com PIX e receba em 3 dias.", "solicitacao_financeira"),
+        ("Evite o corte pagando agora pelo Pix.", "solicitacao_financeira"),
+        ("Consegue me mandar R$ 320 no Pix?", "solicitacao_financeira"),
+        ("A taxa de R$ 12,90 é para liberar o pacote.", "solicitacao_financeira"),
+        ("Falta só um passo para liberar a encomenda.", "solicitacao_financeira"),
+        ("Assim que você pagar, vamos liberar a entrega.", "solicitacao_financeira"),
+    ],
+)
+def test_padroes_flexiveis_da_fatia_8(
+    analisador: TextAnalyzer, texto: str, esperada: CategoriaFator
+) -> None:
+    assert esperada in categorias(analisador, texto)
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        pytest.param("Sua encomenda saiu para entrega e chega hoje.", id="encomenda-a-caminho"),
+        pytest.param("Seu pedido está pendente de confirmação da loja.", id="pedido-pendente"),
+        pytest.param(
+            "Te mandei a conta do churrasco, quando puder manda o pix pra minha chave.",
+            id="pix-entre-amigos",
+        ),
+        pytest.param("A fatura vence amanhã. Pague pelo aplicativo do banco.", id="pague-pelo-app"),
+        pytest.param("Chegou uma encomenda na portaria, pode retirar até as 22h.", id="portaria"),
+    ],
+)
+def test_padroes_flexiveis_nao_disparam_em_mensagem_comum(
+    analisador: TextAnalyzer, texto: str
+) -> None:
+    assert categorias(analisador, texto) & {"personificacao_marca", "solicitacao_financeira"} == (
+        set()
+    )
+
+
 def test_texto_vazio_nao_gera_fator(analisador: TextAnalyzer) -> None:
     assert analisador.analisar("   ") == []
 

@@ -98,6 +98,36 @@ async def test_item_traz_o_texto_inteiro_quando_guardado(
 
 
 @pytest.mark.usefixtures("como_maria")
+async def test_item_traz_os_links_da_mensagem_pelo_dominio(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """Fatia 8: o mesmo bloco de links da home, recalculado do texto guardado — o banco não
+    guarda link nenhum (ADR-0009)."""
+    mensagem = "Pague em https://pagamento.correios-rastreio.example/x?id=1"
+    historico.adicionar(MARIA.id, dataclasses.replace(_analise(relogio), texto=mensagem))
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["links"] == [
+        {
+            "dominio": "correios-rastreio.example",
+            "observacoes": ["usa o nome Correios, mas não é um endereço oficial"],
+        }
+    ]
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_item_sem_texto_vem_sem_links(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    historico.adicionar(MARIA.id, _analise(relogio))
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["links"] == []
+
+
+@pytest.mark.usefixtures("como_maria")
 async def test_item_sem_ia_traz_o_plano_b_do_nivel(
     navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
 ) -> None:

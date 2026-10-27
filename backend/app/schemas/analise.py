@@ -35,12 +35,22 @@ CategoriaFator = Literal[
     "solicitacao_financeira",
     "dados_pessoais",
     "instrucao_ao_analisador",
+    "link_encurtado",
+    "link_ip",
+    "link_caracteres_enganosos",
+    "link_marca_nao_oficial",
+    "link_parecido_com_oficial",
+    "link_tld_abusado",
+    "link_palavra_isca",
+    "link_sem_https",
+    "link_truque_endereco",
 ]
 """Unidade de agregação: cada categoria pontua no máximo uma vez (ADR-0004).
 
 As seis primeiras são as da §5.4.1 do RFC. `instrucao_ao_analisador` não está no RFC: é a defesa
-em profundidade contra injeção de prompt, para quando a IA cai (ADR-0020). As categorias de
-domínio e reputação entram nas Fases 3 e 4.
+em profundidade contra injeção de prompt, para quando a IA cai (ADR-0020). As `link_*` são os
+sinais léxicos do DomainAnalyzer (Fase 3, ADR-0022), com `tipo="dominio"`. As de reputação
+entram na Fase 4.
 """
 
 
@@ -55,6 +65,19 @@ class Fator(BaseModel):
     categoria: CategoriaFator
     descricao: str
     peso: int = Field(gt=0, description="Pontos que este fator soma ao score.")
+
+
+class LinkDaMensagem(BaseModel):
+    """Um link da mensagem, como a tela o mostra: só o domínio registrável e o que o sistema achou
+    dele (fatia 8, ADR-0022). Nunca o link inteiro: caminho e query são o atalho pronto para o
+    golpe, exatamente o que a limpeza tira do texto da IA.
+
+    `observacoes` são templates do `regras.yaml`, como a descrição do fator. O domínio vem da
+    mensagem e não é gravado: o histórico o recalcula do texto, que só existe com dono.
+    """
+
+    dominio: str = Field(description="Domínio registrável (eTLD+1), como texto, nunca link.")
+    observacoes: list[str] = Field(min_length=1)
 
 
 class Orientacao(BaseModel):
@@ -123,12 +146,11 @@ class RespostaAnalise(BaseModel):
     score: int
     nivel_risco: NivelRisco
     fatores: list[Fator]
-    urls_analisadas: list[str] = Field(
+    # Fatia 8 (ADR-0022): substitui `urls_analisadas`, que trazia o link inteiro, pronto para
+    # copiar. Mudança de contrato; o único cliente é o frontend deste repositório.
+    links: list[LinkDaMensagem] = Field(
         default_factory=list,
-        description=(
-            "Links encontrados na mensagem, em forma canônica. Populado desde a Fase 1; "
-            "quem pontua em cima deles são as Fases 3 e 4."
-        ),
+        description="Um item por domínio, na ordem em que apareceu: o domínio e o que se achou.",
     )
 
     # Campos aditivos da fatia 6 (ADR-0020).

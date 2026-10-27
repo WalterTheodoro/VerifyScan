@@ -2,7 +2,7 @@
 // relativo, pelo proxy do Next (ADR-0014). Nada aqui mexe em React.
 
 import type { NivelRisco } from "../_componentes/nivel-risco";
-import type { ExplicacaoIA, Orientacao } from "../_componentes/resultado";
+import type { ExplicacaoIA, LinkDaMensagem, Orientacao } from "../_componentes/resultado";
 import { lerDetail, MENSAGEM_SEM_SERVIDOR } from "./conta";
 import { enviarUmaVez, lerComRepeticao, type OpcoesDeEspera } from "./servidor";
 
@@ -21,6 +21,8 @@ export type AnaliseDoHistorico = {
    *  anterior à fatia 6. */
   orientacao?: Orientacao;
   explicacao_ia?: ExplicacaoIA | null;
+  /** O bloco de links (fatia 8), recalculado do texto pelo backend; vazio sem texto. */
+  links?: LinkDaMensagem[];
 };
 
 export type Historico = { dias: number; analises: AnaliseDoHistorico[] };

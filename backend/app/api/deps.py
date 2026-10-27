@@ -10,6 +10,7 @@ from fastapi import Cookie, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.analyzers.dominios import DomainAnalyzer
 from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor
 from app.core.config import Settings, get_settings
@@ -71,6 +72,7 @@ def obter_servico_analise() -> ServicoAnalise:
     return ServicoAnalise(
         analisador=TextAnalyzer(regras),
         extrator=URLExtractor(regras.urls),
+        dominios=DomainAnalyzer(regras),
         motor=ScoringEngine(regras),
         respostas=carregar_respostas(),
         maximo_de_caracteres=get_settings().texto_max_caracteres,

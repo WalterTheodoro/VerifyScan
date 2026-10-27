@@ -1987,3 +1987,166 @@ que medir. O material sintético das baterias e das amostras não tem dado de ni
 | "Sua conta foi liberada! Pague agora mesmo a taxa pelo seu app e aproveite!" saiu ALTO; pagar pelo app oficial, sem link nem chave, é sinal de legitimidade, e sem remetente o justo é MÉDIO. Fora do corpus binário por ser ambígua | motor e prompt (próxima fatia) |
 | 20 casos do Walter (`corpus/para-o-walter.md`): converter com `autor: walter`, sortear, regravar a linha de base e medir de novo | corpus |
 | 0138 e 0148, legítimas que a IA põe em MÉDIO nas duas rodadas. Estão no teste e ficam só como resultado: qualquer ajuste de prompt para cobrança real ou aviso de órgão público precisa se apoiar em casos da calibração | prompt |
+
+## 2026-10-27 — Fatia 8 (Fase 3): links e domínios, sem nunca abrir o link
+
+### Por quê
+
+Link não pesava nada: `https://correios-rastreio.example/taxa` sozinho saía BAIXO, com score 0, e o
+motor detectava 25,4% dos golpes da calibração. A tela mostrava a URL inteira, pronta para copiar,
+que é justamente o que a limpeza proíbe a IA de escrever. E havia duas pendências da fatia 7 no
+prompt: o "O motor marcou pressa…" e o "Pague a taxa pelo seu app" em ALTO (ADR-0022).
+
+### O que foi feito
+
+1. **Princípio (ADR-0022):** o sistema nunca faz requisição ao link: nem GET, nem HEAD, nem DNS,
+   nem redirecionamento. Os motivos são o aviso ao golpista, o conteúdo malicioso e o SSRF. Entrou
+   na invariante 4 do CLAUDE.md.
+2. **DomainAnalyzer** (`app/analyzers/dominios.py`), puro e só léxico, com nove sinais e nove
+   categorias novas (`link_*`, `tipo="dominio"`). Pesos, listas, marcas e frases ficam no
+   `regras.yaml` v4, seção `dominios`. A tabela dos sinais e as fontes estão no ADR-0022.
+   - Domínio registrável pela `publicsuffixlist`, com a lista embutida.
+   - Versão fixada em 1.1.0.20261010, a mais recente com 14 dias ou mais. A 1.1.2.20261023, que
+     entrou primeiro, tinha 4 dias. Mesma API, mesmo `.example`. A regra de não adotar versão
+     recém-publicada ficou no ADR.
+3. **Regras de texto v4**, cada padrão tirado de golpe perdido na calibração: pacote/encomenda com
+   até 3 palavras no meio, PIX com o meio no fim, "taxa … para liberar" e "liberar a entrega".
+4. **Corpus +15 legítimas com link** (0162–0176, `autor: claude`), pedidas na revisão da etapa A
+   porque só 2 das 46 legítimas da calibração tinham link. O sorteio mandou 11 para a calibração e
+   4 para o teste. Uma, quase cópia do 0148 (teste), foi reescrita antes do sorteio. O README do
+   corpus abre exceção ao `.example` para domínio oficial e encurtador.
+5. **Tela (contrato):** `urls_analisadas` saiu e `links` entrou, com `{dominio, observacoes}` em
+   `POST /api/analises` e em cada item do histórico, recalculado do texto. O bloco "Links que
+   aparecem na mensagem" mostra o domínio como texto e as frases do `regras.yaml`. A frase da home
+   "os links ainda não são conferidos" foi trocada, porque deixou de ser verdade.
+6. **IA:**
+   - O bloco `<links>` com as URLs virou `<pistas>`, sem endereço.
+   - O prompt proíbe "motor", "algoritmo", "fator(es)" e "pista(s)", e a limpeza tira o item que
+     usar uma delas (nunca o nível).
+   - Resolver pelo aplicativo oficial, sem link nem chave, é sinal de legitimidade: sem remetente,
+     no máximo MEDIO.
+   - Encurtador sozinho é comum em propaganda.
+   - As amostras ganharam 6 casos (`conta-liberada-*`, `fatura-pelo-app-oficial`,
+     `limite-aumentado-no-app`).
+7. **Linha de base do CI regravada:** regras v3 → v4 e corpus de 161 → 176 casos (hash
+   `49cb4116…`). Calibração: golpes ≥ MÉDIO 17/67 → 26/67, em ALTO 11/67 → 16/67, alarme falso
+   ≥ MÉDIO 2/46 → 2/57, em ALTO 0/46 → 0/57. O hash mudou por causa dos 15 casos novos, e o
+   número mudou pelas regras v4.
+
+### Medição (ADR-0021: ajuste só pela calibração; teste só no fim, duas vezes)
+
+Corpus de 176 casos: 124 na calibração (67 golpes, 57 legítimas) e 52 no teste (28 e 24). O
+"antes" foi medido com o corpus já ampliado e antes de qualquer mudança no motor.
+
+| Motor sozinho | calibração antes | calibração depois | teste antes | teste depois |
+|---|---|---|---|---|
+| Golpes ≥ MÉDIO | 17/67 = 25,4% | **26/67 = 38,8%** | 6/28 = 21,4% | **12/28 = 42,9%** |
+| Golpes em ALTO | 11/67 | 16/67 | 2/28 | 4/28 |
+| Alarme falso ≥ MÉDIO | 2/57 | 2/57 | 0/24 | 0/24 |
+| Precisão | 89,5% | 92,9% | 100% | 100% |
+
+- Relatórios: `motor-3` (antes) e `motor-4`, `motor-5`, `motor-6` (depois; o 6 é a rodada final,
+  em todas as divisões).
+- **Por sinal, na calibração:**
+  - marca fora do oficial: 8 golpes;
+  - palavra-isca: 10 golpes;
+  - caracteres enganosos: 2 golpes;
+  - encurtador: 0 golpes e 2 legítimas;
+  - os outros cinco sinais: 0, porque o corpus não tem link para exercitá-los.
+- **Por padrão de texto, na calibração:**
+  - "pacote … retido" pegou 1 golpe;
+  - "pague … pelo/via/com PIX", 10 golpes, 4 deles ganhando a categoria por ele;
+  - "taxa … para liberar" e "liberar a entrega", 1 cada, que já tinha a categoria;
+  - nenhum dispara em legítima;
+  - nenhum, sozinho, tirou golpe de BAIXO.
+
+| Motor + IA, calibração | precisão | recall | alarme falso ≥ MÉDIO | golpes em ALTO | relatório |
+|---|---|---|---|---|---|
+| antes (regras v3, prompt da fatia 7) | 89,3% | 100% | 8/57 | 65/67 | `com-ia-4` |
+| regras v4, prompt da fatia 7 | 93,1% | 100% | 5/57 | 64/67 | `com-ia-5` |
+| regras v4, 1ª versão do prompt novo | 91,8% | 100% | 6/57 | 63/67 | `com-ia-6` |
+| regras v4, prompt final (1) | 93,1% | 100% | 5/57 | 63/67 | `com-ia-7` |
+| regras v4, prompt final (2) | **94,4%** | **100%** | 4/57 | 63/67 | `com-ia-8` |
+
+- **Teste, com IA, só no fim:** P 93,3% (28/30) e R 100% nas duas rodadas (`com-ia-9` e `com-ia-10`).
+  - Os 28 golpes saíram em ALTO.
+  - Os alarmes falsos foram 0138 e 0148, os mesmos da fatia 7.
+  - As 4 legítimas novas com link ficaram em BAIXO.
+  - Nada foi ajustado depois.
+  - Na fatia 7, com 48 casos no teste, também foi P 93,3% e R 100%.
+- **Custo:** cerca de US$ 0,05 por rodada na calibração e US$ 0,02 no teste. Latência p50 de 2,4 s
+  e máxima de 5,1 s. A análise local de uma mensagem com 3 links levou 0,9 ms.
+- **Injeção e jargão** (script descartável, calibração, prompt final, 124 respostas):
+  - os 11 golpes de injeção seguem ALTO;
+  - "pista" apareceu 1 vez, e a limpeza tirou o item;
+  - "motor", "algoritmo" e "fator" não apareceram;
+  - "instruções internas" (0041) e "sistema de análise" (0076) chegaram à tela, e a limpeza foi
+    estendida a eles, com teste.
+- **Amostras (`testar_ia`, prompt final):**
+  - "conta-liberada-pelo-app" foi de ALTO para **MÉDIO**, e a versão sem pressa ficou MÉDIO;
+  - as versões com link e com chave Pix seguem ALTO;
+  - "fatura-pelo-app-oficial" saiu MÉDIO e "assistente-de-vendas" ALTO, numa rodada só.
+
+### Medição de tela (build de produção na 3001, backend local na 8000 com IA, Edge headless por CDP)
+
+- **Larguras e telas:** 320, 390 e 1280 px; home, resultado e histórico. A mensagem tinha dois links:
+  - `https://pagamento.seguro.correios-rastreio-entregas-brasil.example/taxa/pagar?cpf=…&id=42`;
+  - `https://rastreamento.correios.com.br`.
+- **Nas três larguras:** nenhuma rolagem lateral, nada fora da tela, nenhum alvo abaixo de 44 px e
+  todo texto da placa na cor da tinta.
+- **Bloco de links:**
+  - mostra `correios-rastreio-entregas-brasil.example` (marca fora do oficial e palavra-isca) e
+    `correios.com.br` ("endereço oficial: Correios");
+  - nenhum `<a>`;
+  - nenhum trecho de subdomínio, caminho, query nem "https://" na placa;
+  - igual na home e no histórico.
+- **Visto a olho no recorte de 320 px:** o domínio longo quebra dentro do cartão.
+- As contas de teste foram excluídas pela própria API (204). O build foi feito numa cópia no
+  scratchpad, com `next build --webpack`, porque o Turbopack recusa a junção do `node_modules`.
+
+### Verificação
+
+- **Backend:**
+  - `ruff format`, `ruff check` e `mypy app` limpos;
+  - `pytest -m "not integracao"`: 525 → **629** passando, 1 xfail;
+  - `-m integracao`: **68**;
+  - sem migração: `categoria` não tem CHECK, e `tipo="dominio"` já existia.
+- **Testes antes do código:** os do DomainAnalyzer, das regras, do contrato `links`, do histórico,
+  do prompt e da limpeza falharam primeiro.
+- **Frontend:** `npm run lint` e `tsc --noEmit` limpos.
+
+### O que deu errado ou mudou no caminho
+
+- **`www.gov.br` saiu "oficial da Caixa"** na primeira medição, porque Caixa e gov.br dividiam
+  `gov.br` e a Caixa vinha antes. Agora ganha o oficial mais específico, e o gov.br vem primeiro.
+- **O punycode do caso 0024** decodifica para "nuàbnk", não "nubánk". O teste usava a premissa
+  errada e foi corrigido para o punycode certo de "nubánk". O limiar não mudou.
+- **O "pacote está retido" dos testes da IA** passou a ser pego pelo motor (MÉDIO). Os testes que
+  precisam de motor em BAIXO ganharam outra mensagem.
+- **Peso da terminação abusada:** a etapa A propôs 20, para o `premio-agora.xyz` do Gate 3. A fonte
+  pedida tirou o .xyz da lista, e o peso voltou aos 15 do RFC. O Gate 3 ficou com os outros três
+  casos.
+- **A primeira biblioteca adotada tinha 4 dias.** Trocada pela mais recente com 14 dias, e a regra
+  foi para o ADR.
+- **Fontes:** a primeira versão da lista citava o Spamhaus e um resumo de terceiros sem eu ter lido
+  as tabelas. Ficou só o que foi lido (Cybercrime Information Center), e o Spamhaus entrou como
+  contexto, sem número.
+- **A 1ª versão do prompt novo subiu para MÉDIO as legítimas com encurtador** (0171 e 0172), e a
+  amostra do app ainda saiu ALTO. Os dois ajustes, feitos olhando a calibração e as amostras, estão
+  no prompt final.
+- **Infra local:** heredoc com `< /dev/null` no Git Bash não roda o script, porque o stdin vira
+  `/dev/null`. Um `cat >` sem entrada travou um comando. E a ferramenta de escrita grava o escape
+  de caractere invisível (U+200B) como o próprio caractere.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| "Você colou:" mostra a mensagem inteira, com o link, na home e no histórico. É a mensagem da própria pessoa; escondê-la é decisão de interface | interface (Walter) |
+| `URLExtractor` com HTML: o caminho do caso 0030 sai `/login">Clique` | extrator |
+| O padrão antigo `pix de r\$` dispara em "Você recebeu um Pix de R$ 150" (legítima 0146, fica em BAIXO) | calibração |
+| "receita" casa com `receita-de-bolo`, e domínio acentuado legítimo dispara caracteres enganosos | limitação (ADR-0022) |
+| IP, "@", porta, terminação abusada e `http://` sem caso no corpus | corpus (casos do Walter) |
+| "fatura-pelo-app-oficial" MÉDIO e "assistente-de-vendas" ALTO numa rodada do `testar_ia` | observar |
+| 0138 e 0148 seguem em MÉDIO com a IA no teste | prompt, só com caso de calibração |
+| 20 casos do Walter (`corpus/para-o-walter.md`) | corpus |

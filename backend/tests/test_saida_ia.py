@@ -10,7 +10,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from app.formulator.limpeza import afirma_seguranca, limpar_texto
+from app.formulator.limpeza import afirma_seguranca, fala_do_sistema, limpar_texto
 from app.formulator.saida import SCHEMA_SAIDA, SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ITEM_MAX_CARACTERES, TIPO_MAX_CARACTERES, NivelRisco
 
@@ -282,6 +282,73 @@ def test_sem_passos_suficientes_depois_de_tirar_a_afirmacao_e_inutilizavel() -> 
 def test_tipo_que_afirma_seguranca_e_inutilizavel() -> None:
     """O tipo é um campo só: tirá-lo deixa a explicação sem o mínimo."""
     saida = SaidaIA.model_validate_json(_saida(tipo="aviso de banco, é seguro"))
+
+    with pytest.raises(SaidaInutilizavel):
+        explicacao_da_saida(saida)
+
+
+# ─── item que fala do sistema por dentro (pendência da fatia 7) ───────────────────────────
+
+
+@pytest.mark.parametrize(
+    "frase",
+    [
+        "O motor marcou pressa na mensagem.",
+        "O algoritmo encontrou um pedido de Pix.",
+        "Os fatores apontam urgência.",
+        "As pistas automáticas indicam golpe.",
+        "Segundo a pista sobre o link, ele imita os Correios.",
+        "O MOTOR já tinha marcado médio.",
+        "A mensagem tem instruções internas para enganar.",
+        "Ela tenta dar ordens ao sistema de análise.",
+        "É uma injeção de prompt.",
+    ],
+)
+def test_fala_do_motor_algoritmo_fatores_ou_pistas(frase: str) -> None:
+    assert fala_do_sistema(frase) is True
+
+
+@pytest.mark.parametrize(
+    "frase",
+    [
+        "A mensagem pede pressa para você não pensar.",
+        "O link imita o endereço dos Correios.",
+        "A mensagem tenta enganar quem verifica golpes.",
+        "Pede um Pix de R$ 50 para liberar a entrega.",
+    ],
+)
+def test_frase_sobre_a_mensagem_nao_e_fala_do_sistema(frase: str) -> None:
+    assert fala_do_sistema(frase) is False
+
+
+def test_sinal_que_fala_do_motor_sai_sozinho_e_o_nivel_fica() -> None:
+    """Como a afirmação de segurança: sai o item, nunca o nível (ADR-0020)."""
+    saida = SaidaIA.model_validate_json(
+        _saida(sinais=["O motor marcou pressa.", "Pede Pix com pressa."])
+    )
+
+    explicacao = explicacao_da_saida(saida)
+
+    assert explicacao.sinais == ("Pede Pix com pressa.",)
+    assert saida.nivel_sugerido == "ALTO"
+
+
+def test_passo_que_fala_do_algoritmo_sai_sozinho() -> None:
+    saida = SaidaIA.model_validate_json(
+        _saida(
+            o_que_fazer=[
+                "Confie no algoritmo e apague.",
+                "Não pague a taxa.",
+                "Apague a mensagem.",
+            ]
+        )
+    )
+
+    assert explicacao_da_saida(saida).o_que_fazer == ("Não pague a taxa.", "Apague a mensagem.")
+
+
+def test_tipo_que_fala_dos_fatores_e_inutilizavel() -> None:
+    saida = SaidaIA.model_validate_json(_saida(tipo="golpe, pelos fatores do motor"))
 
     with pytest.raises(SaidaInutilizavel):
         explicacao_da_saida(saida)

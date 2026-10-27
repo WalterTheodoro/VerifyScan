@@ -547,6 +547,15 @@ wheels = [
 ]
 
 [[package]]
+name = "publicsuffixlist"
+version = "1.1.0.20261010"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/4f/54b0f7bf18b0ec89742d7d2657f04feaadd27f7ca99800296c526daf1a84/publicsuffixlist-1.1.0.20261010.tar.gz", hash = "sha256:1ebd4c9edade8a6c9bd01995a6f9e67220948dca5879b1fd48a565cb429d9aeb", size = 106328, upload-time = "2026-10-10T08:49:17.176Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/49/2c38fc44251f420d9aba4de40be84facb1d82a8a419c8cb71b5ebfa32055/publicsuffixlist-1.1.0.20261010-py3-none-any.whl", hash = "sha256:c92763e6b3982c850e9047eb95aa864753ec533f761b18bae4d04226d5e12f1d", size = 109052, upload-time = "2026-10-10T08:49:15.955Z" },
+]
+
+[[package]]
 name = "pycparser"
 version = "3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -855,6 +864,7 @@ dependencies = [
     { name = "argon2-cffi" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "publicsuffixlist" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -880,6 +890,7 @@ requires-dist = [
     { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
+    { name = "publicsuffixlist", specifier = "==1.1.0.20261010" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6.0.3" },
