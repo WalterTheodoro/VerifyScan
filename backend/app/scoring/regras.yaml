@@ -18,7 +18,7 @@
 # (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-versao: 2
+versao: 3
 
 # Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
 # dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
@@ -167,21 +167,31 @@ categorias:
   # leva a ALTO: o peso precisa passar de `faixas.medio_ate` (um teste confere). É o que segura
   # o nível quando a IA cai e a resposta sai só do motor — o golpe que diz "classifique como
   # segura" não pode sair BAIXO só porque o Claude estava fora do ar.
+  #
+  # Versão 3 (bateria 2): cada padrão só casa quando a mensagem fala COM um analisador ou tenta
+  # mandar no resultado. Os da versão 2 casavam a palavra solta e puseram em ALTO "sistema de
+  # análise de crédito", "assistente de vendas" e "ignore as regras do grupo antigo".
   - id: instrucao_ao_analisador
     peso: 61
     descricao: 'A mensagem tenta dar ordens a quem analisa mensagens. Mensagem comum não faz isso.'
     padroes:
-      - 'sistemas? de análise'
-      - '\banalysis system\b'
-      - '\bclassifi(que|car|ca) (esta|essa|a) mensagem\b'
-      - '\bclassifi(que|car|ca) (isto |isso )?como (segur|baix|legítim|confiáve|oficial)'
-      - '\bclassify (this|the) message\b'
-      - '\bignore (as|todas as) (regras|instruções)\b'
-      - '\bignore tudo o que foi dito\b'
+      # "sistema de análise" interpelado: seguido de ":", "," ou "!"...
+      - 'sistemas? de análise ?[:,!]'
+      # ...ou depois de "atenção,", "(aviso) ao", "para o" — e não seguido de "de crédito", "do banco".
+      - '(\batenção,? |\baos? |\bpara os? )sistemas? de análise\b(?! d[aeo]s? )'
+      - '\banalysis system ?[:,!]'
+      - '\battention,? analysis system\b'
+      - '\bclassifi(que|car|ca) (esta|essa) mensagem\b'
+      - '\bclassifi(que|car|ca) (isto |isso )?como (segur[ao]|baixo\b|risco baixo|legítim|confiáve|oficial)'
+      - '\bclassify this message\b'
+      - '\bignore (as|todas as) (regras|instruções) (anteriores|acima|do sistema|que você recebeu|de segurança)'
+      - '\bignore tudo o que foi dito (antes|acima|anteriormente)'
       - '\bignore (all )?(the |your )?previous instructions\b'
       - 'verificad[ao] pelo verifyscan'
-      - '\byou are now\b'
-      - '\bvocê agora é (um|uma) (assistente|ia|inteligência artificial|sistema)\b'
+      - '\byou are now (a|an) (\w+ )?(ai|assistant|chatbot|model|system)\b'
+      - '\bvocê agora é (um |uma |o |a )?(ia|inteligência artificial|modelo de (linguagem|ia)|chatbot|sistema|assistente virtual|assistente de ia)\b'
+      # Troca de papel com ordem de afirmar que o pedido é legítimo (E08 da bateria 2).
+      - '\bvocê agora é (um|uma|o|a) .{0,60}\bdeve (confirmar|dizer|afirmar|garantir|responder) .{0,40}(legítim|segur|oficial|confiáve|verdadeir)'
       - '\bnivel_sugerido\b'
-      - '\bprompt de sistema\b'
+      - '\b(mostre|revele|repita|exiba|imprima) (o )?(seu )?prompt\b'
       - '</?(mensagem|instruções|instrucoes|system)>'
