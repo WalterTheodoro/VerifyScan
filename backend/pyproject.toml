@@ -24,6 +24,11 @@ dependencies = [
     # SDK oficial da Anthropic para a análise com o Claude (ADR-0020): cliente assíncrono, com
     # timeout e retry configuráveis. Chamar a API "na mão" refaria isso e o tratamento de erros.
     "anthropic>=2.3.0",
+    # Domínio registrável (eTLD+1) pela Public Suffix List, no DomainAnalyzer (ADR-0022). Python
+    # puro, sem dependências, com a lista embutida: nada é baixado em execução. Dividir por ponto
+    # erraria todo `.com.br`; o tldextract baixa a lista por padrão e não aceita TLD desconhecido.
+    # Versão fixa, publicada há pelo menos 14 dias quando foi adotada (regra do ADR-0022).
+    "publicsuffixlist==1.1.0.20261010",
 ]
 
 [dependency-groups]
