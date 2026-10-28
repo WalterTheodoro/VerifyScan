@@ -1,0 +1,917 @@
+# Prints sintéticos da fatia 9 (ADR-0023), gerados por `tools/gerar_prints.py`.
+# Só ids e variações: o texto vem do corpus. As imagens ficam em
+# `corpus/prints-gerados/`, ignorada pelo git. Não edite à mão: rode o script.
+# `calibracao`: medida e ajuste da fatia. `teste`: a medida limpa, gerada e medida uma
+# vez só, depois de tudo pronto, sem ajuste nenhum depois.
+calibracao:
+- id: p01
+  caso: 0087
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: p02
+  caso: 0018
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+- id: p03
+  caso: '0105'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0002
+  anteriores: 2
+- id: p04
+  caso: '0104'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0003
+  anteriores: 0
+- id: p05
+  caso: '0042'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0004
+  anteriores: 1
+- id: p06
+  caso: '0013'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0005
+  anteriores: 2
+- id: p07
+  caso: '0025'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0006
+  anteriores: 0
+- id: p08
+  caso: '0100'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0007
+  anteriores: 1
+- id: p09
+  caso: '0117'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0008
+  anteriores: 2
+- id: p10
+  caso: 0097
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0009
+  anteriores: 0
+- id: p11
+  caso: '0111'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0010
+  anteriores: 1
+- id: p12
+  caso: 0079
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: sim
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0011
+  anteriores: 2
+- id: p13
+  caso: 0129
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0012
+  anteriores: 0
+- id: p14
+  caso: 0096
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0013
+  anteriores: 1
+- id: p15
+  caso: 0082
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0014
+  anteriores: 2
+- id: p16
+  caso: 0008
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0015
+  anteriores: 0
+- id: p17
+  caso: 0098
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0016
+  anteriores: 1
+- id: p18
+  caso: 0108
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0017
+  anteriores: 2
+- id: p19
+  caso: '0043'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0018
+  anteriores: 0
+- id: p20
+  caso: '0044'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0019
+  anteriores: 1
+- id: p21
+  caso: '0172'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: p22
+  caso: 0139
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+- id: p23
+  caso: '0133'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0002
+  anteriores: 2
+- id: p24
+  caso: '0050'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0003
+  anteriores: 0
+- id: p25
+  caso: '0055'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0004
+  anteriores: 1
+- id: p26
+  caso: '0157'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0005
+  anteriores: 2
+- id: p27
+  caso: '0130'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0006
+  anteriores: 0
+- id: p28
+  caso: '0075'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0007
+  anteriores: 1
+- id: p29
+  caso: '0165'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0008
+  anteriores: 2
+- id: p30
+  caso: '0151'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0009
+  anteriores: 0
+- id: p31
+  caso: '0057'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0010
+  anteriores: 1
+- id: p32
+  caso: '0071'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0011
+  anteriores: 2
+- id: p33
+  caso: 0168
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0012
+  anteriores: 0
+- id: p34
+  caso: '0067'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0013
+  anteriores: 1
+- id: p35
+  caso: '0141'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0014
+  anteriores: 2
+- id: p36
+  caso: '0162'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0015
+  anteriores: 0
+- id: p37
+  caso: '0136'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0016
+  anteriores: 1
+- id: p38
+  caso: 0093
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0017
+  anteriores: 2
+- id: p39
+  caso: '0065'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0018
+  anteriores: 0
+- id: p40
+  caso: '0076'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0019
+  anteriores: 1
+- id: p41
+  caso: '0035'
+  rotulo: golpe
+  autor: claude
+  tipo: injecao
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: p42
+  caso: '0027'
+  rotulo: golpe
+  autor: claude
+  tipo: injecao
+  layout: email
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+- id: p43
+  caso: 0081
+  rotulo: golpe
+  autor: claude
+  tipo: injecao
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0002
+  anteriores: 2
+- id: p44
+  caso: 0028
+  rotulo: golpe
+  autor: claude
+  tipo: ilegivel
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: p45
+  caso: '0143'
+  rotulo: legitimo
+  autor: claude
+  tipo: ilegivel
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+teste:
+- id: t01
+  caso: '0015'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: t02
+  caso: '0031'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+- id: t03
+  caso: '0114'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0002
+  anteriores: 2
+- id: t04
+  caso: '0005'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0003
+  anteriores: 0
+- id: t05
+  caso: 0029
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0004
+  anteriores: 1
+- id: t06
+  caso: 0078
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0005
+  anteriores: 2
+- id: t07
+  caso: 0039
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0006
+  anteriores: 0
+- id: t08
+  caso: '0102'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0007
+  anteriores: 1
+- id: t09
+  caso: '0046'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0008
+  anteriores: 2
+- id: t10
+  caso: '0120'
+  rotulo: golpe
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0009
+  anteriores: 0
+- id: t11
+  caso: '0170'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0000
+  anteriores: 0
+- id: t12
+  caso: 0138
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0001
+  anteriores: 1
+- id: t13
+  caso: '0077'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0002
+  anteriores: 2
+- id: t14
+  caso: 0148
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: salvo
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0003
+  anteriores: 0
+- id: t15
+  caso: '0173'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Júlia
+  numero: +55 11 90000-0004
+  anteriores: 1
+- id: t16
+  caso: '0066'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Sr. Antônio
+  numero: +55 11 90000-0005
+  anteriores: 2
+- id: t17
+  caso: '0070'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: chat
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: claro
+  status: online
+  nome: Ana Paula
+  numero: +55 11 90000-0006
+  anteriores: 0
+- id: t18
+  caso: '0152'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: nao
+  primeira: nao
+  tema: escuro
+  status: visto
+  nome: Carlos Souza
+  numero: +55 11 90000-0007
+  anteriores: 1
+- id: t19
+  caso: '0160'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: sms
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: claro
+  status: online
+  nome: Dona Cida
+  numero: +55 11 90000-0008
+  anteriores: 2
+- id: t20
+  caso: '0063'
+  rotulo: legitimo
+  autor: claude
+  tipo: normal
+  layout: email
+  remetente: numero
+  aviso: sim
+  primeira: sim
+  tema: escuro
+  status: visto
+  nome: Marcos Lima
+  numero: +55 11 90000-0009
+  anteriores: 0
