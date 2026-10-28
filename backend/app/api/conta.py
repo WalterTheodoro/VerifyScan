@@ -50,6 +50,8 @@ def _item(analise: AnaliseDoHistorico, links: list[LinkDaMensagem]) -> ItemHisto
         orientacao=carregar_respostas().para(analise.nivel_risco),
         explicacao_ia=analise.explicacao_ia,
         links=links,
+        tipo_input=analise.tipo_input,
+        contexto_print=analise.contexto_print,
     )
 
 
@@ -70,7 +72,7 @@ async def listar_historico(
         raise _http(erro) from erro
     return RespostaHistorico(
         dias=servico.dias,
-        analises=[_item(a, analise.links_do_texto(a.texto)) for a in analises],
+        analises=[_item(a, analise.links_do_texto(a.texto, a.tipo_input)) for a in analises],
     )
 
 

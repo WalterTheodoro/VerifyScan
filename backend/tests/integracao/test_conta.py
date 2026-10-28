@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
     obter_analisador_ia,
+    obter_leitor_de_print,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
@@ -28,7 +29,7 @@ from app.services.repositorio_analises import RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
-from tests.conftest import ia_desligada, settings_de_teste
+from tests.conftest import ia_desligada, leitura_desligada, settings_de_teste
 from tests.test_api_analises import GOLPE_DE_PIX
 
 pytestmark = pytest.mark.integracao
@@ -54,6 +55,7 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
     )
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()
     app.dependency_overrides[obter_analisador_ia] = ia_desligada
+    app.dependency_overrides[obter_leitor_de_print] = leitura_desligada
     return app
 
 

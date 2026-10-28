@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
 
 from app.models import Analise
-from app.schemas.analise import ExplicacaoIA, NivelRisco
+from app.schemas.analise import ContextoDoPrint, ExplicacaoIA, NivelRisco, TipoInput
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,8 @@ class AnaliseDoHistorico:
     """O que a pessoa reconhece de uma consulta passada: quando, o quê, que nível e por quê.
 
     `texto` é `None` nas análises gravadas antes do ADR-0018; `explicacao_ia`, nas feitas sem a
-    IA ou antes do ADR-0020.
+    IA ou antes do ADR-0020. Num print (ADR-0023), `texto` é a transcrição marcada e
+    `contexto_print` o que a tela mostrava.
     """
 
     id: uuid.UUID
@@ -46,6 +47,8 @@ class AnaliseDoHistorico:
     fatores: tuple[FatorDoHistorico, ...]
     texto: str | None = None
     explicacao_ia: ExplicacaoIA | None = None
+    tipo_input: TipoInput = "texto"
+    contexto_print: ContextoDoPrint | None = None
 
 
 class RepositorioHistorico(Protocol):
@@ -99,6 +102,8 @@ class RepositorioHistoricoPostgres:
                     ),
                     texto=analise.texto_input,
                     explicacao_ia=_explicacao(analise.explicacao_ia),
+                    tipo_input=cast(TipoInput, analise.tipo_input),
+                    contexto_print=_contexto(analise.contexto_print),
                 )
                 for analise in analises
             ]
@@ -124,10 +129,10 @@ class RepositorioHistoricoPostgres:
             return len(apagadas.all())
 
     async def desvincular_vencidas(self, janela: timedelta) -> int:
-        """Depois da janela, a análise perde o dono, o texto e a explicação da IA, e vira idêntica
-        a uma anônima (ADR-0006). Um UPDATE só: os CHECKs `ck_analises_texto_so_com_dono` e
-        `ck_analises_explicacao_so_com_dono` recusariam tirar o dono e deixar o conteúdo
-        (ADR-0018, ADR-0020). Os níveis ficam: não carregam conteúdo."""
+        """Depois da janela, a análise perde o dono, o texto, a explicação da IA e o contexto do
+        print, e vira idêntica a uma anônima (ADR-0006). Um UPDATE só: os CHECKs `*_so_com_dono`
+        recusariam tirar o dono e deixar o conteúdo (ADR-0018, ADR-0020, ADR-0023). Os níveis e o
+        `tipo_input` ficam: não carregam conteúdo."""
         async with self._fabrica_de_sessoes() as sessao, sessao.begin():
             desvinculadas = await sessao.scalars(
                 update(Analise)
@@ -135,7 +140,7 @@ class RepositorioHistoricoPostgres:
                     Analise.usuario_id.is_not(None),
                     Analise.created_at <= func.now() - janela,
                 )
-                .values(usuario_id=None, texto_input=None, explicacao_ia=None)
+                .values(usuario_id=None, texto_input=None, explicacao_ia=None, contexto_print=None)
                 .returning(Analise.id)
             )
             return len(desvinculadas.all())
@@ -154,4 +159,16 @@ def _explicacao(dados: dict[str, object] | None) -> ExplicacaoIA | None:
         return ExplicacaoIA.model_validate(dados)
     except ValidationError as exc:
         logger.warning("Explicação da IA guardada fora do contrato: %s", type(exc).__name__)
+        return None
+
+
+def _contexto(dados: dict[str, object] | None) -> ContextoDoPrint | None:
+    """O contexto guardado, validado de novo na leitura, como a explicação: fora do contrato, o
+    item aparece sem ele em vez de derrubar a listagem."""
+    if dados is None:
+        return None
+    try:
+        return ContextoDoPrint.model_validate(dados)
+    except ValidationError as exc:
+        logger.warning("Contexto do print guardado fora do contrato: %s", type(exc).__name__)
         return None

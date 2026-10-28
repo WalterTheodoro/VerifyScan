@@ -9,7 +9,14 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Analise, IndicadorRisco
-from app.schemas.analise import ExplicacaoIA, Fator, NivelRisco, RespostaAnalise, TipoInput
+from app.schemas.analise import (
+    ContextoDoPrint,
+    ExplicacaoIA,
+    Fator,
+    NivelRisco,
+    RespostaAnalise,
+    TipoInput,
+)
 from app.scoring.combinacao import combinar
 
 
@@ -27,6 +34,10 @@ class RegistroAnalise:
     `nivel_motor`, `nivel_ia` e `ia_modelo` não carregam conteúdo e vão em toda análise: são o
     que permite medir quantas vezes a IA subiu o nível. `explicacao_ia` é texto livre escrito a
     partir da mensagem e segue a regra do `texto_input` (ADR-0020).
+
+    Num print (ADR-0023), `texto_input` é a transcrição e `contexto_print` o que a tela mostrava,
+    que segue a regra da explicação. A imagem não tem campo: o repositório não tem por onde
+    recebê-la.
     """
 
     score: int
@@ -39,14 +50,18 @@ class RegistroAnalise:
     nivel_ia: NivelRisco | None = None
     ia_modelo: str | None = None
     explicacao_ia: ExplicacaoIA | None = None
+    contexto_print: ContextoDoPrint | None = None
 
     def __post_init__(self) -> None:
-        """As regras dos CHECKs da 0004 e da 0005, no tipo: o erro aparece aqui, e não como um
-        registro descartado depois. Texto de OCR nunca é guardado (ADR-0006)."""
+        """As regras dos CHECKs da 0004, da 0005 e da 0006, no tipo: o erro aparece aqui, e não
+        como um registro descartado depois. A transcrição do print segue a regra do texto colado
+        (ADR-0023, que substitui a proibição do ADR-0006)."""
         if self.texto_input is not None and self.usuario_id is None:
             raise ValueError("Texto da análise só pode ser guardado com dono (ADR-0018).")
-        if self.texto_input is not None and self.tipo_input != "texto":
-            raise ValueError("Só a mensagem colada é guardada, nunca texto de OCR (ADR-0006).")
+        if self.contexto_print is not None and self.usuario_id is None:
+            raise ValueError("O contexto do print só pode ser guardado com dono (ADR-0023).")
+        if self.contexto_print is not None and self.tipo_input != "imagem":
+            raise ValueError("Contexto de print só em análise de imagem (ADR-0023).")
         if self.explicacao_ia is not None and self.usuario_id is None:
             raise ValueError("A explicação da IA só pode ser guardada com dono (ADR-0020).")
         if self.explicacao_ia is not None and self.nivel_ia is None:
@@ -101,6 +116,11 @@ class RepositorioAnalisesPostgres:
             explicacao_ia=(
                 registro.explicacao_ia.model_dump(mode="json")
                 if registro.explicacao_ia is not None
+                else None
+            ),
+            contexto_print=(
+                registro.contexto_print.model_dump(mode="json")
+                if registro.contexto_print is not None
                 else None
             ),
             indicadores=[

@@ -76,10 +76,22 @@ class DomainAnalyzer:
         for url in urls:
             avaliacao = self.avaliar(url)
             por_dominio.setdefault(avaliacao.dominio, []).append(avaliacao)
-        return [
-            LinkDaMensagem(dominio=dominio, observacoes=self._observacoes(avaliacoes))
-            for dominio, avaliacoes in por_dominio.items()
-        ]
+        links = []
+        for dominio, avaliacoes in por_dominio.items():
+            oficial = all(a.oficial_de is not None for a in avaliacoes)
+            links.append(
+                LinkDaMensagem(
+                    dominio=dominio,
+                    observacoes=self._observacoes(avaliacoes),
+                    oficial=oficial,
+                    conselho=(
+                        self._config.link_conselho_oficial
+                        if oficial
+                        else self._config.link_conselho
+                    ),
+                )
+            )
+        return links
 
     def avaliar(self, url: URLExtraida) -> AvaliacaoLink:
         host = url.host

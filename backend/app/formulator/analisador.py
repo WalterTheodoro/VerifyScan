@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 
 from app.formulator.cliente import ClienteIA, RespostaIA
-from app.formulator.prompt import PROMPT_SISTEMA, EntradaIA, montar_entrada
+from app.formulator.prompt import EntradaIA, montar_entrada
 from app.formulator.saida import SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ExplicacaoIA, NivelRisco
 
@@ -49,8 +49,13 @@ class AnalisadorIA:
         self._cliente = cliente
         self._timeout_s = timeout_s
 
-    async def avaliar(self, entrada: EntradaIA) -> ResultadoIA | None:
+    async def avaliar(
+        self, entrada: EntradaIA, timeout_s: float | None = None
+    ) -> ResultadoIA | None:
         """O resultado da IA, ou `None` para o plano B.
+
+        `timeout_s` troca o teto desta chamada: o caminho de imagem usa um menor, porque a leitura
+        já gastou parte do orçamento da invariante 8 (ADR-0023).
 
         O `except Exception` largo é intencional: todas as falhas têm o mesmo destino. O log leva
         só o tipo da exceção e a latência, nunca o texto dela, da mensagem ou da resposta — a
@@ -60,8 +65,8 @@ class AnalisadorIA:
             return None
         inicio = time.perf_counter()
         try:
-            async with asyncio.timeout(self._timeout_s):
-                resposta = await self._cliente.gerar(PROMPT_SISTEMA, montar_entrada(entrada))
+            async with asyncio.timeout(timeout_s or self._timeout_s):
+                resposta = await self._cliente.gerar(entrada.sistema, montar_entrada(entrada))
             resultado = _interpretar(resposta)
         except Exception as exc:
             logger.warning(

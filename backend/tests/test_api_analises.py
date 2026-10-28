@@ -10,6 +10,7 @@ from time import perf_counter
 from httpx import AsyncClient
 
 from app.core.config import get_settings
+from app.scoring.regras import carregar_regras
 
 # A mensagem do Gate 1. No texto: urgência (+10), ameaça de bloqueio (+15), solicitação
 # financeira (+25) e dados pessoais (+25). No link, desde a Fase 3 (ADR-0022): a marca "bb" fora
@@ -67,6 +68,8 @@ async def test_resposta_traz_o_dominio_de_cada_link_e_o_que_se_achou(cliente: As
                 "usa o nome Banco do Brasil, mas não é um endereço oficial",
                 "usa palavras comuns em golpes",
             ],
+            "oficial": False,
+            "conselho": carregar_regras().dominios.link_conselho,
         }
     ]
 

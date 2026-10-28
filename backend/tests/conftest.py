@@ -6,7 +6,9 @@ falsas determinísticas.
 """
 
 import asyncio
+import base64
 import dataclasses
+import io
 import json
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -16,9 +18,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 
 from app.api.deps import (
     obter_analisador_ia,
+    obter_leitor_de_print,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
@@ -28,6 +32,7 @@ from app.core.config import Settings, get_settings
 from app.formulator.analisador import AnalisadorIA
 from app.formulator.cliente import RespostaIA
 from app.main import criar_app
+from app.ocr.leitura import LeitorDePrint
 from app.schemas.health import SaudeServico
 from app.services.health import VerificadorSaude
 from app.services.repositorio_analises import RegistroAnalise
@@ -104,9 +109,87 @@ class ClienteIAFalso:
         )
 
 
+def png_de_teste(tamanho: tuple[int, int] = (390, 844)) -> bytes:
+    """Um PNG de verdade, pequeno: o que o Pillow precisa para a imagem passar na validação."""
+    saida = io.BytesIO()
+    Image.new("RGB", tamanho, (245, 245, 245)).save(saida, "PNG")
+    return saida.getvalue()
+
+
+def corpo_de_print(imagem: bytes | None = None, texto: str | None = None) -> dict[str, object]:
+    """O JSON de `POST /api/analises/imagem`."""
+    corpo: dict[str, object] = {
+        "imagem_base64": base64.b64encode(imagem or png_de_teste()).decode("ascii")
+    }
+    if texto is not None:
+        corpo["texto"] = texto
+    return corpo
+
+
+def saida_da_leitura(mensagens: list[tuple[str, str]] | None = None, **mudancas: object) -> str:
+    """Uma resposta válida da leitura do print, em JSON. `mensagens`: pares (de, texto)."""
+    valores: dict[str, object] = {
+        "canal": "whatsapp",
+        "remetente_salvo": "nao",
+        "aviso_do_app": "nao",
+        "primeira_mensagem": "sim",
+        "mensagens": [
+            {"de": de, "texto": texto}
+            for de, texto in (
+                [("contato", "Seu pacote está retido. Pague a taxa de R$ 9,90 pelo PIX.")]
+                if mensagens is None
+                else mensagens
+            )
+        ],
+        "tem_link_visivel": "nao",
+        "legivel": "sim",
+    }
+    valores.update(mudancas)
+    return json.dumps(valores, ensure_ascii=False)
+
+
+class ClienteLeituraFalso:
+    """Falso determinístico de `ClienteLeitura`: responde `texto`, demora ou levanta `erro`.
+
+    Guarda só o tamanho da imagem recebida, não os bytes: o teste confere que ela chegou."""
+
+    def __init__(
+        self,
+        texto: str = "",
+        *,
+        erro: Exception | None = None,
+        demora_s: float = 0.0,
+        motivo_parada: str = "end_turn",
+    ) -> None:
+        self.texto = texto or saida_da_leitura()
+        self.erro = erro
+        self.demora_s = demora_s
+        self.motivo_parada = motivo_parada
+        self.chamadas: list[tuple[str, int]] = []
+
+    async def ler(self, sistema: str, jpeg: bytes, schema: dict[str, object]) -> RespostaIA:
+        self.chamadas.append((sistema, len(jpeg)))
+        if self.demora_s:
+            await asyncio.sleep(self.demora_s)
+        if self.erro is not None:
+            raise self.erro
+        return RespostaIA(
+            texto=self.texto,
+            motivo_parada=self.motivo_parada,
+            modelo="claude-haiku-5-5",
+            tokens_entrada=4500,
+            tokens_saida=300,
+        )
+
+
 def ia_desligada() -> AnalisadorIA:
     """Override de `obter_analisador_ia` com a IA desligada: o padrão de toda app de teste."""
     return AnalisadorIA(None, timeout_s=15)
+
+
+def leitura_desligada() -> LeitorDePrint:
+    """Override de `obter_leitor_de_print` com a IA desligada, par do `ia_desligada`."""
+    return LeitorDePrint(None, timeout_s=10)
 
 
 class RepositorioAnalisesEmMemoria:
@@ -286,9 +369,12 @@ class RepositorioHistoricoEmMemoria:
             if linha.dono is not None and linha.analise.criada_em <= limite_da_janela
         ]
         for linha in vencidas:
-            # Como o UPDATE real: o dono, o texto e a explicação da IA saem juntos (ADR-0020).
+            # Como o UPDATE real: o dono, o texto, a explicação da IA e o contexto do print saem
+            # juntos (ADR-0020, ADR-0023).
             linha.dono = None
-            linha.analise = dataclasses.replace(linha.analise, texto=None, explicacao_ia=None)
+            linha.analise = dataclasses.replace(
+                linha.analise, texto=None, explicacao_ia=None, contexto_print=None
+            )
         return len(vencidas)
 
 
@@ -341,6 +427,7 @@ def app(
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: sessoes
     app.dependency_overrides[obter_repositorio_historico] = lambda: historico
     app.dependency_overrides[obter_analisador_ia] = ia_desligada
+    app.dependency_overrides[obter_leitor_de_print] = leitura_desligada
     # Lambda, e não a função direto: o FastAPI lê a assinatura do override, e o `**valores`
     # viraria parâmetro da requisição (422 em toda rota — aconteceu).
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()

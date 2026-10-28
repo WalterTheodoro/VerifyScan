@@ -9,7 +9,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.analise import ExplicacaoIA, LinkDaMensagem, NivelRisco, Orientacao
+from app.schemas.analise import (
+    ContextoDoPrint,
+    ExplicacaoIA,
+    LinkDaMensagem,
+    NivelRisco,
+    Orientacao,
+    TipoInput,
+)
 
 
 class FatorHistorico(BaseModel):
@@ -39,6 +46,17 @@ class ItemHistorico(BaseModel):
     links: list[LinkDaMensagem] = Field(
         default_factory=list,
         description="O bloco de links da home. Vazio quando o texto não foi guardado.",
+    )
+    # Campos aditivos da fatia 9 (ADR-0023): a análise veio de um print?
+    tipo_input: TipoInput = Field(
+        default="texto",
+        description=(
+            "`imagem` quando veio de um print: aí `texto` é a transcrição, com quem mandou cada "
+            "mensagem entre colchetes, e os links saem só do que a pessoa recebeu."
+        ),
+    )
+    contexto_print: ContextoDoPrint | None = Field(
+        default=None, description="O que o print mostrava além do texto. `null` no texto colado."
     )
 
 

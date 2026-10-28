@@ -22,7 +22,8 @@ INDICADOR_VALIDO = {"tipo": "texto", "categoria": "urgencia", "descricao": "x", 
     ("tabela", "coluna", "valor_invalido", "constraint"),
     [
         ("analises", "nivel_risco", "MÉDIO", "ck_analises_nivel_risco"),
-        ("analises", "tipo_input", "imagem", "ck_analises_tipo_input"),
+        # `imagem` passou a valer na 0006 (ADR-0023).
+        ("analises", "tipo_input", "audio", "ck_analises_tipo_input"),
         ("indicadores_risco", "tipo", "url", "ck_indicadores_risco_tipo"),
         ("indicadores_risco", "peso", 0, "ck_indicadores_risco_peso_positivo"),
     ],

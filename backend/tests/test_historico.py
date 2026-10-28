@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.deps import obter_repositorio_historico, obter_usuario_atual
 from app.core.config import get_settings
 from app.schemas.analise import ExplicacaoIA
+from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
 from app.services.repositorio_historico import AnaliseDoHistorico, FatorDoHistorico
 from app.services.repositorio_usuarios import UsuarioAutenticado
@@ -112,6 +113,8 @@ async def test_item_traz_os_links_da_mensagem_pelo_dominio(
         {
             "dominio": "correios-rastreio.example",
             "observacoes": ["usa o nome Correios, mas não é um endereço oficial"],
+            "oficial": False,
+            "conselho": carregar_regras().dominios.link_conselho,
         }
     ]
 

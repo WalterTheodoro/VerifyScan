@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.deps import obter_repositorio_analises, obter_repositorio_sessoes
 from app.core.config import get_settings
 from app.core.db import criar_engine
+from app.schemas.analise import ContextoDoPrint
 from app.services.repositorio_analises import RegistroAnalise
 from app.services.repositorio_usuarios import UsuarioAutenticado
 from tests.conftest import RelogioFalso, RepositorioAnalisesEmMemoria, RepositorioSessoesEmMemoria
@@ -78,6 +79,7 @@ def test_registro_nao_tem_campo_para_url_e_o_texto_so_entra_com_dono() -> None:
         "nivel_ia",
         "ia_modelo",
         "explicacao_ia",
+        "contexto_print",
     }
     with pytest.raises(ValueError, match="dono"):
         RegistroAnalise(
@@ -318,4 +320,58 @@ def test_nivel_final_precisa_ser_o_maior_dos_dois() -> None:
             nivel_motor="MEDIO",
             nivel_ia="BAIXO",
             ia_modelo="claude-haiku-5-5",
+        )
+
+
+# ─── print da conversa (migração 0006, ADR-0023) ──────────────────────────────────────────
+
+CONTEXTO = ContextoDoPrint(
+    canal="sms",
+    remetente_salvo="nao",
+    aviso_do_app="nao",
+    primeira_mensagem="sim",
+    tem_link_visivel="nao",
+)
+
+
+def test_transcricao_do_print_entra_com_dono() -> None:
+    """O ADR-0006 recusava texto de OCR; o ADR-0023 guarda a transcrição de quem tem conta, com
+    as mesmas regras do texto colado."""
+    registro = RegistroAnalise(
+        score=0,
+        nivel_risco="BAIXO",
+        tipo_input="imagem",
+        fatores=(),
+        usuario_id=uuid.uuid4(),
+        texto_input="[recebida]\noi",
+        contexto_print=CONTEXTO,
+    )
+    assert registro.texto_input is not None
+    with pytest.raises(ValueError, match="dono"):
+        RegistroAnalise(
+            score=0, nivel_risco="BAIXO", tipo_input="imagem", fatores=(), texto_input="oi"
+        )
+
+
+def test_contexto_do_print_so_entra_com_dono() -> None:
+    """Revela se a pessoa tem alguém salvo nos contatos: segue a regra da explicação da IA."""
+    with pytest.raises(ValueError, match="dono"):
+        RegistroAnalise(
+            score=0,
+            nivel_risco="BAIXO",
+            tipo_input="imagem",
+            fatores=(),
+            contexto_print=CONTEXTO,
+        )
+
+
+def test_contexto_do_print_so_em_analise_de_imagem() -> None:
+    with pytest.raises(ValueError, match="imagem"):
+        RegistroAnalise(
+            score=0,
+            nivel_risco="BAIXO",
+            tipo_input="texto",
+            fatores=(),
+            usuario_id=uuid.uuid4(),
+            contexto_print=CONTEXTO,
         )

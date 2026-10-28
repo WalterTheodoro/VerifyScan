@@ -311,6 +311,24 @@ def test_descrever_dominio_oficial(analisador: DomainAnalyzer, extrator: URLExtr
     [link] = analisador.descrever(extrator.extrair("https://rastreamento.correios.com.br"))
 
     assert (link.dominio, link.observacoes) == ("correios.com.br", ["endereço oficial: Correios"])
+    assert link.oficial is True
+
+
+def test_conselho_do_link_oficial_nao_e_o_do_golpe(
+    analisador: DomainAnalyzer, extrator: URLExtractor
+) -> None:
+    """Fatia 9, item 12: o fecho do bloco de links não pode mandar "não abra antes de confirmar"
+    um endereço oficial. As duas frases vêm do `regras.yaml`."""
+    regras = carregar_regras().dominios
+    [oficial] = analisador.descrever(extrator.extrair("https://rastreamento.correios.com.br"))
+    [golpe] = analisador.descrever(extrator.extrair("https://correios-taxa.example/pagar"))
+    [sem_sinal] = analisador.descrever(extrator.extrair("https://loja-exemplo.example/pedido"))
+
+    assert oficial.conselho == regras.link_conselho_oficial
+    assert "O endereço é oficial" in oficial.conselho
+    assert "Não abra" not in oficial.conselho
+    assert golpe.conselho == sem_sinal.conselho == regras.link_conselho
+    assert (golpe.oficial, sem_sinal.oficial) == (False, False)
 
 
 def test_descrever_link_sem_sinal_nao_diz_que_e_seguro(

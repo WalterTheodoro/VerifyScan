@@ -122,3 +122,46 @@ def test_ia_ligada_cria_cliente_sem_retry() -> None:
     assert isinstance(cliente, ClienteAnthropic)
     assert cliente.sdk.max_retries == 0
     assert cliente.sdk.timeout == 7
+
+
+async def test_leitura_manda_a_imagem_antes_do_texto() -> None:
+    """Fatia 9 (ADR-0023): a documentação recomenda a imagem antes do texto. O teto de tokens é o
+    da leitura, e o schema é o que veio — o de leitura, não o da análise."""
+    import base64
+
+    from app.ocr.leitura import PROMPT_LEITURA, SCHEMA_LEITURA
+
+    pedidos: list[httpx2.Request] = []
+
+    def responder(pedido: httpx2.Request) -> httpx2.Response:
+        pedidos.append(pedido)
+        return httpx2.Response(200, json=_mensagem([{"type": "text", "text": "{}"}]))
+
+    sdk = AsyncAnthropic(
+        api_key=CHAVE,
+        max_retries=0,
+        http_client=DefaultAsyncHttpxClient(transport=httpx2.MockTransport(responder)),
+    )
+    cliente = ClienteAnthropic(
+        sdk, modelo="claude-haiku-5-5", max_tokens=700, max_tokens_leitura=2500
+    )
+    jpeg = b"\xff\xd8\xff-bytes-do-print"
+    resposta = await cliente.ler(PROMPT_LEITURA, jpeg, SCHEMA_LEITURA)
+
+    assert (resposta.tokens_entrada, resposta.tokens_saida) == (1234, 321)
+    corpo = json.loads(pedidos[0].content)
+    assert corpo["max_tokens"] == 2500
+    assert corpo["system"] == PROMPT_LEITURA
+    imagem, texto = corpo["messages"][0]["content"]
+    assert imagem == {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": base64.standard_b64encode(jpeg).decode(),
+        },
+    }
+    assert texto == {"type": "text", "text": "Leia o print acima."}
+    assert corpo["thinking"] == {"type": "disabled"}
+    assert corpo["output_config"]["format"] == {"type": "json_schema", "schema": SCHEMA_LEITURA}
+    assert "temperature" not in corpo

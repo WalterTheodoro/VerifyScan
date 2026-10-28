@@ -204,6 +204,8 @@ def _dominios_validos() -> dict[str, object]:
         ],
         "link_oficial": "endereço oficial: {marca}",
         "link_sem_sinal": "nada estranho",
+        "link_conselho": "Não abra antes de confirmar.",
+        "link_conselho_oficial": "O endereço é oficial.",
         "encurtadores": ["bit.ly"],
         "tlds_abusados": ["top"],
         "palavras_isca": ["taxa"],
@@ -368,3 +370,11 @@ def test_frases_do_bloco_de_links_so_usam_a_marca() -> None:
 
     for modelo in modelos:
         assert modelo.placeholders <= {"marca"}
+
+
+def test_conselhos_do_bloco_de_links_sao_frases_fixas_e_diferentes() -> None:
+    """Item 12 da fatia 9: frase do oficial diferente da do golpe, e nenhuma com placeholder."""
+    dominios = carregar_regras().dominios
+    assert dominios.link_conselho != dominios.link_conselho_oficial
+    for frase in (dominios.link_conselho, dominios.link_conselho_oficial):
+        assert "{" not in frase

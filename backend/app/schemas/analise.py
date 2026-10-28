@@ -21,10 +21,11 @@ de indicador — texto extraído de imagem produz fator de texto, e quem registr
 `Analise.tipo_input`. `email` sai com o EmailAnalyzer, cortado do escopo.
 """
 
-TipoInput = Literal["texto"]
+TipoInput = Literal["texto", "imagem"]
 """Como a mensagem chegou: é a procedência que a errata (item 8) tirou de `TipoFator`.
 
-Hoje só texto. `imagem` entra com o OCR (Fase 5), por migração que amplia o CHECK.
+`imagem` é o print da conversa (fatia 9, ADR-0023, migração 0006): a transcrição produz fatores
+de texto e de domínio como qualquer mensagem; quem diz que veio de um print é este campo.
 """
 
 CategoriaFator = Literal[
@@ -78,6 +79,14 @@ class LinkDaMensagem(BaseModel):
 
     dominio: str = Field(description="Domínio registrável (eTLD+1), como texto, nunca link.")
     observacoes: list[str] = Field(min_length=1)
+    # Fatia 9 (item 12): o fecho do bloco não pode tratar o endereço oficial como o do golpe.
+    oficial: bool = Field(default=False, description="O domínio é o oficial de uma marca.")
+    conselho: str = Field(
+        description=(
+            "A frase do fim do bloco de links, do `regras.yaml`. A tela mostra a de um link não "
+            "oficial quando houver; só com todos oficiais, a do oficial."
+        )
+    )
 
 
 class Orientacao(BaseModel):
@@ -123,6 +132,69 @@ class ExplicacaoIA(BaseModel):
     tipo: str = Field(min_length=1, max_length=TIPO_MAX_CARACTERES)
     sinais: tuple[ItemDaIA, ...] = Field(max_length=SINAIS_MAX)
     o_que_fazer: tuple[ItemDaIA, ...] = Field(min_length=PASSOS_MIN, max_length=PASSOS_MAX)
+
+
+# ── Print da conversa (fatia 9, ADR-0023) ────────────────────────────────────────────────────
+# O conjunto fechado que a leitura preenche. Fechado de propósito: nada de texto livre sobre o
+# remetente — é o que deixa o contexto ser guardado, mostrado e mandado à IA sem levar nome nem
+# número de ninguém.
+
+Canal = Literal["whatsapp", "sms", "email", "instagram", "outro", "nao_identificado"]
+SimNao = Literal["sim", "nao"]
+SimNaoIncerto = Literal["sim", "nao", "nao_da_para_saber"]
+QuemMandou = Literal["contato", "pessoa", "nao_da_para_saber"]
+"""`contato`: o que a pessoa recebeu. `pessoa`: o que ela mesma enviou na conversa."""
+
+
+class ContextoDoPrint(BaseModel):
+    """O que o print mostra além do texto. Revela, por exemplo, se a pessoa tem alguém salvo nos
+    contatos: segue no banco a regra da `explicacao_ia` — só com dono, zerado na desvinculação."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    canal: Canal
+    remetente_salvo: SimNaoIncerto
+    aviso_do_app: SimNao
+    primeira_mensagem: SimNaoIncerto
+    tem_link_visivel: SimNao
+
+
+class MensagemDoPrint(BaseModel):
+    """Um balão da conversa, como a leitura o transcreveu."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    de: QuemMandou
+    texto: str = Field(min_length=1)
+
+
+class LeituraDoPrint(BaseModel):
+    """O que lemos no print, para a pessoa conferir: a transcrição e o contexto.
+
+    O motor analisa só o que a pessoa recebeu (`de` = contato ou incerto). O que ela mesma enviou e
+    o que escreveu junto no VerifyScan vão só para a IA, como contexto (ADR-0023).
+    """
+
+    mensagens: list[MensagemDoPrint] = Field(min_length=1)
+    contexto: ContextoDoPrint
+    texto_da_pessoa: str | None = Field(
+        default=None, description="O que a pessoa digitou junto com o print, se digitou."
+    )
+
+
+class SolicitacaoAnalisePrint(BaseModel):
+    """Corpo de `POST /api/analises/imagem`: JSON com a imagem em base64 (ADR-0023).
+
+    JSON, e não multipart: o `UploadFile` do Starlette grava em arquivo temporário acima de 1 MB,
+    e a imagem não pode tocar o disco (invariante 2). O tamanho é limitado na rota, antes do parse.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    imagem_base64: str = Field(description="PNG, JPEG ou WebP, em base64, sem o prefixo `data:`.")
+    texto: str | None = Field(
+        default=None, description="O que a pessoa escreveu junto, se escreveu. Vai só para a IA."
+    )
 
 
 class SolicitacaoAnalise(BaseModel):
@@ -178,6 +250,12 @@ class RespostaAnalise(BaseModel):
     verificacao_externa_indisponivel: bool = Field(
         default=False,
         description="`true` quando VirusTotal / Safe Browsing não responderam (RNF09).",
+    )
+
+    # Campo aditivo da fatia 9 (ADR-0023): só no caminho de imagem.
+    leitura_do_print: LeituraDoPrint | None = Field(
+        default=None,
+        description="A transcrição e o contexto do print, para a pessoa conferir. `null` no texto.",
     )
 
     # Campo aditivo da fatia 4 (ADR-0015): quem não o conhece, ignora. Diz à tela se pode

@@ -1,15 +1,18 @@
-"""A chamada ao Claude, atrás de uma interface (CLAUDE.md §6): `ClienteIA` é o Protocol, o
-`ClienteAnthropic` fala com a API e os testes usam um falso determinístico.
+"""A chamada ao Claude, atrás de uma interface (CLAUDE.md §6): `ClienteIA` (análise) e
+`ClienteLeitura` (leitura do print, ADR-0023) são os Protocols, o `ClienteAnthropic` fala com a API
+e os testes usam falsos determinísticos.
 
 O adaptador é fino de propósito: monta o pedido, devolve o texto e os números. Quem decide o
 que fazer com a resposta — validar, limpar, cair no plano B — é o `AnalisadorIA`.
 """
 
+import base64
 import logging
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from anthropic import AsyncAnthropic
+from anthropic.types import Message
 
 from app.core.config import Settings
 from app.formulator.saida import SCHEMA_SAIDA
@@ -35,11 +38,22 @@ class ClienteIA(Protocol):
     async def gerar(self, sistema: str, entrada: str) -> RespostaIA: ...
 
 
+class ClienteLeitura(Protocol):
+    async def ler(self, sistema: str, jpeg: bytes, schema: dict[str, Any]) -> RespostaIA: ...
+
+
 class ClienteAnthropic:
-    def __init__(self, sdk: AsyncAnthropic, modelo: str, max_tokens: int) -> None:
+    def __init__(
+        self,
+        sdk: AsyncAnthropic,
+        modelo: str,
+        max_tokens: int,
+        max_tokens_leitura: int = 2500,
+    ) -> None:
         self.sdk = sdk
         self._modelo = modelo
         self._max_tokens = max_tokens
+        self._max_tokens_leitura = max_tokens_leitura
 
     async def gerar(self, sistema: str, entrada: str) -> RespostaIA:
         """Uma chamada à Messages API, com saída estruturada (`output_config.format`).
@@ -59,15 +73,48 @@ class ClienteAnthropic:
                 "format": {"type": "json_schema", "schema": SCHEMA_SAIDA},
             },
         )
-        # Pelo tipo do bloco, nunca pela posição: uma resposta pode começar por pensamento.
-        texto = "".join(bloco.text for bloco in resposta.content if bloco.type == "text")
-        return RespostaIA(
-            texto=texto,
-            motivo_parada=resposta.stop_reason or "",
-            modelo=resposta.model,
-            tokens_entrada=resposta.usage.input_tokens,
-            tokens_saida=resposta.usage.output_tokens,
+        return _resposta(resposta)
+
+    async def ler(self, sistema: str, jpeg: bytes, schema: dict[str, Any]) -> RespostaIA:
+        """A leitura do print: a imagem e depois uma frase curta, como a documentação recomenda
+        (imagem antes do texto). Mesmas escolhas do `gerar`; o teto de tokens é o da leitura,
+        porque a transcrição pode ter alguns milhares de caracteres."""
+        resposta = await self.sdk.messages.create(
+            model=self._modelo,
+            max_tokens=self._max_tokens_leitura,
+            system=sistema,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64.standard_b64encode(jpeg).decode("ascii"),
+                            },
+                        },
+                        {"type": "text", "text": "Leia o print acima."},
+                    ],
+                }
+            ],
+            thinking={"type": "disabled"},
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
         )
+        return _resposta(resposta)
+
+
+def _resposta(resposta: Message) -> RespostaIA:
+    # Pelo tipo do bloco, nunca pela posição: uma resposta pode começar por pensamento.
+    texto = "".join(bloco.text for bloco in resposta.content if bloco.type == "text")
+    return RespostaIA(
+        texto=texto,
+        motivo_parada=resposta.stop_reason or "",
+        modelo=resposta.model,
+        tokens_entrada=resposta.usage.input_tokens,
+        tokens_saida=resposta.usage.output_tokens,
+    )
 
 
 def criar_cliente_ia(settings: Settings) -> ClienteAnthropic | None:
@@ -83,4 +130,9 @@ def criar_cliente_ia(settings: Settings) -> ClienteAnthropic | None:
         timeout=settings.ia_timeout_s,
         max_retries=0,
     )
-    return ClienteAnthropic(sdk, modelo=settings.ia_modelo, max_tokens=settings.ia_max_tokens)
+    return ClienteAnthropic(
+        sdk,
+        modelo=settings.ia_modelo,
+        max_tokens=settings.ia_max_tokens,
+        max_tokens_leitura=settings.ia_max_tokens_leitura,
+    )
