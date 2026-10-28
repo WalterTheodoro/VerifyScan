@@ -2150,3 +2150,188 @@ Corpus de 176 casos: 124 na calibração (67 golpes, 57 legítimas) e 52 no test
 | "fatura-pelo-app-oficial" MÉDIO e "assistente-de-vendas" ALTO numa rodada do `testar_ia` | observar |
 | 0138 e 0148 seguem em MÉDIO com a IA no teste | prompt, só com caso de calibração |
 | 20 casos do Walter (`corpus/para-o-walter.md`) | corpus |
+
+## 2026-10-27 — Fatia 9 (Fase 5): análise de print
+
+### Por quê
+
+O orientador pediu que a pessoa possa "mandar qualquer coisa" e receber a análise completa. Só
+havia texto: colar ou soltar uma imagem mostrava "A análise de fotos ainda não está disponível". O
+print traz o que o texto colado perde: se quem mandou está salvo, se o aplicativo avisou, se é a
+primeira mensagem (ADR-0023).
+
+### O que foi feito
+
+1. **Leitura pelo Claude, no lugar do Tesseract** (`app/ocr/leitura.py`). Uma chamada com a imagem
+   devolve, por saída estruturada:
+   - a transcrição, balão a balão, com quem mandou (`contato`, `pessoa` ou `nao_da_para_saber`);
+   - um conjunto fechado: canal, remetente salvo, aviso do aplicativo, primeira mensagem, link
+     visível;
+   - e `legivel`, julgado por último.
+
+   A leitura não dá nível. O texto da imagem é dado, nunca instrução.
+2. **O mesmo caminho do texto**, sobre **só o que a pessoa recebeu**. O que ela mesma enviou e o
+   que digitou junto vão só para a IA, marcados. O contexto entra nas `<pistas>` em frases fixas, e
+   o `PROMPT_SISTEMA` do texto não mudou (um teste confere o hash). O bloco do print diz que o
+   contexto pode subir o nível ou mudar o conselho, nunca baixar; quem garante é o `combinar()`.
+3. **Entrada** (`POST /api/analises/imagem`, `app/ocr/imagem.py`):
+   - JSON com base64, e não multipart, porque o `UploadFile` grava em disco acima de 1 MB;
+   - corpo com teto (413), tipo pelos bytes iniciais e Pillow 12.3.0 só no formato detectado;
+   - bomba recusada pelo cabeçalho, animação recusada;
+   - reencode numa imagem nova, sem EXIF, XMP, comentário nem ICC, no tamanho da Anthropic.
+4. **Plano B:** leitura que falha ou `legivel: nao` vira 422, "Não conseguimos ler o print…", sem
+   nível e sem registro; IA desligada, 503. Tetos: leitura 10 s, análise no print 10 s (o texto
+   segue com 15 s).
+5. **Migração 0006:**
+   - `tipo_input` passa a aceitar `imagem`;
+   - a transcrição vai em `texto_input`, só com dono;
+   - `contexto_print` (JSONB) entra com três CHECKs: só com dono, só de imagem, até 500
+     caracteres;
+   - a desvinculação dos 7 dias zera os dois.
+6. **Frontend:**
+   - botão "Enviar print", Ctrl+V e soltar no campo ou na página, no lugar do aviso de "ainda não
+     disponível";
+   - uma imagem, com miniatura, nome e "Remover" de 44 px;
+   - `_lib/imagem.ts` reduz pelo canvas, reencoda em JPEG 0,9 e confere EXIF e XMP antes de
+     enviar;
+   - estados "Lendo o print…" e "Analisando…" no `aria-live`;
+   - na tela do resultado, "O que lemos no print" e o contexto em frases simples; no histórico, a
+     indicação de que veio de um print;
+   - privacidade na tela de envio (antes do botão) e em `/privacidade`.
+7. **Item 12:** o fecho do bloco de links vem do `regras.yaml`. Com todos os links oficiais: "O
+   endereço é oficial. Mesmo assim, prefira abrir pelo aplicativo…". `LinkDaMensagem` ganhou
+   `oficial` e `conselho`. Só texto: a `versao` das regras ficou 4.
+8. **Medição sem dado real:** `tools/gerar_prints.py` (HTML genérico fotografado pelo Edge, PNGs
+   ignorados pelo git) e `tools/avaliar_prints.py`.
+
+### Medição (prints sintéticos; ajuste só na calibração)
+
+| Rodada | Erro por caractere (p95) | `canal` | `primeira` | Legítimas ≥ MÉDIO (print / texto) | Final igual ao texto | Relatório |
+|---|---|---|---|---|---|---|
+| 1 (antes) | 0,104 | 60% | 80% | **9/20** / 3/20 | 36/43 | `prints` |
+| 2 | 0 | 78% | 90% | 5/20 / 3/20 | 40/43 | `prints-2` |
+| 3 | 0 | 78% | 88% | 4/20 / 2/20 | 37/43 | `prints-3` |
+| 4 (regra do canal no conselho) | 0 | 78% | 88% | 4/20 / 4/20 | 40/43 | `prints-4` |
+
+- Em todas as rodadas:
+  - `remetente_salvo`, `aviso_do_app` e `tem_link_visivel` acertaram 100%;
+  - golpes ≥ MÉDIO ficaram em 20/20 no print e no texto;
+  - os borrados caíram no plano B (2/2);
+  - as injeções foram pegas pelo motor (3/3, em ALTO);
+  - o motor deu o mesmo nível no print e no texto (43/43).
+- **Tempo:** total do print com p50 de 4,2–4,3 s, p95 de 5,1–6,0 s e máxima de 7,9 s.
+- **Custo:** US$ 0,0012 por print e US$ 0,0004 por texto.
+- **Camada de resolução:** confirmada por `count_tokens` com `oversized_image: "error"`; um print
+  de 1170×2532 custa 3.841 tokens.
+- **Entre as rodadas 1 e 2**, um ajuste só, olhando a calibração: a regra do "sozinhos" (número
+  fora dos contatos não pesa sem pedido), o canal na leitura e três erros do gabarito.
+- **Na rodada 4**, nenhuma de 12 explicações citou um aplicativo pelo nome sem a leitura ter
+  identificado o canal.
+- **Alarme falso do print (p30, p31):** não ajustamos mais. Seria sobreajuste nos mesmos 20
+  legítimos, e fica como limitação.
+
+### Medida limpa (divisão teste, uma vez só, depois de tudo pronto, sem ajuste depois)
+
+São 20 prints (`t01`…`t20`, seção `teste` do `prints_sinteticos.yaml`): 10 golpes e 10 legítimas,
+com o mesmo rodízio de contexto. O relatório é o `prints-teste`.
+
+| | Print | Texto do mesmo caso |
+|---|---|---|
+| Golpes ≥ MÉDIO | **10/10** | 10/10 |
+| Legítimas ≥ MÉDIO (alarme falso) | **1/10** (0148) | 3/10 (0138, 0077, 0148) |
+| Nível do motor igual | 20/20 | — |
+| Nível final igual | 18/20 | — |
+
+- **Leitura:**
+  - erro por caractere com p50 0, p95 0,196, máxima 0,196 e média 0,024;
+  - transcrição sem nenhum erro em 15/20;
+  - o erro se concentra nos e-mails (t05 0,196; t15 0,062; t20 0,059; t10 0,037) e num chat
+    (t02 0,126);
+  - quem mandou cada mensagem: 20/20.
+- **Contexto:** `canal` 95%, `remetente_salvo` 100%, `aviso_do_app` 100%, `primeira_mensagem`
+  90%, `tem_link_visivel` 100%.
+- **Final diferente do texto:** t12 (0138) e t13 (0077) saíram BAIXO no print e MÉDIO no texto.
+  A IA variou entre as duas chamadas; o motor deu BAIXO nos dois caminhos, e nenhum print ficou
+  abaixo do motor.
+- **Conselho:** nenhuma de 5 explicações citou um aplicativo sem a leitura ter identificado o
+  canal.
+- **Tempo:** total p50 4,3 s, p95 5,0 s, máxima 5,5 s.
+- **Custo:** US$ 0,00126 por print contra US$ 0,00043 por texto.
+- A divisão teste não tem injeção nem borrados, por desenho: só o rodízio de contexto.
+- O relatório repete a nota sobre o caso 0035, que é texto fixo do script e não se aplica ao
+  teste.
+- Os mesmos limites de antes: prints limpos (taxa de erro otimista), todos `autor: claude`, e o
+  `canal` só tem resposta certa em SMS e e-mail.
+
+### Medição de tela (build de produção na 3001, backend na 8000 com o banco de teste e IA, Edge pelo Playwright)
+
+- **Larguras:** 320, 390 e 1280 px. **Telas:** início, print escolhido, resultado, plano B do
+  borrado, colar e soltar, e `/privacidade`.
+- **Em todas:** nenhuma rolagem lateral, nada fora da tela, nenhum botão abaixo de 44 px.
+- **Bytes que saem do navegador:** a fixture era um JPEG de 1755×3798 com EXIF (com GPS), XMP,
+  comentário e ICC. Saiu um JPEG de 1190×2576 (3.956 tokens), **sem EXIF, sem XMP e sem
+  comentário**. Ficou um perfil ICC, que é o do próprio Edge e não tem dado pessoal; o backend o
+  tira.
+- **Fluxos:**
+  - "Lendo o print…" aparece;
+  - o plano B mostra a frase certa, sem placa de resultado (a placa contada era a do exemplo
+    decorativo);
+  - Ctrl+V e soltar criam a miniatura;
+  - PDF solto dá o aviso;
+  - o foco volta para "Enviar print" depois de "Remover";
+  - o aviso de privacidade aparece antes do botão.
+- **Logs do backend nas medições:** só números e "ilegivel".
+
+### Verificação
+
+- **Backend:**
+  - `ruff format`, `ruff check` e `mypy app` limpos;
+  - `pytest -m "not integracao"`: 629 → **719** passando, 1 xfail;
+  - `-m integracao`: 68 → **79**;
+  - `alembic check` limpo, e a 0006 desce e sobe no banco de teste.
+- **Testes antes do código:** os da imagem, da leitura, do prompt do print, do registro, da 0006 e
+  do item 12 falharam primeiro. No frontend, os do `node:test` vieram junto do `imagem.ts` e do
+  `print.ts`, antes de ligar a tela.
+- **Teste manual por HTTP** (`uvicorn` + `httpx`, banco de teste, IA ligada só no processo):
+  - o print p09 voltou 200 em 3,6 s, com o motor em BAIXO e a IA subindo para ALTO;
+  - o GIF levou 422 em pt-BR;
+  - o log em DEBUG só tinha números.
+- **Frontend:** `npm test` 34 → **52**; `npm run lint`, `tsc --noEmit` e `npm run build` limpos.
+
+### O que deu errado ou mudou no caminho
+
+- **O 1º prompt deixava "número não salvo" pesar sozinho.** As legítimas ≥ MÉDIO pularam de 3/20
+  (texto) para 9/20 (print). A regra pedida (item 2) dizia "junto com pedido"; faltava dizer que,
+  sozinho, não pesa.
+- **Erros do meu gabarito:**
+  - o e-mail sem o assunto, que o prompt manda transcrever;
+  - `primeira_mensagem` cobrada num e-mail;
+  - uma conversa "em andamento" com só um "Bom dia!" do mesmo contato, que é ambígua.
+
+  Corrigidos e registrados; a rodada 1 fica como "antes".
+- **Furo achado antes de medir:** o nome no "De:" do e-mail é escolhido por quem envia e viraria
+  "contato salvo". A leitura agora responde `nao_da_para_saber`.
+- **A documentação da Anthropic se contradiz num exemplo** (2000×1500: a tabela diz 1269, a função
+  de referência dá 1270). Seguimos a função.
+- **Canal:** a leitura chama o chat genérico de "WhatsApp" (78% de acerto), e a IA chegou a mandar
+  "denunciar no próprio WhatsApp" uma conversa genérica. Daí a regra do conselho.
+- **Em 390 px, o nome do arquivo quebrava no meio** ("p44.pn / g"). Nome e "Remover" foram para uma
+  coluna.
+- **Infra local:**
+  - heredoc com `'''` no Git Bash quebrou duas vezes, e os scripts de edição passaram a ir por
+    arquivo;
+  - o `next start` em segundo plano deixou o processo filho na porta depois de parado, e foi
+    encerrado à mão, pelo PID conferido;
+  - a porta 3000 estava ocupada por outro processo, que não foi tocado.
+- **Playwright 1.64.0 tinha 13 dias às 20h28**: ficou o 1.63.0 (regra do ADR-0022).
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Alarme falso do print em legítima de número não salvo com aviso (p30, p31), sem novo ajuste para não sobreajustar | limitação (ADR-0023), à espera de prints reais |
+| A taxa de erro medida é otimista: prints sintéticos, limpos, sem compressão nem notificação por cima | limitação (ADR-0023) |
+| `canal` só medido em SMS e e-mail; no chat genérico a leitura diz "WhatsApp" | limitação |
+| Prints reais, anonimizados, para medir de verdade | corpus (Walter) |
+| O limite de tentativas da próxima fatia protege também o crédito da API (o print custa ~3x um texto) | próxima fatia |
+| "Analisar" sem estado intermediário entre leitura e análise: é uma requisição só, e a tela não inventa progresso | interface |
