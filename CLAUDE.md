@@ -140,7 +140,9 @@ verifyscan/
       │                    #   ADR-0022; "O que lemos no print", ADR-0023)
       └─ _lib/             # chamadas ao backend (conta.ts, historico.ts, gestao-conta.ts), aviso de
                            #   conta excluída (sessionStorage), os hooks de envio e carga, imagem.ts
-                           #   (canvas, tamanho da Anthropic, sem EXIF/XMP) e print.ts; testes em
+                           #   (canvas, tamanho da Anthropic, sem EXIF/XMP, 5 MB, lado ≥ 200 px),
+                           #   print.ts, falha-da-analise.ts (a frase de cada falha) e
+                           #   tela-da-analise.ts (reducer da tela: quando o erro sai); testes em
                            #   node:test (*.test.ts, sem imports, type stripping)
 ```
 

@@ -2335,3 +2335,133 @@ com o mesmo rodízio de contexto. O relatório é o `prints-teste`.
 | Prints reais, anonimizados, para medir de verdade | corpus (Walter) |
 | O limite de tentativas da próxima fatia protege também o crédito da API (o print custa ~3x um texto) | próxima fatia |
 | "Analisar" sem estado intermediário entre leitura e análise: é uma requisição só, e a tela não inventa progresso | interface |
+
+## 2026-10-28 — Correção 9.1: ajustes da análise de prints achados em produção
+
+### Por quê
+
+No teste em produção apareceram quatro problemas:
+- um PNG de ruído de 8,8 MB derrubou a API com 500 (`OSError: broken data stream when writing
+  image file`, depois de "Suspension not allowed here", em `app/ocr/imagem.py:161`);
+- a tela mostrou "Verifique sua conexão" para erros que vieram do servidor;
+- o erro anterior ficava na tela depois de trocar o print;
+- a transcrição mostrava `https://bit.ly/lojaexemplo-bf` e `0800 000 0000` inteiros.
+
+### O que foi feito
+
+1. **Causa do 500, confirmada.**
+   - **Reprodução:** um PNG de ruído de 1170×2532 e 8,9 MB, como o de produção, dá a mesma
+     exceção.
+   - **No código do Pillow 12.3** (`JpegImagePlugin.py`, ~linha 825): com `optimize` ou
+     `progressive`, o buffer do codificador é largura × altura bytes (1 B/px abaixo da qualidade
+     95). O ruído, em 4:4:4 e qualidade 92, dá 2,04 B/px.
+   - **Escolha: tirar o `optimize`.** A página de formatos do Pillow não tem parâmetro de buffer
+     para o JPEG e nem cita `MAXBLOCK`. `ImageFile.MAXBLOCK` é global ao processo, e não há teto
+     seguro para ele. O `optimize` só refaz as tabelas de Huffman: os pixels saem iguais.
+   - **Custo, medido:** nos 45 prints de calibração, o JPEG fica 17,5% maior (≈ 262 KB em média).
+   - **Toda exceção ao decodificar, reduzir ou regravar vira 422** com "Não conseguimos abrir esta
+     imagem…". Fica num `except Exception` só, e o log leva só o tipo.
+2. **Recusa no navegador** (`_lib/imagem.ts`):
+   - arquivo ou JPEG preparado acima de 5 MB (o `IMAGEM_MAX_BYTES` do backend): "Este arquivo é
+     grande demais. Envie um print de até 5 MB.";
+   - lado menor abaixo de 200 px (a documentação Vision fala em "very small images under 200
+     pixels"): "Esta imagem é pequena demais para ler. Envie o print inteiro da conversa.".
+
+   **Causa do "Verifique sua conexão":** o `pedir` tratava "fetch rejeitado" e "resposta sem JSON"
+   como a mesma coisa. Agora guarda o `status` quando houve resposta. Com ele, `fraseDaFalha`
+   (`_lib/falha-da-analise.ts`) mostra o `detail` do servidor, ou "tente de novo", ou a frase de
+   tamanho num 413 sem JSON.
+3. **O erro anterior some** ao escolher, colar ou soltar outro arquivo, em "Remover" e ao começar
+   uma nova análise.
+   - Antes, só o aviso do preparo era limpo; o "Não deu para analisar" do envio ficava.
+   - As transições foram para um reducer puro (`_lib/tela-da-analise.ts`), testado no `node:test`
+     sem DOM.
+   - O preparo de um arquivo antigo, que termina depois do novo, é descartado.
+   - A miniatura `blob:` agora é liberada por um efeito.
+4. **Plano B da leitura:** "Não conseguimos ler uma conversa nesta imagem. Envie um print da
+   mensagem, ou copie e cole o texto.". Serve para o borrado e para a imagem que não é conversa.
+5. **Transcrição na tela, no backend.** `ServicoAnalise.para_exibir` troca cada link por `[link:
+   domínio registrável]`, cada telefone por `[telefone]` e cada e-mail por `[e-mail]`.
+   - Reaproveita o `URLExtractor`, o `DomainAnalyzer.avaliar` e os padrões da limpeza da IA, que
+     passaram a públicos.
+   - A resposta ganhou `leitura_do_print.mensagens_para_exibir`, e o histórico, `texto_para_exibir`
+     (via `trocar_nas_mensagens`).
+   - O texto guardado e o que o motor analisa não mudam. "Você colou" e "Você escreveu junto" ficam
+     como a pessoa escreveu.
+   - **Por que no backend:** é onde estão o extrator, os padrões e a PSL. No frontend, a PSL teria
+     de ser duplicada.
+   - **Dois ajustes antes dos commits**, pedidos depois da medição:
+     - link de qualquer esquema (o `PADRAO_ESQUEMA` da limpeza da IA: `intent://`, `ftp://`) também
+       sai, com o domínio registrável quando o extrator acha um; sem domínio, `[link]`. Um IP não é
+       domínio registrável, e o extrator só acha IP com `http`: `ftp://192.168.0.10/x` vira
+       `[link]`;
+     - a marca do e-mail usa hífen que não quebra (U+2011). Em 390 px, "[e-mail]" quebrava em
+       "[e-" / "mail]".
+
+### Medição: `avaliar_prints`, calibração (`2026-10-28-prints`), só relatada, sem ajuste
+
+| | 27/10 (rodada 4) | 28/10 |
+|---|---|---|
+| CER médio / máximo | 0,000 / 0,004 | 0,000 / 0,000 |
+| Transcrição sem erro | 39/40 | 40/40 |
+| `canal` · `primeira_mensagem` | 78% · 88% | 75% · 88% |
+| `remetente_salvo` · `aviso_do_app` · link | 100% · 100% · 100% | 100% · 100% · 100% |
+| Borrados no plano B · legíveis no plano B | 2/2 · 0 | 2/2 · 0 |
+| Injeção pega pelo motor | 3/3 | 3/3 |
+| Motor igual img/texto · final igual | 43/43 · 40/43 | 43/43 · 40/43 |
+| Golpes ≥ MÉDIO (img) | 20/20 | 20/20 |
+| Legítimas ≥ MÉDIO (img · texto) | 4/20 · 4/20 | **7/20** · 4/20 |
+| Total p95 | 6,0 s | 5,8 s |
+
+- **A leitura não piorou**, como esperado: os pixels enviados são os mesmos.
+- **O alarme das legítimas no print subiu de 4 para 7.** Foram p30, p31 e p37, sempre BAIXO →
+  MÉDIO pela IA, com o motor igual.
+- Nas quatro rodadas de 27/10, esse número variou de 4/20 a 9/20, e p30 e p31 já apareciam (são a
+  pendência aberta da fatia 9). Leio isso como variação da IA, e não como efeito desta correção,
+  que não muda nada do que a IA recebe. Não ajustei nada por ele.
+
+### Medição de tela (build de produção na 3001, backend na 8000 com o banco de teste e a IA, Edge pelo Playwright, 390 px)
+
+- **Resultado:** 24/24 conferências.
+- **Arquivo grande:** um PNG de ruído de 8,9 MB, recusado com a frase própria e sem nenhuma
+  requisição.
+- **Imagem pequena:** 900×150, recusada; o aviso anterior saiu.
+- **Imagem que não é conversa:** 422 com a frase nova do servidor, sem "conexão". O erro saiu em
+  "Remover".
+- **Print com link, telefone e e-mail:** na home e no histórico, "[link: bit.ly]", "[telefone]"
+  e "[e-mail]", e nem o link nem o telefone inteiros.
+- **Layout:** nenhuma rolagem lateral.
+- **Conta de teste:** criada e excluída pela API (201/204).
+
+### Verificação
+
+- **Backend:**
+  - `ruff format`, `ruff check` e `mypy app` limpos;
+  - `pytest -m "not integracao"`: 719 → **746** passando, 1 xfail (741 antes dos dois ajustes);
+  - `-m integracao`: **79** passando.
+- **Frontend:** `npm test` 52 → **74**; `lint`, `tsc --noEmit` e `build` limpos.
+- **Testes antes do código:**
+  - o ruído PNG, o JPEG de ruído como o navegador manda, as duas fotos nas dimensões máximas e as
+    três exceções forçadas falharam primeiro;
+  - também falharam primeiro o 500 forçado na API, a frase nova, as recusas do navegador, o
+    reducer e a transcrição para exibir.
+
+### O que deu errado ou mudou no caminho
+
+- **Primeiro teste da transcrição errado:** eu esperava `GOLPE_DE_PIX` intacto, mas ele tem link
+  (`bb-regularize.xyz`). O código estava certo, e o teste foi corrigido.
+- **Heredoc do Git Bash:** comeu as barras invertidas de novo (`\n` virou quebra de linha
+  real). Corrigido com Edit.
+- **Lançador da medição:** ele importava `tests.integracao.conftest` para ler a URL do banco de
+  teste sem vê-la. O `tests/__init__.py` desliga a IA, e as duas primeiras rodadas deram 503 — a
+  tela mostrou a frase do servidor, o que confirmou o item 2. O lançador passou a restaurar
+  `IA_ATIVADA`.
+- **`next start`:** deixou de novo o processo filho na 3001. Encerrado pelo PID conferido.
+
+### Pendências abertas
+
+| Pendência | Natureza |
+|---|---|
+| Mínimo de 200 px só no navegador; quem chama a API direto cai no plano B da leitura | limitação |
+| Ruído nas dimensões máximas sai com ~7,6 MB, perto dos 10 MB em base64 da API; se passar, plano B (422) | limitação |
+| Alarme de legítima no print oscila entre rodadas (4 a 9/20 na calibração) | limitação (ADR-0023), à espera de prints reais |
