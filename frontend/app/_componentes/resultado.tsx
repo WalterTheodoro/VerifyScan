@@ -3,6 +3,12 @@
 
 import type { RefObject } from "react";
 
+import {
+  frasesDoContexto,
+  ROTULO_DE_QUEM_MANDOU,
+  type ContextoDoPrint,
+  type ParteDaTranscricao,
+} from "../_lib/print";
 import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./nivel-risco";
 
 /** A resposta fixa do nível, do `respostas.yaml` do backend (ADR-0020): o plano B inteiro quando
@@ -14,8 +20,21 @@ export type Orientacao = { titulo: string; texto: string | null; passos: string[
 export type ExplicacaoIA = { tipo: string; sinais: string[]; o_que_fazer: string[] };
 
 /** Um link da mensagem como a placa o mostra (fatia 8, ADR-0022): só o domínio registrável e o
- *  que o sistema achou dele, em frases do `regras.yaml`. Nunca o link inteiro. */
-export type LinkDaMensagem = { dominio: string; observacoes: string[] };
+ *  que o sistema achou dele, em frases do `regras.yaml`. Nunca o link inteiro.
+ *
+ *  `oficial` e `conselho` são da fatia 9: a frase do fim do bloco também vem do `regras.yaml`, e
+ *  a do endereço oficial não é a do golpe. Opcionais para um backend anterior. */
+export type LinkDaMensagem = {
+  dominio: string;
+  observacoes: string[];
+  oficial?: boolean;
+  conselho?: string;
+};
+
+/** A frase do fim do bloco antes da fatia 9: só para um backend anterior, que não a manda. */
+const CONSELHO_DOS_LINKS_ANTIGO =
+  "Conferimos só o endereço, sem abrir o link. Não abra antes de confirmar com a empresa pelo " +
+  "telefone ou aplicativo oficial.";
 
 /** O que a placa precisa. Os links não são guardados (ADR-0009): no histórico, o backend os
  *  recalcula do texto.
@@ -47,6 +66,48 @@ export function MensagemColada({ texto }: { texto: string }) {
   );
 }
 
+/** "O que lemos no print": a transcrição, parte a parte, com quem mandou, e o que a tela mostrava
+ *  em volta, em frases simples — para a pessoa conferir se lemos certo (fatia 9, ADR-0023). Tudo
+ *  como texto: um link lido do print nunca vira <a>. */
+export function PrintLido({
+  partes,
+  contexto,
+}: {
+  partes: ParteDaTranscricao[];
+  contexto: ContextoDoPrint | null;
+}) {
+  const frases = contexto ? frasesDoContexto(contexto) : [];
+  return (
+    <>
+      <p className="font-bold">O que lemos no print:</p>
+      <ul className="flex flex-col gap-perto">
+        {partes.map((parte, indice) => (
+          <li key={indice} className="flex flex-col gap-1">
+            <span className="font-semibold">{ROTULO_DE_QUEM_MANDOU[parte.de]}</span>
+            <blockquote
+              className="whitespace-pre-wrap border-l-4 border-anil py-1 pl-5 text-destaque
+                [overflow-wrap:anywhere]"
+            >
+              {parte.texto}
+            </blockquote>
+          </li>
+        ))}
+      </ul>
+      {frases.length > 0 && (
+        <>
+          <p className="font-bold">O que o print mostra:</p>
+          <ul className="flex list-disc flex-col gap-1 pl-6">
+            {frases.map((frase) => (
+              <li key={frase}>{frase}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p>Se lemos alguma coisa errado, copie e cole o texto da mensagem e analise de novo.</p>
+    </>
+  );
+}
+
 /** A placa do resultado. `nivel` é o do título do veredito: 2 na home (abaixo do h1), 3 no
  *  histórico (abaixo do h2 "Histórico"); os subtítulos descem um nível junto. */
 export function Resultado({
@@ -63,6 +124,9 @@ export function Resultado({
   const Titulo = nivel === 2 ? "h2" : "h3";
   const Subtitulo = nivel === 2 ? "h3" : "h4";
   const links = resultado.links ?? [];
+  // Com algum link que não é oficial, o conselho dele; com todos oficiais, o do oficial.
+  const conselhoDosLinks =
+    (links.find((link) => !link.oficial) ?? links[0])?.conselho ?? CONSELHO_DOS_LINKS_ANTIGO;
   const orientacao = resultado.orientacao;
   const ia = resultado.explicacao_ia ?? null;
   // Com a IA, os passos são os dela, para esta mensagem; sem ela, os fixos do nível. O BAIXO do
@@ -180,10 +244,7 @@ export function Resultado({
                 </li>
               ))}
             </ul>
-            <p>
-              Conferimos só o endereço, sem abrir o link. Não abra antes de confirmar com a
-              empresa pelo telefone ou aplicativo oficial.
-            </p>
+            <p>{conselhoDosLinks}</p>
           </div>
         )}
 

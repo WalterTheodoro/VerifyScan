@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AvisoAcordando } from "./_componentes/avisos-do-envio";
 import { Cabecalho } from "./_componentes/cabecalho";
@@ -10,6 +10,7 @@ import { IconeDeRisco, PALAVRA_DO_NIVEL, type NivelRisco } from "./_componentes/
 import { RaizDaPagina } from "./_componentes/raiz-da-pagina";
 import {
   MensagemColada,
+  PrintLido,
   Resultado,
   type ExplicacaoIA,
   type LinkDaMensagem,
@@ -17,6 +18,14 @@ import {
 } from "./_componentes/resultado";
 import { lerDetail } from "./_lib/conta";
 import { consumirContaExcluida } from "./_lib/conta-excluida";
+import {
+  ImagemRecusada,
+  paraBase64,
+  prepararImagem,
+  TIPOS_ACEITOS,
+  type ImagemPreparada,
+} from "./_lib/imagem";
+import type { LeituraDoPrint } from "./_lib/print";
 import { enviarUmaVez } from "./_lib/servidor";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
@@ -25,6 +34,9 @@ import { enviarUmaVez } from "./_lib/servidor";
 // /resultado exigiria colocá-la na URL ou em storage do navegador. No navegador, a mensagem não
 // sai da memória da aba — nem quando ela reaparece citada acima do resultado. Quem guarda a
 // mensagem de quem está logado, por 7 dias, é o backend (ADR-0018), e a página avisa antes.
+//
+// O print (fatia 9, ADR-0023) segue a mesma regra: a imagem fica só na memória da aba, reduzida
+// e sem metadados (`_lib/imagem.ts`), e nunca é guardada — nem aqui, nem no backend.
 
 type Fator = {
   tipo: string;
@@ -50,16 +62,15 @@ type RespostaAnalise = {
   nivel_ia?: NivelRisco | null;
   orientacao?: Orientacao;
   explicacao_ia?: ExplicacaoIA | null;
+  // Fatia 9 (ADR-0023): a transcrição e o contexto, só no caminho de imagem.
+  leitura_do_print?: LeituraDoPrint | null;
 };
 
 // Com a IA, a análise leva em geral 2 a 4 s, e o teto é 15 s (ADR-0020). Depois disto, a tela diz
 // que falta pouco, para ninguém achar que travou.
 const AVISO_DE_DEMORA_MS = 5000;
 
-// A análise de imagem (OCR) ainda não existe. Sem este aviso, colar uma foto não fazia nada, e
-// soltar um arquivo fazia o navegador abri-lo no lugar da página, perdendo o texto digitado.
-const AVISO_SEM_FOTO =
-  "A análise de fotos ainda não está disponível. Copie e cole o texto da mensagem.";
+const NAO_E_IMAGEM = "Envie o print como imagem PNG, JPEG ou WebP.";
 
 /** O arraste traz arquivo? Texto arrastado para o campo continua funcionando como sempre. */
 function trazArquivo(evento: DragEvent) {
@@ -68,21 +79,35 @@ function trazArquivo(evento: DragEvent) {
 
 type Estado =
   | { situacao: "pronta" }
-  | { situacao: "analisando" }
+  | { situacao: "analisando"; doPrint: boolean }
   | { situacao: "concluida"; resultado: RespostaAnalise }
   | { situacao: "falhou"; mensagem: string };
 
-/** Manda o texto para a API e traduz qualquer falha em uma frase que o usuário entenda.
+/** Manda o texto, ou o print com o texto junto, para a API e traduz qualquer falha em uma frase
+ *  que o usuário entenda.
  *
  *  Sai uma vez só: repetir gravaria a análise duas vezes. Se o backend estiver dormindo, espera
- *  por ele antes, e `aoEsperar` liga o aviso de "servidor acordando" (ADR-0017). */
-async function analisar(texto: string, aoEsperar: () => void): Promise<Estado> {
+ *  por ele antes, e `aoEsperar` liga o aviso de "servidor acordando" (ADR-0017).
+ *
+ *  O print vai em JSON, com a imagem em base64 (ADR-0023): o texto digitado vai junto, e o
+ *  backend o manda só para a IA, como explicação de quem enviou. */
+async function analisar(
+  texto: string,
+  imagem: ImagemPreparada | null,
+  aoEsperar: () => void,
+): Promise<Estado> {
+  const [caminho, corpo] = imagem
+    ? [
+        "/api/analises/imagem",
+        { imagem_base64: paraBase64(imagem.bytes), texto: texto.trim() || null },
+      ]
+    : ["/api/analises", { texto }];
   const resposta = await enviarUmaVez(
-    "/api/analises",
+    caminho,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto }),
+      body: JSON.stringify(corpo),
     },
     { aoEsperar },
   );
@@ -138,11 +163,44 @@ export default function PaginaAnalise() {
   const [logado, setLogado] = useState(false);
   // "Sua conta foi excluída.", vindo de Meus dados por sessionStorage, nunca pela URL (ADR-0019).
   const [contaExcluida, setContaExcluida] = useState(false);
-  // Soltou ou colou uma imagem ou arquivo: o aviso some quando a pessoa volta a digitar.
-  const [semFoto, setSemFoto] = useState(false);
+  // O print escolhido, já reduzido e sem metadados. Um por análise: outro substitui este.
+  const [imagem, setImagem] = useState<ImagemPreparada | null>(null);
+  const [preparando, setPreparando] = useState(false);
+  // Por que a imagem não entrou ("envie PNG, JPEG ou WebP"): some ao escolher outra.
+  const [avisoImagem, setAvisoImagem] = useState<string | null>(null);
   const tituloDoResultado = useRef<HTMLHeadingElement>(null);
   const campoMensagem = useRef<HTMLTextAreaElement>(null);
   const botaoRecomecar = useRef<HTMLButtonElement>(null);
+  const botaoPrint = useRef<HTMLButtonElement>(null);
+  const entradaArquivo = useRef<HTMLInputElement>(null);
+
+  /** Prepara o arquivo escolhido, colado ou solto. Só usa setters e funções do módulo: estável,
+   *  e por isso pode entrar no efeito do arraste. */
+  const escolherArquivo = useCallback((arquivo: File) => {
+    setAvisoImagem(null);
+    if (!TIPOS_ACEITOS.includes(arquivo.type)) {
+      setAvisoImagem(NAO_E_IMAGEM);
+      return;
+    }
+    setPreparando(true);
+    prepararImagem(arquivo)
+      .then((preparada) =>
+        setImagem((anterior) => {
+          if (anterior) {
+            URL.revokeObjectURL(anterior.miniatura);
+          }
+          return preparada;
+        }),
+      )
+      .catch((erro: unknown) =>
+        setAvisoImagem(
+          erro instanceof ImagemRecusada
+            ? erro.message
+            : "Não conseguimos preparar esta imagem. Tente outro print.",
+        ),
+      )
+      .finally(() => setPreparando(false));
+  }, []);
 
   useEffect(() => {
     // setState só no callback, nunca no corpo do efeito (react-hooks/set-state-in-effect).
@@ -160,9 +218,12 @@ export default function PaginaAnalise() {
     return () => cancelAnimationFrame(quadro);
   }, []);
 
+  const concluida = estado.situacao === "concluida";
+
   useEffect(() => {
     // Na janela inteira, e não só no campo: o arquivo solto em qualquer ponto da página faria o
-    // navegador abri-lo. Cancelar o `dragover` é o que permite cancelar o `drop` depois.
+    // navegador abri-lo. Cancelar o `dragover` é o que permite cancelar o `drop` depois. Com o
+    // resultado na tela não há formulário: o arquivo solto é só ignorado.
     function aoArrastar(evento: DragEvent) {
       if (trazArquivo(evento)) {
         evento.preventDefault();
@@ -171,7 +232,10 @@ export default function PaginaAnalise() {
     function aoSoltar(evento: DragEvent) {
       if (trazArquivo(evento)) {
         evento.preventDefault();
-        setSemFoto(true);
+        const arquivo = evento.dataTransfer?.files[0];
+        if (arquivo && !concluida) {
+          escolherArquivo(arquivo);
+        }
       }
     }
     window.addEventListener("dragover", aoArrastar);
@@ -180,27 +244,37 @@ export default function PaginaAnalise() {
       window.removeEventListener("dragover", aoArrastar);
       window.removeEventListener("drop", aoSoltar);
     };
-  }, []);
+  }, [concluida, escolherArquivo]);
 
-  /** Colar imagem ou arquivo sem texto junto: avisa em vez de não fazer nada. Com texto junto
-   *  (alguns aplicativos copiam os dois), o texto é colado normalmente. */
+  /** Colar uma imagem sem texto junto (Ctrl+V de um print): ela vira o print da análise. Com
+   *  texto junto (alguns aplicativos copiam os dois), o texto é colado normalmente. */
   function aoColar(evento: React.ClipboardEvent<HTMLTextAreaElement>) {
     const dados = evento.clipboardData;
     if (dados.files.length > 0 && dados.getData("text/plain").trim() === "") {
       evento.preventDefault();
-      setSemFoto(true);
+      escolherArquivo(dados.files[0]);
     }
+  }
+
+  function removerImagem() {
+    if (imagem) {
+      URL.revokeObjectURL(imagem.miniatura);
+    }
+    setImagem(null);
+    setAvisoImagem(null);
+    // O botão "Remover" some junto com a miniatura; o foco volta para "Enviar print".
+    requestAnimationFrame(() => botaoPrint.current?.focus());
   }
 
   function aoEnviar(evento: React.FormEvent) {
     evento.preventDefault();
-    setSemFoto(false);
-    setEstado({ situacao: "analisando" });
+    setAvisoImagem(null);
+    setEstado({ situacao: "analisando", doPrint: imagem !== null });
     setAcordando(false);
     setDemorando(false);
     // O timer nasce no envio, não num efeito: é consequência do clique (como em use-envio-conta).
     const timer = window.setTimeout(() => setDemorando(true), AVISO_DE_DEMORA_MS);
-    void analisar(texto, () => setAcordando(true)).then((proximo) => {
+    void analisar(texto, imagem, () => setAcordando(true)).then((proximo) => {
       window.clearTimeout(timer);
       setAcordando(false);
       setDemorando(false);
@@ -213,7 +287,11 @@ export default function PaginaAnalise() {
 
   function aoRecomecar() {
     setTexto("");
-    setSemFoto(false);
+    if (imagem) {
+      URL.revokeObjectURL(imagem.miniatura);
+    }
+    setImagem(null);
+    setAvisoImagem(null);
     setEstado({ situacao: "pronta" });
     setAnimarEntrada(false);
     // O botão clicado some junto com o resultado; o foco volta para o campo vazio.
@@ -226,8 +304,9 @@ export default function PaginaAnalise() {
     levarAte(campoMensagem.current ?? botaoRecomecar.current);
   }
 
-  const concluida = estado.situacao === "concluida";
-  const vazio = texto.trim() === "";
+  const analisando = estado.situacao === "analisando";
+  const lendoPrint = analisando && estado.doPrint;
+  const vazio = texto.trim() === "" && imagem === null;
   const entrada = (tempo: "" | "entrada-hero-2" | "entrada-hero-3") =>
     animarEntrada ? `entrada-hero ${tempo}` : "";
 
@@ -270,7 +349,24 @@ export default function PaginaAnalise() {
                       em cima e a resposta logo abaixo. Não é conversa — não há segundo turno;
                       "Analisar outra mensagem" apaga tudo da tela. */}
                   <div className="cartao flex flex-col gap-junto p-5 sm:p-bloco">
-                    <MensagemColada texto={texto} />
+                    {estado.resultado.leitura_do_print ? (
+                      <PrintLido
+                        partes={[
+                          ...estado.resultado.leitura_do_print.mensagens,
+                          ...(estado.resultado.leitura_do_print.texto_da_pessoa
+                            ? [
+                                {
+                                  de: "escrito" as const,
+                                  texto: estado.resultado.leitura_do_print.texto_da_pessoa,
+                                },
+                              ]
+                            : []),
+                        ]}
+                        contexto={estado.resultado.leitura_do_print.contexto}
+                      />
+                    ) : (
+                      <MensagemColada texto={texto} />
+                    )}
                   </div>
                 </>
               ) : (
@@ -280,8 +376,8 @@ export default function PaginaAnalise() {
                       Antes de pagar ou responder, confira a mensagem.
                     </h1>
                     <p className="text-destaque">
-                      Cole o texto aqui. Você vê na hora se ele tem sinais de golpe e o que
-                      fazer agora. Não precisa criar conta.
+                      Cole o texto ou envie um print da conversa. Você vê na hora se a mensagem
+                      tem sinais de golpe e o que fazer agora. Não precisa criar conta.
                     </p>
                   </div>
                   {/* `id="analisar"`: destino do "Analisar mensagem" vindo de outra página. O
@@ -301,38 +397,118 @@ export default function PaginaAnalise() {
                       value={texto}
                       onChange={(evento) => {
                         setTexto(evento.target.value);
-                        setSemFoto(false);
+                        setAvisoImagem(null);
                       }}
                       onPaste={aoColar}
-                      readOnly={estado.situacao === "analisando"}
+                      readOnly={analisando}
                       rows={6}
                       placeholder="Por exemplo: “Sua conta será bloqueada hoje. Faça um PIX para regularizar.”"
                       className="campo-mensagem min-h-[11rem] w-full p-5 text-destaque"
                     />
+                    {/* O print: botão, Ctrl+V no campo ou arrastar para a página. O botão é
+                        um <button> de verdade que abre o seletor escondido: assim ele tem foco,
+                        rótulo e alvo de 44 px como os outros. */}
+                    <div className="flex flex-col gap-junto">
+                      {imagem ? (
+                        <div className="flex items-start gap-perto rounded-2xl border-2
+                          border-lavanda p-3">
+                          {/* `<img>` e não `next/image`: o endereço é um `blob:` desta aba, que o
+                              otimizador do Next não alcança. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imagem.miniatura}
+                            alt="Miniatura do print escolhido"
+                            className="h-24 w-auto max-w-[6rem] rounded-lg border border-tinta/40
+                              object-contain"
+                          />
+                          {/* Nome e botão numa coluna: lado a lado, em 390 px o nome quebrava
+                              no meio ("p44.pn / g"). */}
+                          <div className="flex min-w-0 flex-1 flex-col items-start gap-junto">
+                            <p className="max-w-full font-semibold [overflow-wrap:anywhere]">
+                              {imagem.nome}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={removerImagem}
+                              disabled={analisando}
+                              aria-label={`Remover o print ${imagem.nome}`}
+                              className="botao-secundario alvo-de-toque rounded-full px-5
+                                font-bold"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-x-perto gap-y-junto">
+                          <button
+                            ref={botaoPrint}
+                            type="button"
+                            onClick={() => entradaArquivo.current?.click()}
+                            disabled={preparando || analisando}
+                            aria-describedby="dica-print"
+                            className="botao-secundario alvo-de-toque rounded-full px-6 py-2
+                              font-bold"
+                          >
+                            Enviar print
+                          </button>
+                          <p id="dica-print">
+                            Ou cole a imagem aqui (Ctrl+V), ou arraste o arquivo para a página.
+                          </p>
+                        </div>
+                      )}
+                      <input
+                        ref={entradaArquivo}
+                        type="file"
+                        accept={TIPOS_ACEITOS.join(",")}
+                        hidden
+                        onChange={(evento) => {
+                          const arquivo = evento.target.files?.[0];
+                          // Limpa o valor: escolher o mesmo arquivo de novo dispara de novo.
+                          evento.target.value = "";
+                          if (arquivo) {
+                            escolherArquivo(arquivo);
+                          }
+                        }}
+                      />
+                      {/* Antes do botão, quando há um print: o que ele pode mostrar e para onde
+                          vai (ADR-0023). */}
+                      {imagem && (
+                        <p>
+                          O print pode mostrar nome, número e foto de outras pessoas. Ele vai para
+                          a inteligência artificial da Anthropic, nos Estados Unidos, só para ser
+                          lido, e a imagem não fica guardada. Se der, recorte o que não for a
+                          mensagem. O que você escrever no campo vai junto, como explicação.
+                        </p>
+                      )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-x-perto gap-y-junto">
                       <button
                         type="submit"
-                        disabled={vazio || estado.situacao === "analisando"}
+                        disabled={vazio || analisando || preparando}
                         aria-describedby={vazio ? "dica-botao" : undefined}
                         className="botao-principal alvo-de-toque w-full rounded-full px-8 py-3
                           text-destaque font-bold sm:w-auto"
                       >
-                        {estado.situacao === "analisando" ? "Analisando…" : "Analisar mensagem"}
+                        {lendoPrint ? "Lendo o print…" : analisando ? "Analisando…" : "Analisar"}
                       </button>
                       {/* Diz por que o botão está esperando — sem isto, botão desabilitado
                           parece botão quebrado. */}
                       {vazio && (
-                        <p id="dica-botao">Cole uma mensagem para poder analisar.</p>
+                        <p id="dica-botao">
+                          Cole uma mensagem ou envie um print para poder analisar.
+                        </p>
                       )}
                     </div>
                     {/* Antes de enviar: para todos, para onde a mensagem vai (ADR-0020); para
                         quem está logado, que ela fica no histórico — o aviso que sustenta a base
-                        legal de guardá-la sem caixa de seleção (ADR-0018). */}
+                        legal de guardá-la sem caixa de seleção (ADR-0018). Do print, fica o
+                        texto lido, nunca a imagem (ADR-0023). */}
                     <p>
-                      Para a análise, a mensagem é enviada à inteligência artificial da
-                      Anthropic.
+                      Para a análise, a mensagem ou o print é enviado à inteligência artificial
+                      da Anthropic.
                       {logado &&
-                        " Como você está na sua conta, ela também fica no seu histórico por 7 dias."}{" "}
+                        " Como você está na sua conta, a mensagem (ou o texto lido do print) também fica no seu histórico por 7 dias."}{" "}
                       <Link
                         href="/privacidade"
                         className="font-bold text-anil underline underline-offset-4"
@@ -347,21 +523,29 @@ export default function PaginaAnalise() {
               {/* `aria-live` faz o leitor de tela anunciar o resultado sem que a pessoa
                   precise procurá-lo. `polite` para não interromper o que estiver sendo lido. */}
               <section aria-live="polite" className="flex flex-col gap-6">
-                {semFoto && (
+                {avisoImagem && (
                   <p className="cartao border-l-[10px] border-anil p-5 text-destaque
                     font-semibold">
-                    {AVISO_SEM_FOTO}
+                    {avisoImagem}
                   </p>
                 )}
-                {estado.situacao === "analisando" && (
-                  <p className="text-destaque">Analisando sua mensagem…</p>
+                {preparando && <p className="text-destaque">Preparando o print…</p>}
+                {imagem && !analisando && !concluida && (
+                  <p className="sr-only">Print pronto para enviar: {imagem.nome}.</p>
                 )}
-                {estado.situacao === "analisando" && acordando && <AvisoAcordando />}
+                {analisando && (
+                  <p className="text-destaque">
+                    {lendoPrint ? "Lendo o print…" : "Analisando sua mensagem…"}
+                  </p>
+                )}
+                {analisando && acordando && <AvisoAcordando />}
                 {/* Só sem o aviso do servidor acordando: os dois juntos diriam coisas diferentes
                     sobre a mesma espera. */}
-                {estado.situacao === "analisando" && demorando && !acordando && (
+                {analisando && demorando && !acordando && (
                   <p className="font-semibold">
-                    A análise está levando um pouco mais. Só mais alguns segundos.
+                    {lendoPrint
+                      ? "Lendo o print. Isso leva alguns segundos."
+                      : "A análise está levando um pouco mais. Só mais alguns segundos."}
                   </p>
                 )}
 

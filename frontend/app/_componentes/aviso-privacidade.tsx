@@ -13,7 +13,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  o banco: models/, ADR-0006 e ADR-0015 (anônima sem texto, vínculo de 7 dias), ADR-0018 (a
  *  mensagem de quem tem conta, pelos mesmos 7 dias), ADR-0013 e ADR-0019 (conta, sessão e
  *  exclusão), ADR-0011 (Neon), ADR-0020 (a mensagem vai à Anthropic; o que a IA escreveu segue a
- *  regra da mensagem). `nivel` mantém a hierarquia de títulos de quem o usa. */
+ *  regra da mensagem), ADR-0023 (o print vai à Anthropic só para ser lido e nunca é guardado; do
+ *  print, fica o texto lido e o contexto, com a regra da mensagem). `nivel` mantém a hierarquia
+ *  de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
   const titulo = "text-secao font-bold sm:text-secao-lg";
@@ -31,8 +33,8 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
       <section aria-labelledby="para-que" className="flex flex-col gap-junto">
         <Titulo id="para-que" className={titulo}>Para que usamos</Titulo>
         <p>
-          Para analisar a mensagem que você colou e dizer o que fazer. A análise funciona sem
-          conta.
+          Para analisar a mensagem que você colou, ou o print que você enviou, e dizer o que
+          fazer. A análise funciona sem conta.
         </p>
         <p>
           Se você criar uma conta, também para você entrar nela e ver o histórico das suas
@@ -43,8 +45,9 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
       <section aria-labelledby="ia" className="flex flex-col gap-junto">
         <Titulo id="ia" className={titulo}>A análise com inteligência artificial</Titulo>
         <p>
-          Para dizer o que a mensagem parece ser e o que fazer, enviamos o texto que você colou à
-          Anthropic, a empresa que faz a inteligência artificial Claude.{" "}
+          Para dizer o que a mensagem parece ser e o que fazer, enviamos o texto que você colou,
+          ou o print que você enviou, à Anthropic, a empresa que faz a inteligência artificial
+          Claude.{" "}
           <strong>Isso vale com ou sem conta.</strong>
         </p>
         <p>
@@ -63,6 +66,31 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
         </p>
         <p>
           Se a inteligência artificial não responder, a análise sai só com as nossas regras.
+        </p>
+      </section>
+
+      <section aria-labelledby="print" className="flex flex-col gap-junto">
+        <Titulo id="print" className={titulo}>Se você enviar um print</Titulo>
+        <p>
+          O print pode mostrar o nome, o número e a foto de outras pessoas, além da mensagem. Se
+          der, recorte o que não for a mensagem antes de enviar.
+        </p>
+        <p>
+          Antes de sair do seu aparelho, o próprio navegador diminui a imagem e tira os dados
+          escondidos nela, como o lugar onde a foto foi tirada.
+        </p>
+        <p>
+          A imagem vai para a Anthropic, nos Estados Unidos, só para a inteligência artificial ler
+          o texto dela, com as mesmas regras da mensagem explicadas acima.
+        </p>
+        <p>
+          <strong>
+            O VerifyScan nunca guarda a imagem: nem no banco de dados, nem em arquivo, nem nos
+            registros do sistema.
+          </strong>{" "}
+          Com a conta aberta, guardamos só o texto que lemos do print e o que ele mostrava em
+          volta da mensagem (por exemplo, se quem mandou está nos seus contatos), pelos mesmos 7
+          dias da mensagem.
         </p>
       </section>
 
@@ -89,11 +117,15 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
           artificial sugeriu e a data.
         </p>
         <p>
-          <strong>Sem conta, nunca guardamos o texto da mensagem que você colou.</strong>
+          <strong>
+            Sem conta, nunca guardamos o texto da mensagem que você colou, nem o que lemos do
+            print.
+          </strong>
         </p>
         <p>
-          Com a conta aberta, guardamos também a mensagem e o que a inteligência artificial
-          escreveu sobre ela, para os dois aparecerem no seu histórico. Isso faz parte do
+          Com a conta aberta, guardamos também a mensagem (ou o texto lido do print, com o que
+          ele mostrava em volta) e o que a inteligência artificial escreveu sobre ela, para
+          aparecerem no seu histórico. Isso faz parte do
           histórico que você usa ao criar a conta, e a tela de análise avisa antes de enviar.
           Depois de 7 dias, os dois são apagados e a análise deixa de ficar ligada a você. Você
           pode apagá-la antes, a qualquer momento.
@@ -112,7 +144,8 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
             a mensagem que você analisou com a conta aberta, e o que a inteligência artificial
             escreveu sobre ela, 7 dias;
           </li>
-          <li>na Anthropic, a mensagem enviada para a análise, até 30 dias;</li>
+          <li>na Anthropic, a mensagem ou o print enviado para a análise, até 30 dias;</li>
+          <li>no VerifyScan, a imagem do print: não é guardada;</li>
           <li>a ligação das análises com a sua conta, 7 dias.</li>
         </ul>
       </section>
