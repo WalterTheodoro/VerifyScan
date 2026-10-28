@@ -29,6 +29,10 @@ export type AnaliseDoHistorico = {
    *  para um backend anterior. */
   tipo_input?: "texto" | "imagem";
   contexto_print?: ContextoDoPrint | null;
+  /** Correção 9.1: a transcrição como a tela mostra, com cada link pelo domínio e telefones e
+   *  e-mails trocados — transcrito, o link viraria um atalho que o print não tinha. `null` no
+   *  texto colado, que é da própria pessoa. */
+  texto_para_exibir?: string | null;
 };
 
 export type Historico = { dias: number; analises: AnaliseDoHistorico[] };
