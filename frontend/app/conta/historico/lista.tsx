@@ -190,7 +190,7 @@ function ItemDoHistorico({
         <div className="flex flex-col gap-junto rounded-2xl border-2 border-lavanda p-5">
           {analise.tipo_input === "imagem" ? (
             <PrintLido
-              partes={partesDaTranscricao(analise.texto)}
+              partes={partesDaTranscricao(analise.texto_para_exibir ?? analise.texto)}
               contexto={analise.contexto_print ?? null}
             />
           ) : (

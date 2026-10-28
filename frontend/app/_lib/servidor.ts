@@ -11,8 +11,11 @@
 // globais, e não os de `window` — são os que o relógio falso do teste controla.
 
 /** Do backend: veio corpo JSON (qualquer status) ou 204. De outra coisa: falha de rede, ou
- *  status sem corpo JSON — a página de erro do proxy ou do Render. */
-export type Resposta = { doBackend: true; status: number; corpo: unknown } | { doBackend: false };
+ *  status sem corpo JSON — a página de erro do proxy ou do Render. `status` só existe quando
+ *  houve resposta HTTP: sem ele, foi falha de rede de verdade (correção 9.1). */
+export type Resposta =
+  | { doBackend: true; status: number; corpo: unknown }
+  | { doBackend: false; status?: number };
 
 export type OpcoesDeEspera = {
   /** Chamado no máximo uma vez por espera, para a tela mostrar "O servidor está acordando": na
@@ -87,7 +90,7 @@ export async function pedir(caminho: string, init: RequestInit = {}): Promise<Re
     try {
       corpo = await resposta.json();
     } catch {
-      return FORA_DO_BACKEND;
+      return { doBackend: false, status: resposta.status };
     }
   }
   ultimaRespostaDoBackend = Date.now();

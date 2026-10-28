@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 
 import {
+  ARQUIVO_MAX_BYTES,
   ImagemRecusada,
+  LADO_MIN,
   LADO_MAX,
   TOKENS_MAX,
   paraBase64,
@@ -139,8 +141,12 @@ afterEach(() => {
   }
 });
 
-function fingirNavegador(saidaDoCanvas: Uint8Array<ArrayBuffer>, desenhos: number[][]) {
-  globais.createImageBitmap = async () => ({ width: 3000, height: 4000, close() {} });
+function fingirNavegador(
+  saidaDoCanvas: Uint8Array<ArrayBuffer>,
+  desenhos: number[][],
+  [largura, altura] = [3000, 4000],
+) {
+  globais.createImageBitmap = async () => ({ width: largura, height: altura, close() {} });
   globais.document = {
     createElement: () => ({
       width: 0,
@@ -179,4 +185,50 @@ test("prepararImagem recusa enviar se o canvas devolver EXIF", async () => {
 test("prepararImagem recusa o que não é PNG, JPEG nem WebP", async () => {
   await assert.rejects(prepararImagem(arquivo("image/gif")), /PNG, JPEG ou WebP/);
   await assert.rejects(prepararImagem(arquivo("application/pdf")), ImagemRecusada);
+});
+
+// ── Recusas antes de enviar (correção 9.1) ─────────────────────────────────────────────────
+
+test("o limite do arquivo é o do backend: 5 MB (IMAGEM_MAX_BYTES em app/core/config.py)", () => {
+  assert.equal(ARQUIVO_MAX_BYTES, 5 * 1024 * 1024);
+});
+
+test("arquivo acima do limite é recusado antes de abrir, com o limite na frase", async () => {
+  const grande = new File([new Uint8Array(ARQUIVO_MAX_BYTES + 1)], "ruido.png", {
+    type: "image/png",
+  });
+  await assert.rejects(prepararImagem(grande), {
+    message: "Este arquivo é grande demais. Envie um print de até 5 MB.",
+  });
+});
+
+test("o JPEG preparado acima do limite também não sai", async () => {
+  const enorme = new Uint8Array(ARQUIVO_MAX_BYTES + 1);
+  enorme.set(jpeg());
+  fingirNavegador(enorme, []);
+  await assert.rejects(prepararImagem(arquivo()), {
+    message: "Este arquivo é grande demais. Envie um print de até 5 MB.",
+  });
+});
+
+test("imagem com o lado menor abaixo de 200 px é recusada, nos dois sentidos", async () => {
+  assert.equal(LADO_MIN, 200);
+  const tamanhos: [number, number][] = [
+    [1170, 199],
+    [199, 2532],
+  ];
+  for (const tamanho of tamanhos) {
+    const desenhos: number[][] = [];
+    fingirNavegador(jpeg(), desenhos, tamanho);
+    await assert.rejects(prepararImagem(arquivo()), {
+      message: "Esta imagem é pequena demais para ler. Envie o print inteiro da conversa.",
+    });
+    assert.deepEqual(desenhos, [], "recusada antes de desenhar");
+  }
+});
+
+test("200 px no lado menor ainda entra", async () => {
+  fingirNavegador(jpeg(), [], [200, 400]);
+  const preparada = await prepararImagem(arquivo());
+  assert.deepEqual([preparada.largura, preparada.altura], [200, 400]);
 });

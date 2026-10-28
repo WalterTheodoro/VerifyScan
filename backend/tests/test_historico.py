@@ -120,6 +120,42 @@ async def test_item_traz_os_links_da_mensagem_pelo_dominio(
 
 
 @pytest.mark.usefixtures("como_maria")
+async def test_item_de_print_traz_a_transcricao_para_exibir(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """Correção 9.1: a mesma troca da home, sobre a transcrição marcada. `texto` segue inteiro."""
+    marcada = (
+        "[recebida]\nPromoção! https://bit.ly/lojaexemplo-bf ou ligue 0800 000 0000\n\n"
+        "[a pessoa também escreveu]\nRecebi de 11 99999-8888"
+    )
+    historico.adicionar(
+        MARIA.id,
+        dataclasses.replace(_analise(relogio), texto=marcada, tipo_input="imagem"),
+    )
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert item["texto"] == marcada
+    assert item["texto_para_exibir"] == (
+        "[recebida]\nPromoção! [link: bit.ly] ou ligue [telefone]\n\n"
+        "[a pessoa também escreveu]\nRecebi de 11 99999-8888"
+    )
+
+
+@pytest.mark.usefixtures("como_maria")
+async def test_item_de_texto_colado_nao_tem_versao_para_exibir(
+    navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """O "Você colou" é o texto que a própria pessoa colou e que já está com ela: não muda."""
+    mensagem = "Pague em https://bit.ly/x ou ligue 0800 000 0000"
+    historico.adicionar(MARIA.id, dataclasses.replace(_analise(relogio), texto=mensagem))
+
+    item = (await navegador.get("/api/historico")).json()["analises"][0]
+
+    assert (item["texto"], item["texto_para_exibir"]) == (mensagem, None)
+
+
+@pytest.mark.usefixtures("como_maria")
 async def test_item_sem_texto_vem_sem_links(
     navegador: AsyncClient, historico: RepositorioHistoricoEmMemoria, relogio: RelogioFalso
 ) -> None:

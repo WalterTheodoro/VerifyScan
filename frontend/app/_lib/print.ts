@@ -15,6 +15,9 @@ export type ContextoDoPrint = {
 
 export type LeituraDoPrint = {
   mensagens: MensagemDoPrint[];
+  /** Correção 9.1: as mesmas mensagens como a tela mostra, com "[link: domínio]", "[telefone]"
+   *  e "[e-mail]". A troca é do backend, num lugar só; opcional para um backend anterior. */
+  mensagens_para_exibir?: MensagemDoPrint[];
   contexto: ContextoDoPrint;
   texto_da_pessoa: string | null;
 };

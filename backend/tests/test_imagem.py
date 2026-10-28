@@ -2,11 +2,13 @@
 animação, imagem corrompida, metadados removidos e o tamanho que a Anthropic não reduz."""
 
 import io
+import logging
+import os
 import struct
 import zlib
 
 import pytest
-from PIL import Image, ImageCms
+from PIL import Image, ImageCms, ImageOps
 
 from app.ocr.imagem import (
     LADO_MAX,
@@ -184,6 +186,83 @@ def test_imagem_grande_e_reduzida_para_o_limite_da_anthropic() -> None:
     preparada = preparar_imagem(_imagem("PNG", (3840, 2160)), MAX_BYTES)
     assert (preparada.largura, preparada.altura) == (2576, 1449)
     assert tokens_da_imagem(preparada.largura, preparada.altura) <= TOKENS_MAX
+
+
+# ── Imagem cheia de detalhe e falha inesperada (correção 9.1) ───────────────────────────────
+
+
+def _ruido(tamanho: tuple[int, int], formato: str, **opcoes: object) -> bytes:
+    """Pixels aleatórios: nada comprime, e o JPEG de saída passa de 2 bytes por pixel."""
+    saida = io.BytesIO()
+    Image.frombytes("RGB", tamanho, os.urandom(tamanho[0] * tamanho[1] * 3)).save(
+        saida, formato, **opcoes
+    )
+    return saida.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("formato", "tamanho", "opcoes"),
+    [
+        ("PNG", (1170, 1400), {}),
+        # O caso de produção: o PNG de 8,8 MB que o navegador reduziu e mandou como JPEG.
+        ("JPEG", (1170, 2532), {"quality": 90}),
+    ],
+    ids=["png-de-ruido", "jpeg-de-ruido-como-o-navegador-manda"],
+)
+def test_imagem_de_ruido_e_reencodada_sem_estourar_o_codificador(
+    formato: str, tamanho: tuple[int, int], opcoes: dict[str, object]
+) -> None:
+    dados = _ruido(tamanho, formato, **opcoes)
+    assert len(dados) <= MAX_BYTES
+
+    preparada = preparar_imagem(dados, MAX_BYTES)
+
+    assert (preparada.largura, preparada.altura) == tamanho
+    with Image.open(io.BytesIO(preparada.jpeg)) as aberta:
+        aberta.load()
+        assert aberta.size == tamanho
+
+
+@pytest.mark.parametrize("tamanho", [(2576, 1456), (1456, 2576)], ids=["deitada", "em-pe"])
+def test_foto_de_alta_entropia_nas_dimensoes_maximas(tamanho: tuple[int, int]) -> None:
+    """2576 x 1456 é o maior tamanho que a API não reduz: lado de 2.576 px e 4.784 tokens."""
+    assert tokens_da_imagem(*tamanho) == TOKENS_MAX
+    dados = _ruido(tamanho, "JPEG", quality=75)
+
+    preparada = preparar_imagem(dados, MAX_BYTES)
+
+    assert (preparada.largura, preparada.altura) == tamanho
+    assert formato_pelos_bytes(preparada.jpeg) == "JPEG"
+
+
+@pytest.mark.parametrize(
+    ("alvo", "nome", "erro"),
+    [
+        (ImageOps, "exif_transpose", RuntimeError),
+        (Image.Image, "convert", MemoryError),
+        (Image.Image, "save", OSError),
+    ],
+    ids=["decodificar", "converter", "regravar"],
+)
+def test_qualquer_excecao_ao_preparar_vira_imagem_invalida(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    alvo: object,
+    nome: str,
+    erro: type[Exception],
+) -> None:
+    """Nenhuma falha do Pillow chega à rota como 500. O log leva só o tipo da exceção."""
+    dados = _imagem("PNG")
+
+    def falhar(*args: object, **kwargs: object) -> None:
+        raise erro("DETALHE-QUE-NAO-VAI-PARA-O-LOG")
+
+    monkeypatch.setattr(alvo, nome, falhar)
+    with caplog.at_level(logging.DEBUG), pytest.raises(ImagemInvalida, match="abrir esta imagem"):
+        preparar_imagem(dados, MAX_BYTES)
+
+    assert erro.__name__ in caplog.text
+    assert "DETALHE-QUE-NAO-VAI-PARA-O-LOG" not in caplog.text
 
 
 def test_jpeg_final_sem_exif_xmp_comentario_nem_icc() -> None:

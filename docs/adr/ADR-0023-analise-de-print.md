@@ -55,8 +55,8 @@ o aplicativo mostrou um aviso, se é a primeira mensagem.
   próprio aplicativo".
 
 **3. Plano B.** Leitura que falha, demora, é recusada, vem inválida ou diz `legivel: nao` vira 422
-com "Não conseguimos ler o print. Tente um print mais nítido, ou copie e cole o texto da
-mensagem." — **sem nível e sem registro**. IA desligada: 503. Leitura certa e análise da IA que
+com "Não conseguimos ler uma conversa nesta imagem. Envie um print da mensagem, ou copie e cole o
+texto." (frase da correção 9.1, ver o adendo) — **sem nível e sem registro**. IA desligada: 503. Leitura certa e análise da IA que
 falha: o resultado do motor sobre a transcrição, como no texto (invariante 3).
 
 **4. Entrada.**
@@ -188,3 +188,46 @@ e medidos uma única vez, depois do frontend e dos docs, sem nenhum ajuste depoi
 - Total p95 de 5,0 s; US$ 0,00126 por print.
 
 As limitações acima valem também para estes números: são prints limpos e de autoria única.
+
+## Adendo — correção 9.1 (2026-10-28): ajustes achados no teste em produção
+
+**Contexto.** Um PNG de ruído de 8,8 MB (o navegador mandou um JPEG de ~2,8 MB) derrubou a API
+com 500. A tela respondeu "Verifique sua conexão" a erros que vieram do servidor. A transcrição
+mostrava o link e o telefone do print inteiros, prontos para copiar.
+
+**Decisões.**
+- **JPEG sem `optimize`.** Com `optimize` (ou `progressive`), o Pillow 12.3 exige o JPEG inteiro
+  num buffer que ele estima em largura × altura bytes. Em 4:4:4 e qualidade 92, imagem cheia de
+  detalhe passa de 2 bytes por pixel e estoura ("Suspension not allowed here"). A documentação do
+  Pillow não oferece parâmetro de buffer para o JPEG, e `ImageFile.MAXBLOCK` vale para o processo
+  inteiro. O `optimize` só refaz as tabelas de Huffman: os pixels saem iguais. Sem ele, os 45 prints
+  de calibração ficam 17,5% maiores, cerca de 262 KB em média, longe dos 10 MB da API.
+- **Nenhuma falha ao preparar a imagem vira 500.** Decodificar, reduzir e regravar ficam num
+  `except Exception` só. Ele devolve 422 com "Não conseguimos abrir esta imagem…", e o log leva só
+  o tipo da exceção.
+- **O navegador recusa antes de enviar.** Arquivo ou JPEG preparado acima de 5 MB, o limite do
+  backend: "Este arquivo é grande demais. Envie um print de até 5 MB.". Lado menor abaixo de
+  200 px: "Esta imagem é pequena demais para ler. Envie o print inteiro da conversa.". A
+  documentação Vision avisa de erros em "very small images under 200 pixels". Só o navegador
+  confere o mínimo; quem chama a API direto cai no plano B da leitura.
+- **"Verifique sua conexão" só quando não houve resposta.** Com resposta HTTP, a tela mostra o
+  `detail` do servidor; sem ele, "tente de novo" (ou a frase de tamanho, num 413).
+- **Plano B da leitura numa frase só**, para print borrado e para imagem que não é conversa. A
+  leitura não separa os dois com segurança.
+- **A transcrição na tela troca link, telefone e e-mail.** Cada link vira `[link: domínio
+  registrável]`, o mesmo do bloco de links; cada telefone, `[telefone]`; cada e-mail, `[e-mail]`,
+  com hífen que não quebra (U+2011). Link de outro esquema (`intent://`, `ftp://`) também sai: com
+  o domínio, se o extrator achar um; sem, `[link]`.
+  Na imagem, o link não é clicável nem fácil de copiar; transcrito, viraria um atalho que o print
+  não tinha. A troca é do backend, num lugar só (`ServicoAnalise.para_exibir`), porque é lá que
+  estão o `URLExtractor`, os padrões da limpeza da IA e a PSL. Ela sai como campo ao lado da
+  original: `mensagens_para_exibir` na resposta e `texto_para_exibir` no histórico.
+- **O que não muda:**
+  - o texto guardado e o que o motor analisa continuam completos;
+  - "Você colou" e "Você escreveu junto" continuam como a pessoa escreveu, porque o texto é dela.
+
+**Consequências.**
+- Imagem de ruído nas dimensões máximas sai do Pillow com cerca de 7,6 MB, perto dos 10 MB em
+  base64 da API. Se passar, a leitura falha e a pessoa recebe o plano B (422), não um 500.
+- Link de outro esquema com IP no lugar do domínio sai só como `[link]`: o extrator acha IP só com
+  `http`.

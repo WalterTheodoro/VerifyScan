@@ -58,6 +58,15 @@ class ItemHistorico(BaseModel):
     contexto_print: ContextoDoPrint | None = Field(
         default=None, description="O que o print mostrava além do texto. `null` no texto colado."
     )
+    # Campo aditivo da correção 9.1: a mesma troca da home.
+    texto_para_exibir: str | None = Field(
+        default=None,
+        description=(
+            "A transcrição como a tela mostra: links como `[link: domínio]`, telefones e e-mails "
+            "trocados; o que a pessoa escreveu junto fica como está. `null` no texto colado e "
+            "sem texto guardado."
+        ),
+    )
 
 
 class RespostaHistorico(BaseModel):

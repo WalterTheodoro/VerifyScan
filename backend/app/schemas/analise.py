@@ -176,6 +176,14 @@ class LeituraDoPrint(BaseModel):
     """
 
     mensagens: list[MensagemDoPrint] = Field(min_length=1)
+    # Correção 9.1: transcrito, o link do print viraria texto pronto para copiar.
+    mensagens_para_exibir: list[MensagemDoPrint] = Field(
+        min_length=1,
+        description=(
+            "As mesmas mensagens como a tela mostra: cada link como `[link: domínio]`, cada "
+            "telefone como `[telefone]` e cada e-mail como `[e-mail]`."
+        ),
+    )
     contexto: ContextoDoPrint
     texto_da_pessoa: str | None = Field(
         default=None, description="O que a pessoa digitou junto com o print, se digitou."

@@ -247,6 +247,12 @@ async def test_historico_mostra_o_print_e_os_links_so_do_que_foi_recebido(
     assert item["contexto_print"] == CONTEXTO
     assert "[enviada pela pessoa]" in item["texto"]
     assert [link["dominio"] for link in item["links"]] == ["correios-taxa.example"]
+    # Guardado inteiro; na tela, só o domínio (correção 9.1).
+    assert "http://correios-taxa.example/pagar" in item["texto"]
+    assert item["texto_para_exibir"] == (
+        "[enviada pela pessoa]\nQuem é? Veja meu site [link: site-da-pessoa.example]\n\n"
+        "[recebida]\nSua entrega está retida. Pague a taxa em [link: correios-taxa.example]"
+    )
 
 
 async def test_anonima_nao_grava_transcricao_nem_contexto(

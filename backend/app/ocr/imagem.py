@@ -34,10 +34,13 @@ Image.MAX_IMAGE_PIXELS = PIXELS_MAX
 
 # Um passe de JPEG a mais, quase sem perda: 4:4:4 não borra a cor das letras. A documentação avisa
 # que vários passes com perda estragam texto; PNG de 3,7 MP podia passar do limite da API.
+# Sem `optimize` (correção 9.1): com ele, o Pillow exige o JPEG inteiro num buffer de largura
+# vezes altura bytes, e imagem cheia de detalhe passa de 2 bytes por pixel — o 500 de produção.
 QUALIDADE_JPEG = 92
 
 # Em DEBUG, o Pillow descreve cada bloco que lê. Não tem conteúdo, mas não precisa estar no log.
 logging.getLogger("PIL").setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 _FORMATO_ERRADO = "Envie o print como imagem PNG, JPEG ou WebP."
 _GRANDE_DEMAIS = "Esta imagem é grande demais. Envie um print da tela, sem ampliar."
@@ -112,34 +115,43 @@ def tamanho_alvo(
 
 
 def preparar_imagem(dados: bytes, max_bytes: int) -> ImagemPreparada:
-    """Confere e reencoda. Qualquer recusa é `ImagemInvalida`, com a frase para a pessoa."""
+    """Confere e reencoda. Qualquer recusa é `ImagemInvalida`, com a frase para a pessoa.
+
+    O `except Exception` largo é intencional, como na leitura: decodificar, reduzir e regravar
+    passam por código C do Pillow, e nenhuma falha dele pode virar 500 (correção 9.1). O log leva
+    só o tipo da exceção; a mensagem dela pode descrever o arquivo.
+    """
     if len(dados) > max_bytes:
         raise ImagemInvalida(_GRANDE_DEMAIS)
     formato = formato_pelos_bytes(dados)
     if formato is None:
         raise ImagemInvalida(_FORMATO_ERRADO)
     try:
-        # `formats`: o Pillow só tenta o formato que os bytes disseram. Abrir lê só o cabeçalho.
-        with Image.open(io.BytesIO(dados), formats=[formato]) as aberta:
-            largura, altura = aberta.size
-            if (
-                largura * altura > PIXELS_MAX
-                or max(largura, altura) > LADO_MAX_ENTRADA
-                or min(largura, altura) < 1
-            ):
-                raise ImagemInvalida(_GRANDE_DEMAIS)
-            if getattr(aberta, "is_animated", False) or getattr(aberta, "n_frames", 1) > 1:
-                raise ImagemInvalida(_ANIMACAO)
-            aberta.load()
-            endireitada = ImageOps.exif_transpose(aberta)
+        return _abrir_e_reencodar(dados, formato)
     except ImagemInvalida:
         raise
     except Image.DecompressionBombError as exc:
+        logger.warning("Preparar o print falhou: %s", type(exc).__name__)
         raise ImagemInvalida(_GRANDE_DEMAIS) from exc
-    except (OSError, ValueError, SyntaxError) as exc:
-        # OSError inclui o `UnidentifiedImageError`; SyntaxError é como alguns plugins do Pillow
-        # avisam de cabeçalho inválido.
+    except Exception as exc:
+        logger.warning("Preparar o print falhou: %s", type(exc).__name__)
         raise ImagemInvalida(_NAO_ABRE) from exc
+
+
+def _abrir_e_reencodar(dados: bytes, formato: FormatoImagem) -> ImagemPreparada:
+    # `formats`: o Pillow só tenta o formato que os bytes disseram. Abrir lê só o cabeçalho.
+    with Image.open(io.BytesIO(dados), formats=[formato]) as aberta:
+        largura, altura = aberta.size
+        if (
+            largura * altura > PIXELS_MAX
+            or max(largura, altura) > LADO_MAX_ENTRADA
+            or min(largura, altura) < 1
+        ):
+            raise ImagemInvalida(_GRANDE_DEMAIS)
+        if getattr(aberta, "is_animated", False) or getattr(aberta, "n_frames", 1) > 1:
+            raise ImagemInvalida(_ANIMACAO)
+        aberta.load()
+        endireitada = ImageOps.exif_transpose(aberta)
     return _reencodar(endireitada, largura, altura, len(dados))
 
 
@@ -158,7 +170,7 @@ def _reencodar(
     saida.paste(pixels)
     assert not saida.info, "a imagem de saída nasce sem metadados"
     jpeg = io.BytesIO()
-    saida.save(jpeg, "JPEG", quality=QUALIDADE_JPEG, subsampling=0, optimize=True)
+    saida.save(jpeg, "JPEG", quality=QUALIDADE_JPEG, subsampling=0)
     return ImagemPreparada(
         jpeg=jpeg.getvalue(),
         largura=alvo[0],

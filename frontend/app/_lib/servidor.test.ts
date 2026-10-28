@@ -108,6 +108,13 @@ describe("classificação: veio do backend ou de outra coisa", () => {
     });
   }
 
+  test("sem JSON guarda o status; falha de rede fica sem status", async () => {
+    fingirFetch(() => html(413));
+    assert.deepEqual(await pedir("/api/analises/imagem"), { doBackend: false, status: 413 });
+    fingirFetch(semRede);
+    assert.deepEqual(await pedir("/api/analises/imagem"), { doBackend: false });
+  });
+
   test("guarda status e corpo do backend", async () => {
     fingirFetch(() => json(409, { detail: "Já existe uma conta com este e-mail." }));
     assert.deepEqual(await pedir("/api/auth/cadastro", { method: "POST" }), {
@@ -142,7 +149,7 @@ describe("leituras repetem sozinhas", () => {
     await avancar(LIMITE_ESPERA_MS);
     // 0, 2, 5 e depois de 10 a 90 s de 5 em 5: 3 + 17.
     assert.equal(chamadas.length, 20);
-    assert.deepEqual(fim, { doBackend: false });
+    assert.deepEqual(fim, { doBackend: false, status: 502 });
     assert.equal(avisos, 1);
   });
 
@@ -340,7 +347,7 @@ describe("envios esperam pelo backend e saem uma vez", () => {
     });
     await avancar(LIMITE_ESPERA_MS);
     assert.equal(metodo("POST"), 1);
-    assert.deepEqual(fim, { doBackend: false });
+    assert.deepEqual(fim, { doBackend: false, status: 502 });
   });
 
   test("o /health não respondeu em 90 s: não envia", async () => {
