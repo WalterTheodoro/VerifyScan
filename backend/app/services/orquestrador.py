@@ -23,7 +23,13 @@ from app.ocr.leitura import (
     texto_do_print,
     transcricao_marcada,
 )
-from app.schemas.analise import ContextoDoPrint, LeituraDoPrint, RespostaAnalise, TipoInput
+from app.schemas.analise import (
+    ContextoDoPrint,
+    LeituraDoPrint,
+    MensagemDoPrint,
+    RespostaAnalise,
+    TipoInput,
+)
 from app.scoring.combinacao import combinar
 from app.scoring.respostas import RespostasPadrao
 from app.services.analise import EntradaInvalida, ServicoAnalise
@@ -33,8 +39,11 @@ from app.services.repositorio_sessoes import RepositorioSessoes
 
 logger = logging.getLogger(__name__)
 
+# Uma frase só para os dois casos que a leitura não separa com segurança: print borrado e imagem
+# que não é conversa (correção 9.1). "Mais nítido" não ajuda quem mandou a foto de um boleto.
 NAO_LEU = (
-    "Não conseguimos ler o print. Tente um print mais nítido, ou copie e cole o texto da mensagem."
+    "Não conseguimos ler uma conversa nesta imagem. Envie um print da mensagem, ou copie e cole o "
+    "texto."
 )
 LEITURA_INDISPONIVEL = (
     "A leitura de prints não está disponível agora. Copie e cole o texto da mensagem."
@@ -128,6 +137,10 @@ class OrquestradorAnalise:
             update={
                 "leitura_do_print": LeituraDoPrint(
                     mensagens=list(leitura.mensagens),
+                    mensagens_para_exibir=[
+                        MensagemDoPrint(de=m.de, texto=self._servico.para_exibir(m.texto))
+                        for m in leitura.mensagens
+                    ],
                     contexto=leitura.contexto,
                     texto_da_pessoa=texto_da_pessoa,
                 )

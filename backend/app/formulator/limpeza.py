@@ -7,7 +7,9 @@ tela nunca mostre uma tag como se fosse conteúdo.
 
 Os padrões de telefone e e-mail têm a mesma forma dos de `tools/pii.py`, mas não são importados
 de lá: `tools/` protege o repositório e não faz parte da aplicação. Os links reaproveitam o
-`URLExtractor`, o mesmo que acha os links da mensagem.
+`URLExtractor`, o mesmo que acha os links da mensagem. Os padrões de e-mail, esquema e telefone são
+públicos porque a transcrição do print na tela troca as mesmas coisas (`ServicoAnalise.para_exibir`,
+correção 9.1).
 """
 
 import re
@@ -22,12 +24,12 @@ LINK_REMOVIDO = "[link removido]"
 EMAIL_REMOVIDO = "[e-mail removido]"
 TELEFONE_REMOVIDO = "[telefone removido]"
 
-_EMAIL = re.compile(r"(?<![\w.+-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
+PADRAO_EMAIL = re.compile(r"(?<![\w.+-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
 
 # Qualquer esquema (`ftp://`, `intent://`): o `URLExtractor` só procura http e https.
-_ESQUEMA = re.compile(r"[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
+PADRAO_ESQUEMA = re.compile(r"[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
 
-_TELEFONE = re.compile(
+PADRAO_TELEFONE = re.compile(
     r"""
     (?<![\d@.,-])                  # não começar no meio de um número ou de um e-mail
     (?:
@@ -57,15 +59,15 @@ def _extrator() -> URLExtractor:
 
 def limpar_texto(texto: str, limite: int | None = None) -> str:
     """Tira e-mail, link, telefone, HTML e caracteres de controle; corta em `limite`."""
-    limpo = _EMAIL.sub(EMAIL_REMOVIDO, texto)
-    limpo = _ESQUEMA.sub(LINK_REMOVIDO, limpo)
+    limpo = PADRAO_EMAIL.sub(EMAIL_REMOVIDO, texto)
+    limpo = PADRAO_ESQUEMA.sub(LINK_REMOVIDO, limpo)
     for _ in range(_VOLTAS_MAXIMAS):
         urls = _extrator().extrair(limpo)
         if not urls:
             break
         for url in urls:
             limpo = limpo.replace(url.original, LINK_REMOVIDO)
-    limpo = _TELEFONE.sub(TELEFONE_REMOVIDO, limpo)
+    limpo = PADRAO_TELEFONE.sub(TELEFONE_REMOVIDO, limpo)
     limpo = _TAG.sub(" ", limpo).replace("<", " ").replace(">", " ")
     limpo = "".join(" " if unicodedata.category(c) == "Cc" else c for c in limpo)
     limpo = _ESPACOS.sub(" ", limpo).strip()

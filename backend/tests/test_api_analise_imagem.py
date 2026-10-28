@@ -35,8 +35,13 @@ from tests.conftest import (
 from tests.test_api_analise_com_ia import PIX_URGENTE
 from tests.test_api_analises import GOLPE_DE_PIX
 
+# O plano B da leitura, para print borrado e para imagem que não é conversa (correção 9.1).
 NAO_LEU = (
-    "Não conseguimos ler o print. Tente um print mais nítido, ou copie e cole o texto da mensagem."
+    "Não conseguimos ler uma conversa nesta imagem. Envie um print da mensagem, ou copie e cole o "
+    "texto."
+)
+NAO_ABRE = (
+    "Não conseguimos abrir esta imagem. Tire o print de novo, ou copie e cole o texto da mensagem."
 )
 FAVORAVEL = {
     "canal": "whatsapp",
@@ -80,6 +85,12 @@ async def test_print_lido_passa_pelo_mesmo_caminho_do_texto(
     assert corpo["fatores"] == referencia["fatores"]
     assert corpo["leitura_do_print"] == {
         "mensagens": [{"de": "contato", "texto": GOLPE_DE_PIX}],
+        "mensagens_para_exibir": [
+            {
+                "de": "contato",
+                "texto": GOLPE_DE_PIX.replace("bb-regularize.xyz", "[link: bb-regularize.xyz]"),
+            }
+        ],
         "contexto": {
             "canal": "whatsapp",
             "remetente_salvo": "nao",
@@ -94,6 +105,33 @@ async def test_print_lido_passa_pelo_mesmo_caminho_do_texto(
     registro = repositorio.registros[0]
     assert registro.tipo_input == "imagem"
     assert (registro.texto_input, registro.contexto_print) == (None, None)
+
+
+async def test_a_tela_recebe_a_transcricao_sem_link_telefone_nem_email(
+    app: FastAPI, cliente: AsyncClient
+) -> None:
+    """Correção 9.1: transcrever criaria o atalho que o print não tinha. A original segue ao lado,
+    e o motor analisa a original — o link continua pontuando."""
+    recebida = "Promoção! https://bit.ly/lojaexemplo-bf ou ligue 0800 000 0000"
+    _ligar_leitura(
+        app,
+        ClienteLeituraFalso(
+            saida_da_leitura([("pessoa", "Meu e-mail é eu@exemplo.com"), ("contato", recebida)])
+        ),
+    )
+
+    corpo = (await _enviar(cliente, **corpo_de_print(texto="Recebi de 11 99999-8888"))).json()
+
+    leitura = corpo["leitura_do_print"]
+    assert leitura["mensagens"][1] == {"de": "contato", "texto": recebida}
+    assert leitura["mensagens_para_exibir"] == [
+        {"de": "pessoa", "texto": "Meu e-mail é [e\u2011mail]"},
+        {"de": "contato", "texto": "Promoção! [link: bit.ly] ou ligue [telefone]"},
+    ]
+    # O que a pessoa digitou é dela: não muda.
+    assert leitura["texto_da_pessoa"] == "Recebi de 11 99999-8888"
+    assert [link["dominio"] for link in corpo["links"]] == ["bit.ly"]
+    assert any(fator["categoria"] == "link_encurtado" for fator in corpo["fatores"])
 
 
 async def test_contexto_favoravel_e_ia_baixo_nao_baixam_o_motor_medio(
@@ -330,6 +368,31 @@ async def test_imagem_acima_do_limite_dentro_da_folga_do_corpo_recebe_422(
     assert resposta.status_code == 422
     assert "grande demais" in resposta.json()["detail"]
     assert leitura.chamadas == []
+
+
+async def test_falha_inesperada_ao_regravar_recebe_422_e_nunca_500(
+    app: FastAPI,
+    cliente: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """O 500 de produção (correção 9.1) veio do `save` do JPEG. Qualquer exceção ao preparar a
+    imagem vira a frase de imagem inválida; o log leva só o tipo."""
+    leitura = _ligar_leitura(app, ClienteLeituraFalso())
+    corpo = corpo_de_print()
+
+    def falhar(*args: object, **kwargs: object) -> None:
+        raise OSError("broken data stream when writing image file")
+
+    monkeypatch.setattr(Image.Image, "save", falhar)
+    with caplog.at_level(logging.DEBUG):
+        resposta = await _enviar(cliente, **corpo)
+
+    assert resposta.status_code == 422
+    assert resposta.json() == {"detail": NAO_ABRE}
+    assert leitura.chamadas == []
+    assert "OSError" in caplog.text
+    assert "broken data stream" not in caplog.text
 
 
 # ── Privacidade: a imagem, a transcrição e o contexto fora dos logs e do disco ──────────────

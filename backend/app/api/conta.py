@@ -36,7 +36,9 @@ def _http(erro: ServicoIndisponivel | AnaliseNaoEncontrada) -> HTTPException:
     return HTTPException(status_code=codigo, detail=str(erro))
 
 
-def _item(analise: AnaliseDoHistorico, links: list[LinkDaMensagem]) -> ItemHistorico:
+def _item(
+    analise: AnaliseDoHistorico, links: list[LinkDaMensagem], texto_para_exibir: str | None
+) -> ItemHistorico:
     return ItemHistorico(
         id=analise.id,
         created_at=analise.criada_em,
@@ -52,6 +54,7 @@ def _item(analise: AnaliseDoHistorico, links: list[LinkDaMensagem]) -> ItemHisto
         links=links,
         tipo_input=analise.tipo_input,
         contexto_print=analise.contexto_print,
+        texto_para_exibir=texto_para_exibir,
     )
 
 
@@ -72,7 +75,14 @@ async def listar_historico(
         raise _http(erro) from erro
     return RespostaHistorico(
         dias=servico.dias,
-        analises=[_item(a, analise.links_do_texto(a.texto, a.tipo_input)) for a in analises],
+        analises=[
+            _item(
+                a,
+                analise.links_do_texto(a.texto, a.tipo_input),
+                analise.texto_para_exibir(a.texto, a.tipo_input),
+            )
+            for a in analises
+        ],
     )
 
 

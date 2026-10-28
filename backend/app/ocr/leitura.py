@@ -4,15 +4,15 @@
 Quem pontua é o motor, sobre a transcrição, pelo mesmo caminho do texto colado — o caminho que o
 corpus mede.
 
-Toda falha tem o mesmo destino, `LeituraFalhou`: a pessoa recebe "Não conseguimos ler o print" e
-nenhum nível. Diferente da análise, aqui não há plano B com resultado: sem leitura, não há o que o
-motor analisar, e inventar um nível seria pior que não dar nenhum.
+Toda falha tem o mesmo destino, `LeituraFalhou`: a pessoa recebe "Não conseguimos ler uma conversa
+nesta imagem" e nenhum nível. Diferente da análise, aqui não há plano B com resultado: sem leitura,
+não há o que o motor analisar, e inventar um nível seria pior que não dar nenhum.
 """
 
 import asyncio
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, get_args
 
@@ -329,3 +329,27 @@ def textos_recebidos(marcada: str) -> str:
             atual.append(linha)
             blocos[-1] = "\n".join(atual).strip("\n")
     return "\n\n".join(bloco for bloco in blocos if bloco)
+
+
+def trocar_nas_mensagens(marcada: str, trocar: Callable[[str], str]) -> str:
+    """Aplica `trocar` ao texto de cada mensagem da `transcricao_marcada`, sem mexer nas marcas.
+
+    O que a pessoa escreveu junto fica como está: é dela, como o texto colado, e a tela o mostra
+    como ela escreveu (correção 9.1). Texto sem marca é trocado inteiro.
+    """
+    saida: list[str] = []
+    bloco: list[str] = []
+    do_print = True
+    for linha in [*marcada.splitlines(), None]:
+        if linha is not None and linha.strip() not in _TODAS_AS_MARCAS:
+            bloco.append(linha)
+            continue
+        # Fim de um bloco: uma marca nova ou o fim do texto.
+        if bloco:
+            texto = "\n".join(bloco)
+            saida.append(trocar(texto) if do_print else texto)
+            bloco = []
+        if linha is not None:
+            saida.append(linha)
+            do_print = linha.strip() != MARCA_TEXTO_DA_PESSOA
+    return "\n".join(saida)
