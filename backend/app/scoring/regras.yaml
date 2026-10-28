@@ -291,6 +291,16 @@ dominios:
   link_oficial: 'endereço oficial: {marca}'
   link_sem_sinal: 'nada estranho no endereço, mas isso não garante que o site é verdadeiro'
 
+  # A frase do fim do bloco de links (fatia 9). Com todos os links oficiais, a primeira; com
+  # qualquer outro, a segunda. Mandar "não abra antes de confirmar" um endereço oficial confundia
+  # quem lê; e nenhuma das duas diz que o site é seguro.
+  link_conselho_oficial: >-
+    Conferimos só o endereço, sem abrir o link. O endereço é oficial. Mesmo assim, prefira abrir
+    pelo aplicativo ou digitando o endereço você mesmo.
+  link_conselho: >-
+    Conferimos só o endereço, sem abrir o link. Não abra antes de confirmar com a empresa pelo
+    telefone ou aplicativo oficial.
+
   # Domínio registrável (eTLD+1) dos encurtadores mais comuns no Brasil.
   encurtadores:
     - bit.ly

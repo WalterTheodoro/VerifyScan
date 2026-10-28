@@ -212,6 +212,13 @@ class ConfiguracaoDominios(BaseModel):
     sinais: tuple[SinalLink, ...]
     link_oficial: ModeloDescricao = Field(description="No bloco de links, o domínio oficial.")
     link_sem_sinal: ModeloDescricao = Field(description="No bloco de links, o link sem sinal.")
+    # Frases fixas, sem placeholder: o fecho do bloco de links (fatia 9).
+    link_conselho_oficial: str = Field(
+        min_length=1, pattern=r"^[^{}]+$", description="Fecho do bloco com só links oficiais."
+    )
+    link_conselho: str = Field(
+        min_length=1, pattern=r"^[^{}]+$", description="Fecho do bloco com algum link não oficial."
+    )
     encurtadores: frozenset[str] = Field(min_length=1)
     tlds_abusados: frozenset[str] = Field(min_length=1)
     palavras_isca: tuple[str, ...] = Field(min_length=1)

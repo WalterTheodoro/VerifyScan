@@ -16,7 +16,8 @@ from app.analyzers.urls import URLExtractor
 from app.core.config import Settings, get_settings
 from app.core.seguranca import HasherSenha
 from app.formulator.analisador import AnalisadorIA
-from app.formulator.cliente import ClienteIA
+from app.formulator.cliente import ClienteAnthropic
+from app.ocr.leitura import LeitorDePrint
 from app.scoring.motor import ScoringEngine
 from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
@@ -97,15 +98,24 @@ def obter_repositorio_historico(request: Request) -> RepositorioHistorico:
 def obter_analisador_ia(request: Request) -> AnalisadorIA:
     """O cliente da Anthropic nasce no `lifespan` (`None` com a IA desligada). Os testes trocam
     esta dependência por um falso: o `lifespan` não roda neles (ADR-0020)."""
-    cliente: ClienteIA | None = request.app.state.cliente_ia
+    cliente: ClienteAnthropic | None = request.app.state.cliente_ia
     return AnalisadorIA(cliente, get_settings().ia_timeout_s)
+
+
+def obter_leitor_de_print(request: Request) -> LeitorDePrint:
+    """O mesmo cliente da análise lê o print (ADR-0023): IA desligada, leitor indisponível. Os
+    testes trocam esta dependência por um leitor com o `ClienteLeituraFalso`."""
+    cliente: ClienteAnthropic | None = request.app.state.cliente_ia
+    return LeitorDePrint(cliente, get_settings().ia_timeout_leitura_s)
 
 
 def obter_orquestrador(
     servico: ServicoAnalise = Depends(obter_servico_analise),
     analisador_ia: AnalisadorIA = Depends(obter_analisador_ia),
+    leitor: LeitorDePrint = Depends(obter_leitor_de_print),
     repositorio: RepositorioAnalises = Depends(obter_repositorio_analises),
     sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
+    settings: Settings = Depends(get_settings),
 ) -> OrquestradorAnalise:
     return OrquestradorAnalise(
         servico=servico,
@@ -113,7 +123,11 @@ def obter_orquestrador(
         respostas=carregar_respostas(),
         repositorio=repositorio,
         sessoes=sessoes,
-        timeout_s=get_settings().timeout_persistencia_s,
+        timeout_s=settings.timeout_persistencia_s,
+        leitor=leitor,
+        imagem_max_bytes=settings.imagem_max_bytes,
+        timeout_ia_imagem_s=settings.ia_timeout_analise_imagem_s,
+        maximo_de_caracteres=settings.texto_max_caracteres,
     )
 
 

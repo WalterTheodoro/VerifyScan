@@ -7,6 +7,10 @@ duas colunas ficam `NULL` — e então a análise é idêntica a uma anônima do
 A análise com IA (ADR-0020) acrescenta `nivel_motor`, `nivel_ia` e `ia_modelo`, que não carregam
 conteúdo e ficam em toda análise, e `explicacao_ia`, que segue a regra do `texto_input`.
 
+O print da conversa (ADR-0023, migração 0006) não tem coluna para a imagem — ela nunca é guardada.
+Para quem tem conta, a transcrição vai em `texto_input`, e o contexto da tela em `contexto_print`,
+com a regra da `explicacao_ia`.
+
 O que NÃO está aqui, de propósito:
 - `urls_analisadas`: a forma canônica preserva a query string (ADR-0009), que pode carregar
   e-mail ou token da vítima;
@@ -64,6 +68,14 @@ class Analise(Base):
         ),
         CheckConstraint("explicacao_ia IS NULL OR nivel_ia IS NOT NULL", name="explicacao_com_ia"),
         CheckConstraint("char_length(explicacao_ia::text) <= 4000", name="explicacao_ate_4000"),
+        # Print da conversa (migração 0006, ADR-0023).
+        CheckConstraint(
+            "contexto_print IS NULL OR usuario_id IS NOT NULL", name="contexto_print_so_com_dono"
+        ),
+        CheckConstraint(
+            "contexto_print IS NULL OR tipo_input = 'imagem'", name="contexto_print_so_de_imagem"
+        ),
+        CheckConstraint("char_length(contexto_print::text) <= 500", name="contexto_print_ate_500"),
         # A listagem filtra pelo dono e pela janela e ordena por data: um índice serve às duas
         # coisas, e com `usuario_id` na frente também cobre a FK no CASCADE (ADR-0015).
         Index("ix_analises_usuario_id_created_at", "usuario_id", "created_at"),
@@ -81,7 +93,8 @@ class Analise(Base):
         ForeignKey("usuarios.id", ondelete="CASCADE")
     )
     # A mensagem como chegou, só para quem está logado e só pela janela do histórico: a
-    # desvinculação zera esta coluna junto com `usuario_id` (ADR-0018). OCR nunca grava aqui.
+    # desvinculação zera esta coluna junto com `usuario_id` (ADR-0018). Num print, é a
+    # transcrição, com quem mandou cada mensagem (ADR-0023).
     texto_input: Mapped[str | None] = mapped_column(Text)
     # O nível do motor sozinho e o sugerido pela IA; `nivel_risco` é o maior dos dois (ADR-0020).
     nivel_motor: Mapped[str | None] = mapped_column(String(10))
@@ -91,6 +104,9 @@ class Analise(Base):
     # com dono, e a desvinculação zera junto com o texto (ADR-0020). `none_as_null`: sem ele, o
     # `None` do Python vira o JSON `null`, que não é o NULL do SQL — e os CHECKs recusariam.
     explicacao_ia: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    # O conjunto fechado que a leitura do print preenche (ADR-0023). Revela se a pessoa tem alguém
+    # salvo nos contatos: só com dono, e a desvinculação zera junto com o texto.
+    contexto_print: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
 
     # lazy="raise": acessar sem `selectinload` explícito levanta erro em vez de disparar I/O
     # escondido. É a regra 2 do ADR-0001 garantida pelo ORM, não pela memória.

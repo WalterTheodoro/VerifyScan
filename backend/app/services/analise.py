@@ -13,7 +13,8 @@ from app.analyzers.dominios import DomainAnalyzer
 from app.analyzers.normalizacao import normalizar
 from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor
-from app.schemas.analise import LinkDaMensagem, RespostaAnalise
+from app.ocr.leitura import textos_recebidos
+from app.schemas.analise import LinkDaMensagem, RespostaAnalise, TipoInput
 from app.scoring.motor import ScoringEngine
 from app.scoring.respostas import RespostasPadrao
 
@@ -58,12 +59,18 @@ class ServicoAnalise:
             explicacao_indisponivel=True,
         )
 
-    def links_do_texto(self, texto: str | None) -> list[LinkDaMensagem]:
+    def links_do_texto(
+        self, texto: str | None, tipo_input: TipoInput = "texto"
+    ) -> list[LinkDaMensagem]:
         """O bloco de links de uma mensagem já analisada: o histórico guarda o texto, não os
-        links (ADR-0009), e os recalcula daqui, com as regras de hoje. Sem texto, sem links."""
+        links (ADR-0009), e os recalcula daqui, com as regras de hoje. Sem texto, sem links.
+
+        Num print, só do que a pessoa recebeu, como na análise (ADR-0023): o link que ela mesma
+        mandou não é o da mensagem suspeita."""
         if texto is None:
             return []
-        return self._dominios.descrever(self._extrator.extrair(texto))
+        recebido = textos_recebidos(texto) if tipo_input == "imagem" else texto
+        return self._dominios.descrever(self._extrator.extrair(recebido))
 
     def _validar(self, texto: str) -> None:
         """Recusa, nunca trunca.

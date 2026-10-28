@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
     obter_analisador_ia,
+    obter_leitor_de_print,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
@@ -31,7 +32,7 @@ from app.services.repositorio_analises import RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
-from tests.conftest import ClienteIAFalso, saida_da_ia, settings_de_teste
+from tests.conftest import ClienteIAFalso, leitura_desligada, saida_da_ia, settings_de_teste
 from tests.test_api_analise_com_ia import PENDENCIA_DOS_CORREIOS
 
 pytestmark = pytest.mark.integracao
@@ -223,6 +224,7 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
     app.dependency_overrides[obter_analisador_ia] = lambda: AnalisadorIA(
         ClienteIAFalso(saida_da_ia(nivel_sugerido="ALTO")), timeout_s=15
     )
+    app.dependency_overrides[obter_leitor_de_print] = leitura_desligada
     return app
 
 

@@ -11,7 +11,7 @@ fixa deixa o nível final no maior dos dois — a IA pode subir o nível, nunca 
 TCC de Engenharia de Software — Católica SC. Especificação em `docs/RFC-VerifyScan-v1.1.pdf`,
 plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 
-> **Estado atual: fatia 6 (análise com o Claude).** Você cola uma mensagem e recebe o nível de
+> **Estado atual: fatia 9 (análise de print).** Você cola uma mensagem e recebe o nível de
 > risco, o que ela parece ser, o que fazer e os sinais encontrados. Depois das regras, uma chamada
 > ao Claude Haiku 5.5 lê a mensagem e pode subir o nível, nunca baixar; sem a IA, a resposta é a das
 > regras, com a orientação fixa do nível (ADR-0020). Sem conta, a análise fica no banco sem o texto.
@@ -19,7 +19,11 @@ plano de execução em `docs/plano-de-execucao.md`, decisões em `docs/adr/`.
 > (ADR-0018), e em "Minha conta" dá para apagar análises, trocar a senha e excluir a conta
 > (ADR-0019). Desde a fatia 8, os links também pontuam, só pelo texto do endereço: o sistema
 > **nunca abre o link**, e a tela mostra só o domínio e o que se achou dele, nunca o link inteiro
-> (ADR-0022). Ainda sem OCR e sem consulta a APIs externas de reputação (Fases 4 e 5).
+> (ADR-0022). Desde a fatia 9, dá para enviar um **print** da conversa (botão, Ctrl+V ou arrastar):
+> o Claude lê o texto e o que a tela mostra (contato salvo, aviso do aplicativo, primeira
+> mensagem), e a transcrição passa pelo mesmo caminho do texto. A imagem sai do navegador reduzida
+> e sem metadados e nunca é guardada; com conta, fica só o texto lido (ADR-0023). Ainda sem
+> consulta a APIs externas de reputação (Fase 4).
 
 ---
 
@@ -35,7 +39,6 @@ O ambiente de desenvolvimento é Windows e todos os comandos abaixo são de Powe
 | Python | 3.12 | o `uv` baixa sozinho; não precisa instalar |
 | uv | 0.5+ | `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 \| iex"` |
 | Node.js | 22 LTS ou superior | `winget install OpenJS.NodeJS.LTS` |
-| Tesseract OCR | 5.x, com idioma `por` | ver a seção abaixo |
 
 Depois de instalar qualquer coisa por `winget`, **feche e reabra o PowerShell** — o `PATH` só é
 relido em terminal novo.
@@ -49,26 +52,8 @@ uv --version
 node --version
 ```
 
-### Tesseract com o pacote de idioma português
-
-O Tesseract **não vem pelo `pip`** — o `pytesseract` é só um invólucro que chama o binário. Ele só
-é usado a partir da Fase 5, mas instale agora: é o passo que mais trava quem tenta rodar o projeto.
-
-1. Baixe o instalador do build do UB Mannheim:
-   <https://github.com/UB-Mannheim/tesseract/wiki> (arquivo `tesseract-ocr-w64-setup-*.exe`).
-2. Durante a instalação, abra **Additional language data** e **marque `Portuguese`**. Se pular esta
-   tela, o OCR instala só com inglês e o resultado em mensagens em português fica inutilizável.
-3. Anote o caminho de instalação — o padrão é `C:\Program Files\Tesseract-OCR`.
-4. Confirme que o idioma foi instalado (a lista precisa conter `por`):
-
-   ```powershell
-   & "C:\Program Files\Tesseract-OCR\tesseract.exe" --list-langs
-   ```
-
-5. Aponte `TESSERACT_CMD` no `.env` para o executável. O `pytesseract` não descobre o caminho
-   sozinho no Windows.
-
-Se esqueceu de marcar o idioma, rode o instalador de novo e escolha *Modify*.
+O print é lido pelo Claude, não por OCR local (ADR-0023): não há Tesseract para instalar. As
+ferramentas que desenham prints sintéticos usam o Microsoft Edge que já vem no Windows.
 
 ---
 
@@ -245,6 +230,24 @@ Roda as 26 mensagens sintéticas de `tools/amostras_ia.yaml` contra a Anthropic,
 Custa centavos de dólar e **não substitui o corpus** da Fase 2. Os testes (`pytest`) nunca chamam
 a API: usam um cliente falso.
 
+### Prints sintéticos (fora do CI)
+
+```powershell
+Set-Location backend
+uv run python -m tools.gerar_prints                    # desenha os 45 prints da calibração
+uv run python -m tools.avaliar_prints                  # mede a leitura e a análise (API real)
+uv run python -m tools.gerar_prints --divisao teste    # a medida limpa: só uma vez, no fim
+uv run python -m tools.avaliar_prints --divisao teste
+```
+
+O `gerar_prints` desenha conversas **genéricas** (nada que imite a marca de um aplicativo) a partir
+de casos do corpus, com variações de contexto. Os PNGs vão para `corpus/prints-gerados/`, que o git
+ignora; só a lista de ids e variações (`tools/prints_sinteticos.yaml`) é versionada. O
+`avaliar_prints` mede a taxa de erro por caractere da transcrição, o acerto de cada campo do
+contexto, o nível do print contra o do texto do mesmo caso, o plano B dos borrados, a latência e o
+custo, e escreve o relatório em `docs/avaliacoes/`. Custa uns 6 centavos de dólar por rodada. Os
+prints são limpos demais: a taxa de erro medida é otimista (ADR-0023).
+
 ### Infraestrutura
 
 ```powershell
@@ -266,7 +269,7 @@ VerifyScan/
 │  │  ├─ api/          rotas finas: validam, chamam um service, devolvem schema
 │  │  ├─ services/     a regra fica aqui
 │  │  ├─ analyzers/    TextAnalyzer, URLExtractor, DomainAnalyzer, EmailAnalyzer (Fases 1, 3, 6)
-│  │  ├─ ocr/          OCRProcessor (Fase 5)
+│  │  ├─ ocr/          o print: validação e reencode com Pillow, e a leitura pelo Claude (Fase 5)
 │  │  ├─ reputation/   URLChecker e provedores externos (Fase 4)
 │  │  ├─ scoring/      ScoringEngine, regras.yaml, respostas.yaml (plano B) e a combinação
 │  │  ├─ formulator/   análise com o Claude: cliente, prompt, saída e limpeza (ADR-0020)
@@ -274,7 +277,8 @@ VerifyScan/
 │  │  ├─ schemas/      Pydantic — o contrato da API
 │  │  └─ core/         config, banco, cache, hash de senha, timeouts
 │  ├─ alembic/         migrações — o esquema só muda por elas
-│  ├─ tools/           scripts: avaliar_corpus e sortear_divisao (Fase 2), testar_ia e amostras_ia.yaml
+│  ├─ tools/           scripts: avaliar_corpus e sortear_divisao (Fase 2), testar_ia e amostras_ia.yaml,
+│  │                   gerar_prints e avaliar_prints (Fase 5)
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
 ├─ corpus/             176 casos sintéticos rotulados, divisão fixa calibração/teste (Fase 2)
@@ -326,6 +330,13 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
      de cada análise com IA. O texto da mensagem e a resposta da IA nunca vão para o log.
 
    A migração `0005` roda no build, como as outras.
+8. **Print da conversa (ADR-0023).** Usa a mesma chave e o mesmo `IA_ATIVADA`: com a IA desligada,
+   a análise de print responde 503, e a de texto segue normal. Opcionais, com estes defaults (o
+   backend não sobe com valor maior que o máximo): `IA_TIMEOUT_LEITURA_S=10` (máximo 10),
+   `IA_TIMEOUT_ANALISE_IMAGEM_S=10` (máximo 10), `IA_MAX_TOKENS_LEITURA=2500` e
+   `IMAGEM_MAX_BYTES=5242880` (máximo 7500000). Nos logs vão só bytes, dimensões, latência, tokens
+   e o motivo do plano B: nunca a imagem, a transcrição nem o contexto. A migração `0006` roda no
+   build.
 8. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;

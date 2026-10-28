@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { AvisosDoEnvio } from "../../_componentes/avisos-do-envio";
-import { MensagemColada, Resultado } from "../../_componentes/resultado";
+import { MensagemColada, PrintLido, Resultado } from "../../_componentes/resultado";
 import {
   apagarAnalise,
   apagarHistorico,
@@ -13,6 +13,7 @@ import {
   type AnaliseDoHistorico,
   type Historico,
 } from "../../_lib/historico";
+import { partesDaTranscricao } from "../../_lib/print";
 import { useCarga } from "../../_lib/use-carga";
 import { AvisoEntrar } from "../aviso-entrar";
 
@@ -181,9 +182,20 @@ function ItemDoHistorico({
         <time dateTime={analise.created_at}>{quando}</time>
       </p>
 
+      {/* Do print, só o texto lido e o contexto: a imagem nunca foi guardada (ADR-0023). */}
+      {analise.tipo_input === "imagem" && (
+        <p className="font-semibold">Esta análise veio de um print.</p>
+      )}
       {analise.texto !== null ? (
         <div className="flex flex-col gap-junto rounded-2xl border-2 border-lavanda p-5">
-          <MensagemColada texto={analise.texto} />
+          {analise.tipo_input === "imagem" ? (
+            <PrintLido
+              partes={partesDaTranscricao(analise.texto)}
+              contexto={analise.contexto_print ?? null}
+            />
+          ) : (
+            <MensagemColada texto={analise.texto} />
+          )}
         </div>
       ) : (
         <p>O texto desta análise não foi guardado.</p>

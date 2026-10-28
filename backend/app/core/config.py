@@ -88,6 +88,18 @@ class Settings(BaseSettings):
     # é todo da resposta.
     ia_max_tokens: int = Field(default=700, gt=0, le=2000)
 
+    # Print da conversa (fatia 9, ADR-0023). A leitura roda em série, antes de tudo, e ocupa o
+    # lugar do OCR na invariante 8. Com a análise em 10 s no caminho de imagem, o desenho completo
+    # fica em ≈ 27 s (leitura 10 + reputação 5 + análise 10 + registro 2): por isso os dois tetos
+    # só podem baixar. A análise de texto continua com `ia_timeout_s`.
+    ia_timeout_leitura_s: float = Field(default=10, gt=0, le=10)
+    ia_timeout_analise_imagem_s: float = Field(default=10, gt=0, le=10)
+    # A transcrição pode ter alguns milhares de caracteres; o JSON do contexto é curto.
+    ia_max_tokens_leitura: int = Field(default=2500, gt=0, le=4000)
+    # Teto da imagem recebida, em bytes. O limite da Anthropic é 10 MB em base64 (≈ 7,5 MB de
+    # imagem); o frontend manda JPEG nas dimensões da API, em geral bem abaixo de 2 MB.
+    imagem_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0, le=7_500_000)
+
     @field_validator("anthropic_api_key")
     @classmethod
     def _chave_obrigatoria_com_ia_ligada(

@@ -3,6 +3,7 @@
 
 import type { NivelRisco } from "../_componentes/nivel-risco";
 import type { ExplicacaoIA, LinkDaMensagem, Orientacao } from "../_componentes/resultado";
+import type { ContextoDoPrint } from "./print";
 import { lerDetail, MENSAGEM_SEM_SERVIDOR } from "./conta";
 import { enviarUmaVez, lerComRepeticao, type OpcoesDeEspera } from "./servidor";
 
@@ -23,6 +24,11 @@ export type AnaliseDoHistorico = {
   explicacao_ia?: ExplicacaoIA | null;
   /** O bloco de links (fatia 8), recalculado do texto pelo backend; vazio sem texto. */
   links?: LinkDaMensagem[];
+  /** Fatia 9 (ADR-0023): `imagem` quando veio de um print. Aí `texto` é a transcrição, com quem
+   *  mandou cada mensagem entre colchetes, e `contexto_print` o que a tela mostrava. Opcionais
+   *  para um backend anterior. */
+  tipo_input?: "texto" | "imagem";
+  contexto_print?: ContextoDoPrint | null;
 };
 
 export type Historico = { dias: number; analises: AnaliseDoHistorico[] };

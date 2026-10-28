@@ -27,7 +27,7 @@ Decisões: `docs/adr/`.
 | ORM / migrações | SQLAlchemy 2.0 (async) + Alembic |
 | Banco | PostgreSQL 16 |
 | Cache | Redis 7 (TTL 24h) |
-| OCR | Tesseract + `pytesseract` (idioma `por`) |
+| Leitura de print | Claude com visão (mesmo modelo da IA) + Pillow em memória (ADR-0023; o Tesseract saiu) |
 | LLM | Anthropic API — `claude-haiku-5-5`, SDK `anthropic`, saída estruturada (ADR-0020) |
 | Testes | pytest + pytest-asyncio + httpx.AsyncClient |
 | Lint/format | ruff (lint + format) + mypy no backend |
@@ -69,6 +69,11 @@ uv run python -m tools.sortear_divisao                           # divide só os
 # análise com IA contra a API real, 26 amostras sintéticas (fora do CI; usa a chave do .env)
 uv run python -m tools.testar_ia
 
+# prints sintéticos (ADR-0023): PNGs em corpus/prints-gerados/ (ignorada pelo git), via Edge
+uv run python -m tools.gerar_prints                    # calibração (p01…p45)
+uv run python -m tools.avaliar_prints                  # leitura + análise, API real, fora do CI
+uv run python -m tools.gerar_prints --divisao teste    # a medida limpa: gerar e medir UMA vez
+
 # frontend
 cd frontend
 npm install
@@ -86,10 +91,12 @@ verifyscan/
 │  ├─ RFC-VerifyScan-v1.1.pdf
 │  ├─ plano-de-execucao.md
 │  ├─ diario.md            # log de sessões — vira capítulo da monografia
-│  ├─ avaliacoes/          # relatórios do avaliar_corpus (AAAA-MM-DD-<modo>.md), nunca sobrescritos
+│  ├─ avaliacoes/          # relatórios do avaliar_corpus e do avaliar_prints (AAAA-MM-DD-<modo>.md),
+│  │                       #   nunca sobrescritos
 │  └─ adr/                 # ADR-000N-titulo.md
 ├─ corpus/
 │  ├─ casos/               # NNNN-slug.yaml: sintético, rotulado, anonimizado, divisão fixa
+│  ├─ prints-gerados/      # PNGs do gerar_prints — ignorada pelo git, nunca versionar
 │  ├─ para-o-walter.md     # modelo dos casos escritos à mão (autor: walter)
 │  └─ README.md            # proveniência, formato, placeholders e critério de rotulagem
 ├─ backend/
@@ -98,7 +105,8 @@ verifyscan/
 │     ├─ services/         # a regra de negócio mora aqui — é o destino do que api/ não pode ter
 │     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer (léxico, PSL embutida,
 │     │                    #   ADR-0022), EmailAnalyzer
-│     ├─ ocr/              # OCRProcessor
+│     ├─ ocr/              # o print: imagem.py (bytes iniciais, Pillow, sem metadados) e
+│     │                    #   leitura.py (LeitorDePrint: Claude com visão, conjunto fechado; ADR-0023)
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
 │     ├─ scoring/          # ScoringEngine, regras.yaml, respostas.yaml (plano B), combinar()
 │     ├─ formulator/       # análise com IA: cliente, prompt, saída e limpeza (ADR-0020)
@@ -107,15 +115,18 @@ verifyscan/
 │     └─ core/             # config, segurança (hash Argon2id), cache, logs, timeouts
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
 │  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
-│  │                       #   IA + explicação só com dono); esquema só por aqui
+│  │                       #   IA + explicação só com dono, 0006 tipo imagem + contexto do print só
+│  │                       #   com dono); esquema só por aqui
 │  ├─ tools/               # avaliar_corpus + linha_de_base_motor.json (gate do CI, só calibração),
-│  │                       #   sortear_divisao, pii, testar_ia + amostras_ia.yaml
+│  │                       #   sortear_divisao, pii, testar_ia + amostras_ia.yaml, gerar_prints +
+│  │                       #   avaliar_prints + prints_sinteticos.yaml (só ids e variações)
 │  └─ tests/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
    ├─ next.config.ts       # proxy /api/* e /health → API_URL_INTERNA (ADR-0014)
    └─ app/
-      ├─ page.tsx          # análise e resultado na mesma página (ADR-0010)
+      ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
+      │                    #   (botão, Ctrl+V, soltar; ADR-0023)
       ├─ entrar/ cadastro/ # telas de conta (página de servidor + formulario.tsx cliente)
       ├─ conta/            # "Minha conta": layout com menu + historico/ dados/ privacidade/
       │                    #   (rotas aninhadas, ADR-0016)
@@ -126,9 +137,11 @@ verifyscan/
       │                    #   nivel-risco (palavra + ícone), aviso-privacidade,
       │                    #   resultado (placa do resultado: home e histórico, ADR-0018; com IA,
       │                    #   tipo, sinais e passos dela, ADR-0020; links só pelo domínio,
-      │                    #   ADR-0022)
+      │                    #   ADR-0022; "O que lemos no print", ADR-0023)
       └─ _lib/             # chamadas ao backend (conta.ts, historico.ts, gestao-conta.ts), aviso de
-                           #   conta excluída (sessionStorage) e os hooks de envio e carga
+                           #   conta excluída (sessionStorage), os hooks de envio e carga, imagem.ts
+                           #   (canvas, tamanho da Anthropic, sem EXIF/XMP) e print.ts; testes em
+                           #   node:test (*.test.ts, sem imports, type stripping)
 ```
 
 ## 5. Invariantes — nunca violar
@@ -144,11 +157,16 @@ quebrar uma delas, **pare e pergunte**.
    afirmação positiva de segurança e sem item que fale do motor, do algoritmo, dos fatores ou das
    pistas). As descrições dos fatores do motor seguem sendo só templates do `regras.yaml`, sem
    trecho da mensagem; as de link usam só `{marca}`, nunca o domínio (ADR-0022). Os links chegam
-   à IA como pista do que se achou deles, nunca como endereço. Existe teste para cada parte.
+   à IA como pista do que se achou deles, nunca como endereço. No print, o texto da imagem é
+   dado nas duas chamadas (leitura e análise); a leitura não classifica risco; o contexto do print
+   pode subir o nível ou mudar o conselho, nunca baixar; e o motor analisa só o que a pessoa
+   recebeu (ADR-0023). Existe teste para cada parte.
 2. **Nenhuma imagem é persistida além do ciclo de vida da requisição** (RNF06): nunca em banco,
-   nunca em diretório da aplicação, nunca em log. O teste verifica que (a) nada foi escrito na
-   árvore do projeto e (b) o arquivo temporário não sobrevive ao request — redação que mantém
-   `pytesseract` viável (ADR-0006).
+   arquivo, cache nem log — nem temporário: o print chega em JSON (base64), vive só em memória e o
+   Pillow o reencoda sem metadados (ADR-0023; multipart gravaria em disco acima de 1 MB). O teste
+   verifica que nada foi escrito na árvore do projeto, que nenhum arquivo foi aberto para escrita e
+   que nenhum temporário foi criado. Do print, fica só a transcrição e o contexto, com dono, pelas
+   regras do texto (0004) e da explicação da IA (0005).
 3. **O sistema funciona sem a LLM** (RNF08). Desligada (`IA_ATIVADA=false`), fora do ar, acima de
    15 s, recusando, cortada ou com resposta inválida: a resposta sai só do motor, com o plano B do
    nível (`scoring/respostas.yaml`) e `explicacao_indisponivel: true`. A análise nunca falha por
@@ -166,12 +184,13 @@ quebrar uma delas, **pare e pergunte**.
    nem recalibração. Falha ao registrar não derruba a análise: a transação inteira é descartada,
    vira WARNING sem conteúdo da mensagem e a resposta sai igual (ADR-0012).
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
-8. **Orçamento de tempo** (KPI < 30s): OCR ≤ 5s **em série** (o texto extraído é a entrada das
-   heurísticas) · depois, em paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa
-   ≤ 5s · por fim LLM ≤ 15 s, uma chamada, sem nova tentativa (ADR-0020) · registro ≤ 2 s, em série,
-   por último (ADR-0012). Pior caso ≈ 27 s (hoje, só texto, ≈ 17 s); o proxy do Next corta em 90 s
-   (ADR-0014). A folga do KPI no desenho completo é de 3 s: com OCR e reputação, o teto da IA baixa
-   para análise com imagem. Todo I/O externo tem timeout explícito (ADR-0002).
+8. **Orçamento de tempo** (KPI < 30s): leitura do print ≤ 10 s **em série** (a transcrição é a
+   entrada das heurísticas; ocupa o lugar do OCR) · depois, em paralelo: heurísticas locais ≤ 300ms
+   · RDAP ≤ 3s · reputação externa ≤ 5s · por fim LLM, uma chamada, sem nova tentativa: ≤ 15 s no
+   texto e ≤ 10 s no print (ADR-0020, ADR-0023) · registro ≤ 2 s, em série, por último (ADR-0012).
+   Pior caso: texto ≈ 17 s hoje; print ≈ 22,5 s hoje e ≈ 27,2 s no desenho completo. O proxy do
+   Next corta em 90 s (ADR-0014). Os tetos só podem baixar (o `Settings` recusa valor maior). Todo
+   I/O externo tem timeout explícito (ADR-0002).
 
 ## 6. Convenções de código
 

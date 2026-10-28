@@ -29,6 +29,10 @@ dependencies = [
     # erraria todo `.com.br`; o tldextract baixa a lista por padrão e não aceita TLD desconhecido.
     # Versão fixa, publicada há pelo menos 14 dias quando foi adotada (regra do ADR-0022).
     "publicsuffixlist==1.1.0.20261010",
+    # Print da conversa (fatia 9, ADR-0023): conferir, decodificar e reencodar a imagem em memória,
+    # com teto de pixels contra bomba de descompressão. A stdlib não lê PNG, JPEG nem WebP.
+    # 12.3.0: a 13.0.0 tinha 11 dias na adoção (regra dos 14 dias do ADR-0022).
+    "pillow==12.3.0",
 ]
 
 [dependency-groups]
@@ -39,6 +43,9 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
     "types-pyyaml>=6.0.12.20260815",
+    # Só para `tools/gerar_prints.py`: desenha prints sintéticos em HTML e fotografa em PNG, com o
+    # Edge já instalado no Windows (sem baixar navegador). Nunca roda na aplicação nem no CI.
+    "playwright==1.63.0",
 ]
 
 [build-system]
@@ -81,6 +88,8 @@ select = [
 "app/services/*.py" = ["N818"]
 # Pelo mesmo motivo: `SaidaRecusada`, `SaidaCortada` são os motivos do plano B da IA (ADR-0020).
 "app/formulator/*.py" = ["N818"]
+# E os motivos da recusa do print e da leitura (`ImagemInvalida`, `LeituraFalhou`, ADR-0023).
+"app/ocr/*.py" = ["N818"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mypy
