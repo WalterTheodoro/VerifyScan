@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test app/_lib/servidor.test.ts app/_lib/imagem.test.ts app/_lib/print.test.ts"
+    "test": "node --test app/_lib/servidor.test.ts app/_lib/imagem.test.ts app/_lib/print.test.ts app/_lib/falha-da-analise.test.ts app/_lib/tela-da-analise.test.ts"
   },
   "dependencies": {
     "next": "16.3.3",

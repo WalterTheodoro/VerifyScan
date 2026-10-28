@@ -21,9 +21,15 @@ const LADO_DO_BLOCO = 28;
  *  passe do backend. */
 export const QUALIDADE_JPEG = 0.9;
 
-/** Teto do arquivo escolhido, antes de reduzir: protege a memória do celular. O que sai daqui
- *  fica bem abaixo dos 5 MB do backend. */
-export const ARQUIVO_MAX_BYTES = 30 * 1024 * 1024;
+/** O limite do backend (`IMAGEM_MAX_BYTES`, app/core/config.py), conferido duas vezes: no arquivo
+ *  escolhido e no JPEG que sai daqui. Print de celular fica bem abaixo; acima, é foto ou imagem
+ *  ampliada, e a pessoa sabe o que fazer com o número na frase (correção 9.1). */
+export const ARQUIVO_MAX_BYTES = 5 * 1024 * 1024;
+const GRANDE_DEMAIS = "Este arquivo é grande demais. Envie um print de até 5 MB.";
+
+/** Abaixo disto no lado menor, a documentação da Anthropic (Vision, Limitations) avisa que o
+ *  modelo erra mais: "very small images under 200 pixels". Um print de conversa tem mais. */
+export const LADO_MIN = 200;
 
 export class ImagemRecusada extends Error {}
 
@@ -194,7 +200,7 @@ export async function prepararImagem(arquivo: File): Promise<ImagemPreparada> {
     throw new ImagemRecusada("Envie o print como imagem PNG, JPEG ou WebP.");
   }
   if (arquivo.size > ARQUIVO_MAX_BYTES) {
-    throw new ImagemRecusada("Esta imagem é grande demais. Envie um print da tela, sem ampliar.");
+    throw new ImagemRecusada(GRANDE_DEMAIS);
   }
   let bitmap: ImageBitmap;
   try {
@@ -204,6 +210,12 @@ export async function prepararImagem(arquivo: File): Promise<ImagemPreparada> {
     throw new ImagemRecusada(
       "Não conseguimos abrir esta imagem. Tire o print de novo, ou copie e cole o texto da " +
         "mensagem.",
+    );
+  }
+  if (Math.min(bitmap.width, bitmap.height) < LADO_MIN) {
+    bitmap.close();
+    throw new ImagemRecusada(
+      "Esta imagem é pequena demais para ler. Envie o print inteiro da conversa.",
     );
   }
   const [largura, altura] = tamanhoAlvo(bitmap.width, bitmap.height);
@@ -227,6 +239,10 @@ export async function prepararImagem(arquivo: File): Promise<ImagemPreparada> {
     throw new ImagemRecusada("Seu navegador não conseguiu preparar a imagem. Tente outro print.");
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
+  // Imagem cheia de detalhe pode sair do canvas maior que o limite: não vale a pena enviar.
+  if (bytes.length > ARQUIVO_MAX_BYTES) {
+    throw new ImagemRecusada(GRANDE_DEMAIS);
+  }
   if (temMetadados(bytes)) {
     throw new ImagemRecusada(
       "Não conseguimos tirar os dados escondidos desta imagem, então ela não foi enviada. " +

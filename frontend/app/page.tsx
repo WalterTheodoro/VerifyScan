@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { AvisoAcordando } from "./_componentes/avisos-do-envio";
 import { Cabecalho } from "./_componentes/cabecalho";
@@ -16,8 +16,8 @@ import {
   type LinkDaMensagem,
   type Orientacao,
 } from "./_componentes/resultado";
-import { lerDetail } from "./_lib/conta";
 import { consumirContaExcluida } from "./_lib/conta-excluida";
+import { fraseDaFalha } from "./_lib/falha-da-analise";
 import {
   ImagemRecusada,
   paraBase64,
@@ -27,6 +27,12 @@ import {
 } from "./_lib/imagem";
 import type { LeituraDoPrint } from "./_lib/print";
 import { enviarUmaVez } from "./_lib/servidor";
+import {
+  proximaTela,
+  TELA_INICIAL,
+  type Estado as EstadoDaTela,
+  type Tela,
+} from "./_lib/tela-da-analise";
 
 // Tela de análise e tela de resultado (Telas 1 e 3 do RFC §4.2), numa página só.
 //
@@ -70,21 +76,15 @@ type RespostaAnalise = {
 // que falta pouco, para ninguém achar que travou.
 const AVISO_DE_DEMORA_MS = 5000;
 
-const NAO_E_IMAGEM = "Envie o print como imagem PNG, JPEG ou WebP.";
-
 /** O arraste traz arquivo? Texto arrastado para o campo continua funcionando como sempre. */
 function trazArquivo(evento: DragEvent) {
   return evento.dataTransfer?.types.includes("Files") ?? false;
 }
 
-type Estado =
-  | { situacao: "pronta" }
-  | { situacao: "analisando"; doPrint: boolean }
-  | { situacao: "concluida"; resultado: RespostaAnalise }
-  | { situacao: "falhou"; mensagem: string };
+type Estado = EstadoDaTela<RespostaAnalise>;
 
 /** Manda o texto, ou o print com o texto junto, para a API e traduz qualquer falha em uma frase
- *  que o usuário entenda.
+ *  que o usuário entenda (`fraseDaFalha`).
  *
  *  Sai uma vez só: repetir gravaria a análise duas vezes. Se o backend estiver dormindo, espera
  *  por ele antes, e `aoEsperar` liga o aviso de "servidor acordando" (ADR-0017).
@@ -112,29 +112,10 @@ async function analisar(
     { aoEsperar },
   );
 
-  if (!resposta.doBackend) {
-    return {
-      situacao: "falhou",
-      mensagem:
-        "Não conseguimos falar com o serviço de análise. Verifique sua conexão e tente de novo.",
-    };
-  }
-
-  if (resposta.status >= 200 && resposta.status < 300) {
+  if (resposta.doBackend && resposta.status >= 200 && resposta.status < 300) {
     return { situacao: "concluida", resultado: resposta.corpo as RespostaAnalise };
   }
-
-  // A API devolve `detail` como string quando a recusa é uma regra de negócio — e essa
-  // string já é a mensagem escrita para o usuário. Nos outros casos o formato é do FastAPI
-  // e não serve para exibir.
-  const detalhe = lerDetail(resposta.corpo);
-  return {
-    situacao: "falhou",
-    mensagem:
-      typeof detalhe === "string"
-        ? detalhe
-        : "Não conseguimos analisar esta mensagem agora. Tente de novo em alguns instantes.",
-  };
+  return { situacao: "falhou", mensagem: fraseDaFalha(resposta) };
 }
 
 /** Rola até o elemento e põe o foco nele. Rola sem animação para quem pediu menos movimento. */
@@ -150,7 +131,13 @@ function levarAte(elemento: HTMLElement | null) {
 
 export default function PaginaAnalise() {
   const [texto, setTexto] = useState("");
-  const [estado, setEstado] = useState<Estado>({ situacao: "pronta" });
+  // O print, o aviso do preparo e o estado do envio: quando o erro anterior sai da tela é decidido
+  // no reducer (`_lib/tela-da-analise.ts`), que tem teste.
+  const [tela, despachar] = useReducer(
+    proximaTela<RespostaAnalise, ImagemPreparada>,
+    TELA_INICIAL as Tela<RespostaAnalise, ImagemPreparada>,
+  );
+  const { estado, imagem, preparando, aviso: avisoImagem } = tela;
   // Só durante a espera pelo backend dormindo, não durante a análise: com o backend acordado ela
   // pode levar ~17 s (ADR-0002), e "o servidor está acordando" seria falso.
   const [acordando, setAcordando] = useState(false);
@@ -163,44 +150,52 @@ export default function PaginaAnalise() {
   const [logado, setLogado] = useState(false);
   // "Sua conta foi excluída.", vindo de Meus dados por sessionStorage, nunca pela URL (ADR-0019).
   const [contaExcluida, setContaExcluida] = useState(false);
-  // O print escolhido, já reduzido e sem metadados. Um por análise: outro substitui este.
-  const [imagem, setImagem] = useState<ImagemPreparada | null>(null);
-  const [preparando, setPreparando] = useState(false);
-  // Por que a imagem não entrou ("envie PNG, JPEG ou WebP"): some ao escolher outra.
-  const [avisoImagem, setAvisoImagem] = useState<string | null>(null);
+  // Conta os arquivos escolhidos: o preparo de um arquivo antigo que termina depois do novo é
+  // descartado, e não substitui o novo nem traz de volta um erro já resolvido.
+  const vezDoArquivo = useRef(0);
   const tituloDoResultado = useRef<HTMLHeadingElement>(null);
   const campoMensagem = useRef<HTMLTextAreaElement>(null);
   const botaoRecomecar = useRef<HTMLButtonElement>(null);
   const botaoPrint = useRef<HTMLButtonElement>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
 
-  /** Prepara o arquivo escolhido, colado ou solto. Só usa setters e funções do módulo: estável,
-   *  e por isso pode entrar no efeito do arraste. */
+  /** Prepara o arquivo escolhido, colado ou solto. Só usa `despachar`, a ref e funções do módulo:
+   *  estável, e por isso pode entrar no efeito do arraste. O tipo errado também é recusado por
+   *  `prepararImagem`, com a mesma frase de antes. */
   const escolherArquivo = useCallback((arquivo: File) => {
-    setAvisoImagem(null);
-    if (!TIPOS_ACEITOS.includes(arquivo.type)) {
-      setAvisoImagem(NAO_E_IMAGEM);
+    const vez = ++vezDoArquivo.current;
+    despachar({ tipo: "escolheu" });
+    prepararImagem(arquivo).then(
+      (preparada) => {
+        if (vez !== vezDoArquivo.current) {
+          URL.revokeObjectURL(preparada.miniatura);
+          return;
+        }
+        despachar({ tipo: "preparou", imagem: preparada });
+      },
+      (erro: unknown) => {
+        if (vez !== vezDoArquivo.current) {
+          return;
+        }
+        despachar({
+          tipo: "nao-preparou",
+          mensagem:
+            erro instanceof ImagemRecusada
+              ? erro.message
+              : "Não conseguimos preparar esta imagem. Tente outro print.",
+        });
+      },
+    );
+  }, []);
+
+  // A miniatura é um `blob:` desta aba: sai da memória quando o print é trocado, removido ou a
+  // página fecha.
+  useEffect(() => {
+    if (!imagem) {
       return;
     }
-    setPreparando(true);
-    prepararImagem(arquivo)
-      .then((preparada) =>
-        setImagem((anterior) => {
-          if (anterior) {
-            URL.revokeObjectURL(anterior.miniatura);
-          }
-          return preparada;
-        }),
-      )
-      .catch((erro: unknown) =>
-        setAvisoImagem(
-          erro instanceof ImagemRecusada
-            ? erro.message
-            : "Não conseguimos preparar esta imagem. Tente outro print.",
-        ),
-      )
-      .finally(() => setPreparando(false));
-  }, []);
+    return () => URL.revokeObjectURL(imagem.miniatura);
+  }, [imagem]);
 
   useEffect(() => {
     // setState só no callback, nunca no corpo do efeito (react-hooks/set-state-in-effect).
@@ -257,19 +252,15 @@ export default function PaginaAnalise() {
   }
 
   function removerImagem() {
-    if (imagem) {
-      URL.revokeObjectURL(imagem.miniatura);
-    }
-    setImagem(null);
-    setAvisoImagem(null);
+    vezDoArquivo.current++;
+    despachar({ tipo: "removeu" });
     // O botão "Remover" some junto com a miniatura; o foco volta para "Enviar print".
     requestAnimationFrame(() => botaoPrint.current?.focus());
   }
 
   function aoEnviar(evento: React.FormEvent) {
     evento.preventDefault();
-    setAvisoImagem(null);
-    setEstado({ situacao: "analisando", doPrint: imagem !== null });
+    despachar({ tipo: "enviou" });
     setAcordando(false);
     setDemorando(false);
     // O timer nasce no envio, não num efeito: é consequência do clique (como em use-envio-conta).
@@ -278,7 +269,7 @@ export default function PaginaAnalise() {
       window.clearTimeout(timer);
       setAcordando(false);
       setDemorando(false);
-      setEstado(proximo);
+      despachar({ tipo: "respondeu", estado: proximo });
       // Leva o foco para o resultado: sem isso, quem usa teclado ou leitor de tela continua
       // no botão e não percebe que a resposta chegou.
       requestAnimationFrame(() => tituloDoResultado.current?.focus());
@@ -287,12 +278,8 @@ export default function PaginaAnalise() {
 
   function aoRecomecar() {
     setTexto("");
-    if (imagem) {
-      URL.revokeObjectURL(imagem.miniatura);
-    }
-    setImagem(null);
-    setAvisoImagem(null);
-    setEstado({ situacao: "pronta" });
+    vezDoArquivo.current++;
+    despachar({ tipo: "recomecou" });
     setAnimarEntrada(false);
     // O botão clicado some junto com o resultado; o foco volta para o campo vazio.
     requestAnimationFrame(() => campoMensagem.current?.focus());
@@ -352,7 +339,8 @@ export default function PaginaAnalise() {
                     {estado.resultado.leitura_do_print ? (
                       <PrintLido
                         partes={[
-                          ...estado.resultado.leitura_do_print.mensagens,
+                          ...(estado.resultado.leitura_do_print.mensagens_para_exibir ??
+                            estado.resultado.leitura_do_print.mensagens),
                           ...(estado.resultado.leitura_do_print.texto_da_pessoa
                             ? [
                                 {
@@ -397,7 +385,7 @@ export default function PaginaAnalise() {
                       value={texto}
                       onChange={(evento) => {
                         setTexto(evento.target.value);
-                        setAvisoImagem(null);
+                        despachar({ tipo: "digitou" });
                       }}
                       onPaste={aoColar}
                       readOnly={analisando}
