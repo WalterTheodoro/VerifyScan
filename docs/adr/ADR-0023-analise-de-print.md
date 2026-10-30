@@ -231,3 +231,35 @@ mostrava o link e o telefone do print inteiros, prontos para copiar.
   base64 da API. Se passar, a leitura falha e a pessoa recebe o plano B (422), não um 500.
 - Link de outro esquema com IP no lugar do domínio sai só como `[link]`: o extrator acha IP só com
   `http`.
+
+## Adendo — aviso em camadas na página inicial (2026-10-28)
+
+**Contexto.** Perto do campo e do botão havia dois avisos: o do print (Anthropic, EUA, "recorte")
+e a linha "a mensagem ou o print é enviado à inteligência artificial da Anthropic", com os 7 dias
+para quem está logado. Somados ao cartão "Sem conta…", que repetia Anthropic e 30 dias, eram texto
+demais para quem chega com uma mensagem suspeita e quer só colá-la.
+
+**Decisão.** Junto do campo e do botão não fica nada sobre dados ou IA. O aviso fica em camadas:
+- **primeira camada**, na seção de explicação da própria home: o cartão "Sem conta, não guardamos
+  a sua mensagem" diz que a mensagem ou o print é analisado com apoio de inteligência
+  artificial, que sem conta ela não fica no VerifyScan e que na conta fica 7 dias no histórico,
+  com o link "Saiba como tratamos seus dados"; e o rodapé, com "Aviso de privacidade";
+- **segunda camada**, em `/privacidade`: o envio à Anthropic nos EUA e a transferência
+  internacional (LGPD, art. 33), a retenção (30 dias na Anthropic, até 2 anos no que ela marcar
+  como violação, 7 dias no histórico) e o aviso de que o print pode mostrar nome, número e foto
+  de outras pessoas, com a sugestão de recortar. Nada disso precisou ser acrescentado: já estava lá.
+
+Base: a LGPD, art. 9º, pede informação "clara, adequada e ostensiva". A informação continua na
+mesma página da análise, a um passo de rolagem, sem marca e em uma frase; os detalhes ficam a um
+toque. Ficam como estavam a etiqueta "Análise com apoio de IA" no resultado, o cartão "Quem decide
+são regras" e o passo 3 do "Como funciona", e também a frase depois do resultado ("Esta análise
+foi salva no seu histórico por 7 dias…"), que confirma o que acabou de acontecer.
+
+**Consequências.**
+- Quem tem conta não lê mais os 7 dias logo antes de enviar, mas na mesma página e, depois, na
+  confirmação do resultado. O ADR-0018 apoiava a guarda sem caixa de seleção no aviso "antes de
+  enviar"; agora o aviso vem pelo cartão, pelo aviso de privacidade aceito no cadastro e pela
+  confirmação. O aviso de privacidade passou a dizer "a página de análise avisa disso" no lugar
+  de "avisa antes de enviar".
+- A sugestão de recortar o print só aparece em `/privacidade`. Quem não abre a página pode enviar
+  o print inteiro, com dados de terceiros que não precisava mandar.
