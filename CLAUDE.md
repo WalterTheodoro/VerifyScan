@@ -213,6 +213,8 @@ quebrar uma delas, **pare e pergunte**.
   linha deixada para trás. Motivo: o bug do ADR-0007 só apareceu contra Postgres real.
 - Commits em português, imperativo, escopo curto: `feat(scoring): agrega pesos por categoria`.
   Um commit por unidade lógica. Nada de commit gigante de fim de sessão.
+- Mensagem de commit curta, dizendo **o que** mudou: sem detalhe de implementação, sem o nome
+  "Claude" e sem nome de biblioteca. Ex.: `fix(ocr): corrige falha ao processar imagens grandes`.
 - Mensagens ao usuário final em pt-BR, tom direto e não alarmista, sem jargão técnico.
 
 ## 7. Como trabalhar comigo (regras para o agente)

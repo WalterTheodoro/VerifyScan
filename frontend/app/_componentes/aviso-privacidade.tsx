@@ -126,7 +126,7 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
           Com a conta aberta, guardamos também a mensagem (ou o texto lido do print, com o que
           ele mostrava em volta) e o que a inteligência artificial escreveu sobre ela, para
           aparecerem no seu histórico. Isso faz parte do
-          histórico que você usa ao criar a conta, e a tela de análise avisa antes de enviar.
+          histórico que você usa ao criar a conta, e a página de análise avisa disso.
           Depois de 7 dias, os dois são apagados e a análise deixa de ficar ligada a você. Você
           pode apagá-la antes, a qualquer momento.
         </p>

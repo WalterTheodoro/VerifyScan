@@ -2465,3 +2465,19 @@ No teste em produção apareceram quatro problemas:
 | Mínimo de 200 px só no navegador; quem chama a API direto cai no plano B da leitura | limitação |
 | Ruído nas dimensões máximas sai com ~7,6 MB, perto dos 10 MB em base64 da API; se passar, plano B (422) | limitação |
 | Alarme de legítima no print oscila entre rodadas (4 a 9/20 na calibração) | limitação (ADR-0023), à espera de prints reais |
+
+## 2026-10-28 — Página inicial mais limpa: aviso de dados em camadas
+
+- **O que mudou:** saíram de perto do campo e do botão o aviso do print e a linha sobre a
+  Anthropic. O cartão "Sem conta…" passou a ser a primeira camada ("analisado com apoio de
+  inteligência artificial", 7 dias na conta, "Saiba como tratamos seus dados"), e `/privacidade`
+  é a segunda. Adendo no ADR-0023 (LGPD art. 9º). O aviso de privacidade trocou "a tela de
+  análise avisa antes de enviar" por "a página de análise avisa disso", que deixou de ser
+  verdade do outro jeito.
+- **Convenção de commits** registrada no CLAUDE.md §6: curtos, o que mudou, sem implementação,
+  sem "Claude", sem nome de biblioteca.
+- **Verificação:** `npm test` 74/74; `lint`, `tsc --noEmit` e `build` limpos. Nenhum teste
+  dependia dos textos antigos. Medição pelo Edge, build de produção: 320, 390 e 1280 px sem
+  rolagem lateral (`scrollWidth` igual à largura).
+- **Pendente:** a sugestão de recortar o print agora só está em `/privacidade` (limitação no
+  adendo do ADR-0023).

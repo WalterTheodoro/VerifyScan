@@ -39,7 +39,8 @@ import {
 // Numa página só, e não em duas rotas, por um motivo de privacidade: passar a mensagem para
 // /resultado exigiria colocá-la na URL ou em storage do navegador. No navegador, a mensagem não
 // sai da memória da aba — nem quando ela reaparece citada acima do resultado. Quem guarda a
-// mensagem de quem está logado, por 7 dias, é o backend (ADR-0018), e a página avisa antes.
+// mensagem de quem está logado, por 7 dias, é o backend (ADR-0018), e o cartão "Sem conta…",
+// na mesma página, avisa (adendo do ADR-0023).
 //
 // O print (fatia 9, ADR-0023) segue a mesma regra: a imagem fica só na memória da aba, reduzida
 // e sem metadados (`_lib/imagem.ts`), e nunca é guardada — nem aqui, nem no backend.
@@ -459,16 +460,6 @@ export default function PaginaAnalise() {
                           }
                         }}
                       />
-                      {/* Antes do botão, quando há um print: o que ele pode mostrar e para onde
-                          vai (ADR-0023). */}
-                      {imagem && (
-                        <p>
-                          O print pode mostrar nome, número e foto de outras pessoas. Ele vai para
-                          a inteligência artificial da Anthropic, nos Estados Unidos, só para ser
-                          lido, e a imagem não fica guardada. Se der, recorte o que não for a
-                          mensagem. O que você escrever no campo vai junto, como explicação.
-                        </p>
-                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-perto gap-y-junto">
                       <button
@@ -488,22 +479,6 @@ export default function PaginaAnalise() {
                         </p>
                       )}
                     </div>
-                    {/* Antes de enviar: para todos, para onde a mensagem vai (ADR-0020); para
-                        quem está logado, que ela fica no histórico — o aviso que sustenta a base
-                        legal de guardá-la sem caixa de seleção (ADR-0018). Do print, fica o
-                        texto lido, nunca a imagem (ADR-0023). */}
-                    <p>
-                      Para a análise, a mensagem ou o print é enviado à inteligência artificial
-                      da Anthropic.
-                      {logado &&
-                        " Como você está na sua conta, a mensagem (ou o texto lido do print) também fica no seu histórico por 7 dias."}{" "}
-                      <Link
-                        href="/privacidade"
-                        className="font-bold text-anil underline underline-offset-4"
-                      >
-                        Saiba mais
-                      </Link>
-                    </p>
                   </form>
                 </>
               )}
@@ -771,15 +746,18 @@ function FaixaDeContexto() {
             <h3 className="text-secao font-bold sm:text-secao-lg">
               Sem conta, não guardamos a sua mensagem
             </h3>
-            {/* Verdadeira para os dois casos (ADR-0018): anônima não vai ao nosso banco; com
-                conta, fica 7 dias no histórico. E diz para onde ela vai (ADR-0020). */}
+            {/* A primeira camada do aviso (art. 9º da LGPD, adendo do ADR-0023): aqui, e não
+                junto do campo; os detalhes (Anthropic, EUA, retenção, print) em /privacidade.
+                Verdadeira para os dois casos (ADR-0018): anônima não vai ao nosso banco; com
+                conta, fica 7 dias no histórico. */}
             <p className="text-destaque">
-              Para a análise, ela passa pela inteligência artificial da Anthropic, que não a usa
-              para treinar e a apaga em até 30 dias. Se você estiver na sua conta, ela fica no
-              seu histórico por 7 dias, e você pode apagá-la antes.{" "}
+              Sua mensagem ou print é analisado com apoio de inteligência artificial. Sem conta,
+              ela não fica no VerifyScan. Na conta, fica no seu histórico por 7 dias, e você pode
+              apagá-la quando quiser.{" "}
               <Link href="/privacidade" className="font-bold text-anil underline underline-offset-4">
-                Saiba mais
+                Saiba como tratamos seus dados
               </Link>
+              .
             </p>
           </div>
         </div>
