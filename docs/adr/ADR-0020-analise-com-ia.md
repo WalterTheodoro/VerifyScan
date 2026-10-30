@@ -266,3 +266,18 @@ Agravante: a IA repetia o fator do motor em vez de servir de segunda opinião (t
 - Falsos positivos que a regra ainda admite, conferidos: "Sua proposta foi enviada ao sistema de
   análise." (o "ao" sem complemento depois) e "O sistema de análise, segundo o banco, demora 2
   dias" (a vírgula). Ficam para a calibração da Fase 2, com o corpus.
+
+## Adendo — sem etiqueta de IA no resultado (2026-10-30)
+
+**Contexto.** O resultado (home e histórico) terminava com a linha "Análise com apoio de IA.",
+sempre que a IA respondia. Na tela que a pessoa lê com mais atenção, era mais uma linha sem ação.
+
+**Decisão.** A etiqueta sai do resultado. Que a análise usa inteligência artificial fica no aviso
+em camadas do adendo do ADR-0023: o cartão "Sem conta, não guardamos a sua mensagem" da página
+inicial ("analisado com apoio de inteligência artificial") e `/privacidade` (seção "A análise com
+inteligência artificial"). O "Como funciona" da home também segue dizendo isso.
+
+**Consequências.**
+- Menos poluição no resultado.
+- O texto gerado pela IA ("Parece ser", sinais, o que fazer) não traz mais a indicação junto dele:
+  quem abre o histórico dias depois não vê, ali, que parte do texto veio da IA.

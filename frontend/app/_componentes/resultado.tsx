@@ -247,10 +247,6 @@ export function Resultado({
             <p>{conselhoDosLinks}</p>
           </div>
         )}
-
-        {/* Discreta e honesta: diz que a IA ajudou, sem selo nem destaque. Na cor do texto, como
-            todo o resto (nada de cinza, globals.css). */}
-        {ia && <p>Análise com apoio de IA.</p>}
       </div>
     </div>
   );
