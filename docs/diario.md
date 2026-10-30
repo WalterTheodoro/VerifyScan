@@ -2481,3 +2481,17 @@ No teste em produção apareceram quatro problemas:
   rolagem lateral (`scrollWidth` igual à largura).
 - **Pendente:** a sugestão de recortar o print agora só está em `/privacidade` (limitação no
   adendo do ADR-0023).
+
+## 2026-10-30 — Resultado sem a etiqueta "Análise com apoio de IA"
+
+- **O que mudou:** a linha "Análise com apoio de IA." saiu do fim do resultado (home e histórico).
+  Que a análise usa inteligência artificial fica no cartão "Sem conta…" da home e em
+  `/privacidade` (aviso em camadas, adendo do ADR-0023); os dois conferidos na tela. Adendo no
+  ADR-0020: menos poluição no resultado, ao custo de o texto gerado não trazer mais a indicação
+  junto dele.
+- **Verificação:** `npm test` 74/74; `lint`, `tsc --noEmit` e `build` limpos. Nenhum teste
+  dependia da etiqueta. Medição pelo Edge, build de produção, 390 px, com a API respondida por
+  dados fixos no navegador (sem backend nem chamada à Anthropic): home, histórico e
+  `/privacidade` sem rolagem lateral (`scrollWidth` 390), sem a etiqueta, com "Fatores
+  identificados" fechando a placa.
+- **Pendente:** nada.

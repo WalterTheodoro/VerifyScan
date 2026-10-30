@@ -215,6 +215,8 @@ quebrar uma delas, **pare e pergunte**.
   Um commit por unidade lógica. Nada de commit gigante de fim de sessão.
 - Mensagem de commit curta, dizendo **o que** mudou: sem detalhe de implementação, sem o nome
   "Claude" e sem nome de biblioteca. Ex.: `fix(ocr): corrige falha ao processar imagens grandes`.
+- As mensagens sugeridas nunca levam a linha `Co-Authored-By` nem qualquer menção ao Claude:
+  quem faz os commits é o Walter, no nome dele.
 - Mensagens ao usuário final em pt-BR, tom direto e não alarmista, sem jargão técnico.
 
 ## 7. Como trabalhar comigo (regras para o agente)
