@@ -350,3 +350,42 @@ def test_descrever_junta_links_do_mesmo_dominio(
 
     assert [link.dominio for link in links] == ["golpe-xyz.example", "bit.ly"]
     assert links[0].observacoes == ["usa palavras comuns em golpes"]
+
+
+# ─── "receita" sozinha não é a Receita Federal (issue #22) ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Olha essa receita de bolo que achei: https://receita-de-bolo.example/chocolate",
+        "Veja em https://receita.example/torta",
+        "Anota: https://minhas-receitas.example/receita-de-pao",
+    ],
+)
+def test_receita_culinaria_nao_e_receita_federal(
+    analisador: DomainAnalyzer, extrator: URLExtractor, texto: str
+) -> None:
+    assert not categorias(analisador, extrator, texto) & {
+        "link_marca_nao_oficial",
+        "link_parecido_com_oficial",
+    }
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Regularize em https://receitafederal-cpf.example/",
+        "Regularize em https://receita-federal.example/",
+        "Regularize em https://receita-federal-gov.example/",
+        "Regularize em https://cpf-receita-federal.example/",
+        # Golpes do corpus (0011, 0026): "receita" ao lado de uma palavra do fisco.
+        "Regularize hoje: https://receita-regulariza.example/cpf",
+        "clica no link pra regulariza https://receita-cpf.example",
+        "Consulte: https://restituicao-receita.example/",
+    ],
+)
+def test_receita_junto_de_federal_continua_sendo_a_marca(
+    analisador: DomainAnalyzer, extrator: URLExtractor, texto: str
+) -> None:
+    assert "link_marca_nao_oficial" in categorias(analisador, extrator, texto)

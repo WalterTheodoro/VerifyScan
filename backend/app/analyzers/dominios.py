@@ -253,13 +253,16 @@ def _decodificar(rotulos: str) -> str:
 
 
 def _pecas(rotulos: list[str]) -> list[str]:
-    """Cada rótulo, já decodificado, em pedaços separados por "-", mais o rótulo inteiro sem os
-    hífens: `banco-do-brasil` dá "banco", "do", "brasil" e "bancodobrasil"."""
+    """Cada rótulo, já decodificado, em pedaços separados por "-", mais cada sequência de pedaços
+    vizinhos juntos: `banco-do-brasil` dá "banco", "do", "brasil", "bancodo", "dobrasil" e
+    "bancodobrasil". Juntar só o rótulo inteiro perdia a marca no meio dele: em
+    `cpf-receita-federal`, "receitafederal" (issue #22)."""
     pecas: list[str] = []
     for rotulo in rotulos:
-        decodificado = _decodificar(rotulo)
-        pecas.extend(peca for peca in decodificado.split("-") if peca)
-        pecas.append(decodificado.replace("-", ""))
+        partes = [parte for parte in _decodificar(rotulo).split("-") if parte]
+        for inicio in range(len(partes)):
+            for fim in range(inicio + 1, len(partes) + 1):
+                pecas.append("".join(partes[inicio:fim]))
     return pecas
 
 

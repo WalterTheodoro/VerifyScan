@@ -18,7 +18,7 @@
 # (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-versao: 5
+versao: 6
 
 # Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
 # dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
@@ -394,8 +394,23 @@ dominios:
       nomes: [inss, meuinss]
       semelhanca: false
       oficiais: [gov.br]
+    # Versão 6 (issue #22): "receita" sozinha é palavra comum (receita de bolo). Só conta junto de
+    # "federal" ou de uma palavra do fisco no mesmo rótulo; os pedaços vizinhos são juntados, então
+    # `receita-cpf` vira "receitacpf" e `cpf-receita-federal` traz "receitafederal".
     - nome: Receita Federal
-      nomes: [receita, receitafederal]
+      nomes:
+        - receitafederal
+        - receitacpf
+        - cpfreceita
+        - receitaregulariza
+        - receitaregularizar
+        - regularizareceita
+        - receitairpf
+        - receitaimposto
+        - receitarestituicao
+        - restituicaoreceita
+        - receitamalha
+        - receitagov
       semelhanca: false
       oficiais: [gov.br]
     - nome: Detran
