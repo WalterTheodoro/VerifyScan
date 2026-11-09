@@ -18,7 +18,7 @@
 # (ADR-0005). O relatório do `avaliar_corpus` carimba a `versao` abaixo.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 
-versao: 4
+versao: 5
 
 # Cada categoria pontua no máximo uma vez, com o peso da categoria, não importa quantos padrões
 # dela casem (ADR-0004). Somar por ocorrência criaria viés de comprimento: texto longo ficaria
@@ -160,7 +160,10 @@ categorias:
     descricao: 'A mensagem pede um pagamento, transferência ou comprovante.'
     padroes:
       - '(faça|faz|realize|envie|efetue) (um |o )?pix'
-      - 'pix de r\$'
+      # Versão 5 (issue #23): "Pix de R$" só conta quando não é aviso de Pix RECEBIDO. Os
+      # (?<!...) olham as palavras logo antes ("recebeu um", "chegou um", "caiu um"...); o (?!...)
+      # do fim olha logo depois do valor ("Pix de R$ 45,90 recebido", "... caiu na sua conta").
+      - '(?<!recebeu um )(?<!recebeu )(?<!recebido: )(?<!recebido )(?<!recebimento de )(?<!recebimento de um )(?<!chegou um )(?<!caiu um )pix de r\$(?!\s?[\d.,]+\s(recebido|caiu|chegou|creditado))'
       - 'pagamento (via|por) pix'
       - '\btransfira\b'
       - '\bdeposite\b'
