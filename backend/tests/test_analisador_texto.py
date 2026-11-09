@@ -393,3 +393,36 @@ def test_padroes_estreitos_ainda_pegam_quem_fala_com_o_analisador(
     analisador: TextAnalyzer, texto: str
 ) -> None:
     assert "instrucao_ao_analisador" in categorias(analisador, texto)
+
+
+# ─── Pix recebido não é pedido de pagamento (issue #23) ───────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Você recebeu um Pix de R$ 150,00 de Maria. O valor já está disponível na sua conta.",
+        "Recebido: Pix de R$ 80,00 de João.",
+        "Pix de R$ 45,90 recebido de Ana.",
+        "Recebimento de Pix de R$ 200,00 confirmado.",
+        "Chegou um Pix de R$ 30,00 na sua conta.",
+        "Caiu um Pix de R$ 500,00 na sua conta.",
+        "O Pix de R$ 70,00 caiu na sua conta.",
+    ],
+)
+def test_pix_recebido_nao_e_pedido_de_pagamento(analisador: TextAnalyzer, texto: str) -> None:
+    assert "solicitacao_financeira" not in categorias(analisador, texto)
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Pague um Pix de R$ 49,90 para liberar.",
+        "Envie um Pix de R$ 300 agora.",
+        "Faça um Pix de R$ 850 pra mim?",
+        "Consegue fazer um Pix de R$ 1.850 pra mim?",
+        "Preciso de um Pix de R$ 200 hoje.",
+    ],
+)
+def test_pedido_de_pix_continua_disparando(analisador: TextAnalyzer, texto: str) -> None:
+    assert "solicitacao_financeira" in categorias(analisador, texto)

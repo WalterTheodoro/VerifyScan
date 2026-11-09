@@ -2495,3 +2495,16 @@ No teste em produção apareceram quatro problemas:
   `/privacidade` sem rolagem lateral (`scrollWidth` 390), sem a etiqueta, com "Fatores
   identificados" fechando a placa.
 - **Pendente:** nada.
+
+## 2026-11-08 — Pix recebido não é mais pedido de pagamento (issue #23)
+
+- **O que mudou:** o padrão `pix de r\$` de `solicitacao_financeira` não dispara mais em aviso de
+  Pix recebido ("recebeu um Pix de R$", "Pix de R$ 45,90 recebido", "caiu um Pix de R$"...), e
+  continua pegando o pedido ("faça um Pix de R$", "preciso de um Pix de R$"). `regras.yaml` v5.
+  Achado na revisão por pares da N2 (Luiz).
+- **Corpus (`avaliar_corpus --motor`), antes → depois:** calibração P 92,9% → 92,9%, R 38,8% →
+  38,8%; teste P 100% → 100%, R 42,9% → 42,9%. Matriz e lista de erros idênticas: nenhum golpe
+  caiu para BAIXO. Linha de base não regravada (as métricas não mudaram).
+- **Verificação:** `ruff`, `mypy` limpos; `pytest -m "not integracao"` 758 passando, 1 xfail;
+  `-m integracao` 79. Os 7 testes de Pix recebido falharam antes da mudança.
+- **Pendente:** nada.
