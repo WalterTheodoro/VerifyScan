@@ -2508,3 +2508,22 @@ No teste em produção apareceram quatro problemas:
 - **Verificação:** `ruff`, `mypy` limpos; `pytest -m "not integracao"` 758 passando, 1 xfail;
   `-m integracao` 79. Os 7 testes de Pix recebido falharam antes da mudança.
 - **Pendente:** nada.
+
+## 2026-11-08 — "receita" no link não é mais a Receita Federal (issue #22)
+
+- **O que mudou:** a marca Receita Federal deixou de casar com "receita" sozinha
+  (`receita-de-bolo.example` dizia "usa o nome Receita Federal"). Agora só conta com
+  "receitafederal" ou "receita" junto de uma palavra do fisco no mesmo rótulo (federal, cpf,
+  regulariza, irpf, imposto, restituição, malha, gov). Para isso, o `DomainAnalyzer` passou a
+  juntar pedaços vizinhos do rótulo, e não só o rótulo inteiro: `cpf-receita-federal` traz
+  "receitafederal". `regras.yaml` v6. Achado na revisão por pares da N2 (Cauê).
+- **O que deu errado no caminho:** só com "receitafederal" (o pedido original), dois golpes da
+  calibração caíram para BAIXO: 0011 (`receita-regulariza.example`) e 0026
+  (`receita-cpf.example`); calibração R 38,8% → 35,8%, P 92,9% → 92,3%. Daí as palavras do fisco.
+  O relatório dessa rodada intermediária não foi guardado.
+- **Corpus (`avaliar_corpus --motor`), antes → depois:** calibração P 92,9% → 92,9%, R 38,8% →
+  38,8%; teste P 100% → 100%, R 42,9% → 42,9%. Matriz e lista de erros idênticas. Linha de base
+  não regravada (as métricas não mudaram).
+- **Verificação:** `ruff`, `mypy` limpos; `pytest -m "not integracao"` 768 passando, 1 xfail;
+  `-m integracao` 79. Os testes de receita culinária e de `cpf-receita-federal` falharam antes.
+- **Pendente:** "receita" e "federal" em rótulos diferentes (`receita.federal.example`) não casam.
