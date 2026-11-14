@@ -4,6 +4,10 @@ Duas regras atravessam o módulo:
 - **O timeout envolve só o I/O de banco**, nunca o Argon2. O hash é CPU com custo fixo, numa
   thread; contá-lo no timeout transformaria disputa de CPU no plano gratuito em falso 503.
 - **Log não identifica a conta.** Nada de e-mail, senha, token, hash nem id em mensagem de log.
+
+A fatia 10 (ADR-0024) acrescenta os limites: tentativas de senha errada por conta e por IP
+(login, troca de senha e exclusão, com a mesma chave de conta) e contas novas por IP e por dia.
+Todo limite é conferido antes do Argon2.
 """
 
 import asyncio
@@ -16,14 +20,17 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import NoReturn
 
-from app.core.seguranca import HasherSenha
+from app.core.ip import chave_hmac
+from app.core.seguranca import HasherOcupado, HasherSenha
 from app.services.analise import EntradaInvalida
+from app.services.cota import ServicoCota
 from app.services.repositorio_sessoes import RepositorioSessoes
 from app.services.repositorio_usuarios import (
     DadosConta,
     RepositorioUsuarios,
     UsuarioAutenticado,
 )
+from app.services.tentativas import LimitadorDeTentativas
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +67,34 @@ class ContaNaoEncontrada(Exception):
 
 
 class ServicoIndisponivel(Exception):
-    """O banco não respondeu dentro de `timeout_autenticacao_s` — tipicamente o Neon acordando."""
+    """O banco não respondeu dentro de `timeout_autenticacao_s` — tipicamente o Neon acordando —,
+    ou o Argon2 não teve vaga no mesmo teto (ADR-0024). Cada caso com a sua frase."""
+
+    def __init__(
+        self, mensagem: str = "O serviço está iniciando. Tente de novo em alguns segundos."
+    ) -> None:
+        super().__init__(mensagem)
+
+
+ARGON2_OCUPADO = "Muitas pessoas estão entrando agora. Tente de novo em alguns segundos."
+
+
+class MuitasTentativas(Exception):
+    """Senha errada demais, por conta ou por IP, na janela (ADR-0024). A mesma frase com e sem
+    conta: o 429 não revela se o e-mail está cadastrado."""
 
     def __init__(self) -> None:
-        super().__init__("O serviço está iniciando. Tente de novo em alguns segundos.")
+        super().__init__("Muitas tentativas. Espere alguns minutos e tente de novo.")
+
+
+class CadastrosDemais(Exception):
+    """Contas novas demais a partir do mesmo IP hoje (ADR-0024): ninguém multiplica a cota de IA
+    criando contas em série. "Alguns minutos" seria falso num limite diário."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Muitas contas foram criadas a partir desta conexão hoje. Tente de novo amanhã."
+        )
 
 
 @dataclass(frozen=True)
@@ -92,19 +123,41 @@ class ServicoAutenticacao:
         hasher: HasherSenha,
         sessao_dias: int,
         timeout_s: float,
+        limitador: LimitadorDeTentativas | None = None,
+        segredo_das_chaves: str = "",
+        cota: ServicoCota | None = None,
     ) -> None:
+        """`limitador` e `cota` vazios: sem limites (os testes que não tratam deles).
+        `segredo_das_chaves` é o do HMAC do IP: a chave da conta no limitador é o HMAC do e-mail,
+        nunca o e-mail."""
         self._usuarios = usuarios
         self._sessoes = sessoes
         self._hasher = hasher
         self._validade = timedelta(days=sessao_dias)
         self._timeout_s = timeout_s
+        self._limitador = limitador
+        self._segredo_das_chaves = segredo_das_chaves
+        self._cota = cota
 
-    async def cadastrar(self, nome: str, email: str, senha: str) -> SessaoAberta:
-        """A pessoa já sai logada: conta e sessão nascem juntas, numa transação."""
+    async def cadastrar(
+        self, nome: str, email: str, senha: str, chave_ip: str | None = None
+    ) -> SessaoAberta:
+        """A pessoa já sai logada: conta e sessão nascem juntas, numa transação.
+
+        A conta nova gasta uma unidade do IP no dia depois das validações (dado inválido não
+        gasta) e antes do Argon2. E-mail já cadastrado também gasta: a recusa só vem no banco.
+        """
         nome = self._validar_nome(nome)
         email = self._validar_email(email)
         self._validar_senha(senha)
-        senha_hash = await self._hasher.gerar(senha)
+        if self._cota is not None and chave_ip is not None:
+            async with self._banco():
+                cabe = await self._cota.reservar_cadastro(chave_ip)
+            if not cabe:
+                logger.info("Cadastro recusado: limite de contas por IP no dia")
+                raise CadastrosDemais()
+        async with self._argon2():
+            senha_hash = await self._hasher.gerar(senha)
         token = secrets.token_urlsafe(32)
         async with self._banco():
             usuario = await self._usuarios.criar_com_sessao(
@@ -112,22 +165,29 @@ class ServicoAutenticacao:
             )
         return SessaoAberta(usuario=usuario, token=token)
 
-    async def entrar(self, email: str, senha: str) -> SessaoAberta:
+    async def entrar(self, email: str, senha: str, chave_ip: str | None = None) -> SessaoAberta:
+        email = normalizar_email(email)
+        conta = self._chave_da_conta(email)
+        self._conferir_limite(conta, chave_ip)
         async with self._banco():
-            credenciais = await self._usuarios.buscar_credenciais(normalizar_email(email))
-        if credenciais is None:
-            await self._hasher.verificar_contra_falso(senha)
-            self._recusar()
-        if not await self._hasher.verificar(credenciais.senha_hash, senha):
-            self._recusar()
+            credenciais = await self._usuarios.buscar_credenciais(email)
+        async with self._argon2():
+            if credenciais is None:
+                await self._hasher.verificar_contra_falso(senha)
+                self._recusar(conta, chave_ip)
+            if not await self._hasher.verificar(credenciais.senha_hash, senha):
+                self._recusar(conta, chave_ip)
+        if self._limitador is not None:
+            self._limitador.limpar_conta(conta)
 
         usuario = credenciais.usuario
         # Gerado antes do bloco de banco: o Argon2 fica fora do timeout.
-        novo_hash = (
-            await self._hasher.gerar(senha)
-            if self._hasher.precisa_rehash(credenciais.senha_hash)
-            else None
-        )
+        async with self._argon2():
+            novo_hash = (
+                await self._hasher.gerar(senha)
+                if self._hasher.precisa_rehash(credenciais.senha_hash)
+                else None
+            )
         token = secrets.token_urlsafe(32)
         async with self._banco():
             if novo_hash is not None:
@@ -148,7 +208,12 @@ class ServicoAutenticacao:
             return await self._usuarios.buscar_conta(usuario.id)
 
     async def trocar_senha(
-        self, usuario: UsuarioAutenticado, token: str, senha_atual: str, nova_senha: str
+        self,
+        usuario: UsuarioAutenticado,
+        token: str,
+        senha_atual: str,
+        nova_senha: str,
+        chave_ip: str | None = None,
     ) -> None:
         """Grava o hash novo e derruba as OUTRAS sessões da conta; a deste aparelho continua.
 
@@ -156,38 +221,71 @@ class ServicoAutenticacao:
         precisar entrar de novo onde está (ADR-0019). A nova senha segue as regras do cadastro.
         """
         self._validar_senha(nova_senha)
-        await self._conferir_senha(usuario, senha_atual, SENHA_ATUAL_NAO_CONFERE)
+        await self._conferir_senha(usuario, senha_atual, SENHA_ATUAL_NAO_CONFERE, chave_ip)
         # Comparar o texto basta: a senha atual acabou de ser conferida contra o hash.
         if nova_senha == senha_atual:
             raise EntradaInvalida("A nova senha precisa ser diferente da atual.")
-        senha_hash = await self._hasher.gerar(nova_senha)
+        async with self._argon2():
+            senha_hash = await self._hasher.gerar(nova_senha)
         async with self._banco():
             await self._usuarios.trocar_senha(usuario.id, senha_hash, hash_do_token(token))
         logger.info("Senha trocada")
 
-    async def excluir_conta(self, usuario: UsuarioAutenticado, senha: str) -> None:
+    async def excluir_conta(
+        self, usuario: UsuarioAutenticado, senha: str, chave_ip: str | None = None
+    ) -> None:
         """Pede a senha mesmo com a sessão aberta: no celular dividido com a família, sessão
         aberta sozinha não basta para apagar a conta (ADR-0019)."""
-        await self._conferir_senha(usuario, senha, SENHA_NAO_CONFERE)
+        await self._conferir_senha(usuario, senha, SENHA_NAO_CONFERE, chave_ip)
         async with self._banco():
             await self._usuarios.apagar(usuario.id)
         logger.info("Conta excluída")
 
     async def _conferir_senha(
-        self, usuario: UsuarioAutenticado, senha: str, frase_se_errada: str
+        self,
+        usuario: UsuarioAutenticado,
+        senha: str,
+        frase_se_errada: str,
+        chave_ip: str | None = None,
     ) -> None:
         """Busca o hash pelo caminho do login e confere a senha, com o Argon2 fora do teto.
 
-        A frase vem de quem chama: só a operação sabe qual campo a tela mostrou.
+        A frase vem de quem chama: só a operação sabe qual campo a tela mostrou. O limite é o do
+        login, com a mesma chave de conta (o e-mail): errar aqui também conta lá.
         """
+        conta = self._chave_da_conta(usuario.email)
+        self._conferir_limite(conta, chave_ip)
         async with self._banco():
             credenciais = await self._usuarios.buscar_credenciais(usuario.email)
         if credenciais is None or credenciais.usuario.id != usuario.id:
             raise ContaNaoEncontrada()
-        if not await self._hasher.verificar(credenciais.senha_hash, senha):
+        async with self._argon2():
+            confere = await self._hasher.verificar(credenciais.senha_hash, senha)
+        if not confere:
             # INFO e sem identificar a conta, como o login recusado.
             logger.info("Senha da conta recusada")
+            if self._limitador is not None:
+                self._limitador.registrar_falha(conta, chave_ip)
             raise SenhaIncorreta(frase_se_errada)
+        if self._limitador is not None:
+            self._limitador.limpar_conta(conta)
+
+    def _chave_da_conta(self, email_normalizado: str) -> str:
+        return chave_hmac(self._segredo_das_chaves, email_normalizado)
+
+    def _conferir_limite(self, conta: str, chave_ip: str | None) -> None:
+        if self._limitador is not None and self._limitador.bloqueado(conta, chave_ip):
+            logger.info("Tentativa recusada: limite de senhas erradas")
+            raise MuitasTentativas()
+
+    @asynccontextmanager
+    async def _argon2(self) -> AsyncIterator[None]:
+        """O Argon2 sem vaga no semáforo vira 503 com a frase dele, e não a do Neon acordando."""
+        try:
+            yield
+        except HasherOcupado as erro:
+            logger.warning("Argon2 sem vaga dentro do teto de espera")
+            raise ServicoIndisponivel(ARGON2_OCUPADO) from erro
 
     async def sair(self, token: str) -> None:
         if not token:
@@ -205,10 +303,11 @@ class ServicoAutenticacao:
             logger.warning("Banco não respondeu em %.1f s na autenticação", self._timeout_s)
             raise ServicoIndisponivel() from erro
 
-    @staticmethod
-    def _recusar() -> NoReturn:
+    def _recusar(self, conta: str, chave_ip: str | None) -> NoReturn:
         # INFO e sem identificar a conta: o log não pode virar lista de e-mails cadastrados.
         logger.info("Login recusado")
+        if self._limitador is not None:
+            self._limitador.registrar_falha(conta, chave_ip)
         raise CredenciaisInvalidas()
 
     @staticmethod

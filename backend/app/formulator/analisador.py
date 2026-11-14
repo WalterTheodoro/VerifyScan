@@ -10,7 +10,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from app.formulator.cliente import ClienteIA, RespostaIA
+from app.formulator.cliente import ERROS_DE_TEMPO, ClienteIA, ConsumoDaIA, RespostaIA
 from app.formulator.prompt import EntradaIA, montar_entrada
 from app.formulator.saida import SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ExplicacaoIA, NivelRisco
@@ -44,10 +44,18 @@ class ParadaInesperada(Exception):
 
 
 class AnalisadorIA:
-    def __init__(self, cliente: ClienteIA | None, timeout_s: float) -> None:
-        """`cliente=None` é a IA desligada (`IA_ATIVADA=false`)."""
+    def __init__(
+        self, cliente: ClienteIA | None, timeout_s: float, consumo: ConsumoDaIA | None = None
+    ) -> None:
+        """`cliente=None` é a IA desligada (`IA_ATIVADA=false`). `consumo` recebe o usage de cada
+        resposta, para o teto diário de gasto (ADR-0024); sem ele, nada é somado."""
         self._cliente = cliente
         self._timeout_s = timeout_s
+        self._consumo = consumo
+
+    @property
+    def disponivel(self) -> bool:
+        return self._cliente is not None
 
     async def avaliar(
         self, entrada: EntradaIA, timeout_s: float | None = None
@@ -67,8 +75,13 @@ class AnalisadorIA:
         try:
             async with asyncio.timeout(timeout_s or self._timeout_s):
                 resposta = await self._cliente.gerar(entrada.sistema, montar_entrada(entrada))
+            # Antes de interpretar: a resposta recusada ou inválida também foi cobrada.
+            if self._consumo is not None:
+                self._consumo.somar(resposta)
             resultado = _interpretar(resposta)
         except Exception as exc:
+            if isinstance(exc, ERROS_DE_TEMPO) and self._consumo is not None:
+                self._consumo.contar_timeout()
             logger.warning(
                 "Análise com IA indisponível, resposta só do motor: %s em %d ms",
                 type(exc).__name__,

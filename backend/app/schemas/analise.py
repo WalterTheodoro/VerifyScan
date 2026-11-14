@@ -251,13 +251,34 @@ class RespostaAnalise(BaseModel):
         description=(
             "`true` sempre que a resposta saiu sem a explicação da IA: desligada, fora do ar, "
             "acima do teto de tempo ou com uma resposta inválida (RNF08), ou com a explicação "
-            "descartada na limpeza. A tela mostra então o plano B do nível final. Com "
+            "descartada na limpeza, ou com a cota do dia esgotada (`motivo_sem_ia`, ADR-0024). "
+            "A tela mostra então o plano B do nível final. Com "
             "`nivel_ia` preenchido, a IA deu o nível e só a explicação foi descartada."
         ),
     )
     verificacao_externa_indisponivel: bool = Field(
         default=False,
         description="`true` quando VirusTotal / Safe Browsing não responderam (RNF09).",
+    )
+
+    # Campos aditivos da fatia 10 (ADR-0024): a cota diária da IA.
+    ia_restantes_hoje: int | None = Field(
+        default=None,
+        description=(
+            "Unidades de IA que sobram hoje para quem pediu (texto 1, print 3). `null` quando a "
+            "cota não foi conferida: IA desligada ou banco da cota fora do ar."
+        ),
+    )
+    motivo_sem_ia: Literal["cota"] | None = Field(
+        default=None,
+        description=(
+            '`"cota"` quando a análise saiu sem IA porque a cota do dia acabou. Com '
+            "`explicacao_indisponivel` e sem motivo, foi falha da IA, e não cota."
+        ),
+    )
+    aviso_sem_ia: str | None = Field(
+        default=None,
+        description="A frase para a pessoa quando `motivo_sem_ia` está preenchido.",
     )
 
     # Campo aditivo da fatia 9 (ADR-0023): só no caminho de imagem.

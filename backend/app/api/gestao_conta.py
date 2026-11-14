@@ -9,13 +9,19 @@ Senha errada é 400, nunca 401. A sessão continua válida, e o frontend trata 4
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
 from app.api.autenticacao import apagar_cookie
-from app.api.deps import NOME_DO_COOKIE, obter_servico_autenticacao, obter_usuario_atual
-from app.api.erros import ERRO_400_SENHA, ERRO_401, ERRO_422, ERRO_503
+from app.api.deps import (
+    NOME_DO_COOKIE,
+    obter_chave_ip,
+    obter_servico_autenticacao,
+    obter_usuario_atual,
+)
+from app.api.erros import ERRO_400_SENHA, ERRO_401, ERRO_422, ERRO_429, ERRO_503
 from app.core.config import Settings, get_settings
 from app.schemas.autenticacao import SolicitacaoExclusao, SolicitacaoTrocaSenha
 from app.services.analise import EntradaInvalida
 from app.services.autenticacao import (
     ContaNaoEncontrada,
+    MuitasTentativas,
     SenhaIncorreta,
     ServicoAutenticacao,
     ServicoIndisponivel,
@@ -28,6 +34,7 @@ _STATUS_DO_ERRO: dict[type[Exception], int] = {
     SenhaIncorreta: status.HTTP_400_BAD_REQUEST,
     ContaNaoEncontrada: status.HTTP_401_UNAUTHORIZED,
     EntradaInvalida: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    MuitasTentativas: status.HTTP_429_TOO_MANY_REQUESTS,
     ServicoIndisponivel: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 _ERROS_DO_SERVICO = tuple(_STATUS_DO_ERRO)
@@ -43,18 +50,19 @@ def _http(erro: Exception) -> HTTPException:
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
     summary="Troca a senha e encerra as outras sessões da conta",
-    responses={**ERRO_400_SENHA, **ERRO_401, **ERRO_422, **ERRO_503},
+    responses={**ERRO_400_SENHA, **ERRO_401, **ERRO_422, **ERRO_429, **ERRO_503},
 )
 async def trocar_senha(
     solicitacao: SolicitacaoTrocaSenha,
     usuario: UsuarioAutenticado = Depends(obter_usuario_atual),
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
+    chave_ip: str = Depends(obter_chave_ip),
     token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
 ) -> Response:
     # O token identifica a sessão deste aparelho, a única que sobrevive à troca.
     try:
         await servico.trocar_senha(
-            usuario, token or "", solicitacao.senha_atual, solicitacao.nova_senha
+            usuario, token or "", solicitacao.senha_atual, solicitacao.nova_senha, chave_ip
         )
     except _ERROS_DO_SERVICO as erro:
         raise _http(erro) from erro
@@ -66,12 +74,13 @@ async def trocar_senha(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
     summary="Exclui a conta, as sessões e todo o histórico",
-    responses={**ERRO_400_SENHA, **ERRO_401, **ERRO_503},
+    responses={**ERRO_400_SENHA, **ERRO_401, **ERRO_429, **ERRO_503},
 )
 async def excluir_conta(
     solicitacao: SolicitacaoExclusao,
     usuario: UsuarioAutenticado = Depends(obter_usuario_atual),
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
+    chave_ip: str = Depends(obter_chave_ip),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """POST, e não DELETE: o corpo leva a senha, e DELETE com corpo é mal suportado por proxies.
@@ -80,7 +89,7 @@ async def excluir_conta(
     pessoa continua logada, porque continua logada de verdade.
     """
     try:
-        await servico.excluir_conta(usuario, solicitacao.senha)
+        await servico.excluir_conta(usuario, solicitacao.senha, chave_ip)
     except _ERROS_DO_SERVICO as erro:
         raise _http(erro) from erro
     resposta = Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,5 +1,6 @@
 """Configuração da aplicação, lida do `.env` da raiz do repositório."""
 
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator
@@ -33,6 +34,10 @@ class Settings(BaseSettings):
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        # Erro de validação sem o valor recebido: um segredo curto demais ou um campo faltando
+        # imprimiriam o valor (ou todas as variáveis lidas, com a senha do `DATABASE_URL`) no log
+        # da subida.
+        hide_input_in_errors=True,
     )
 
     app_env: str = "local"
@@ -100,6 +105,42 @@ class Settings(BaseSettings):
     # imagem); o frontend manda JPEG nas dimensões da API, em geral bem abaixo de 2 MB.
     imagem_max_bytes: int = Field(default=5 * 1024 * 1024, gt=0, le=7_500_000)
 
+    # Cota diária da IA, em unidades: texto 1, print 3 (fatia 10, ADR-0024). O dia vira à
+    # meia-noite de São Paulo. Aqui o `le=` barra um valor absurdo digitado por engano, e não
+    # congela a operação: num evento, a sala inteira sai por um IP só, e a cota sem conta precisa
+    # poder subir naquela data. Quem segura o dinheiro é o teto global logo abaixo.
+    ia_cota_sem_conta: int = Field(default=5, gt=0, le=200)
+    ia_cota_com_conta: int = Field(default=25, gt=0, le=500)
+    # Soma de todo mundo, pelo usage que a API devolveu. Atingido, todos ficam sem IA até a
+    # meia-noite. Ajustável para eventos, com o mesmo `le=` de trava contra engano.
+    ia_teto_gasto_diario_usd: Decimal = Field(default=Decimal("1.00"), gt=0, le=20)
+    # Preço de tabela do Haiku 5.5 por milhão de tokens (ADR-0023). Mudou o preço ou o modelo,
+    # muda aqui: o teto é calculado com estes números.
+    ia_preco_entrada_usd_por_milhao: Decimal = Field(default=Decimal("0.10"), gt=0)
+    ia_preco_saida_usd_por_milhao: Decimal = Field(default=Decimal("0.50"), gt=0)
+    # Janela da cota: resolver a sessão e reservar as unidades, em série, antes da IA. É a única
+    # etapa nova da invariante 8: com 1,5 s, o desenho completo do print fica em ≈ 28,7 s. Exceção
+    # ao "os tetos só podem baixar": o `le=5` deixa folga para um banco lento, mas acima de ≈ 2,8 s
+    # o desenho completo do print passa dos 30 s (ADR-0024).
+    timeout_cota_s: float = Field(default=1.5, gt=0, le=5)
+
+    # Segredos sem default (ADR-0024). Com um default conhecido, o HMAC de um IPv4 se desfaz
+    # percorrendo os 2³² endereços; sem o segredo do proxy, todo visitante sem conta cairia no IP
+    # do frontend e dividiria uma cota só. Faltar qualquer um derruba a subida, nunca a cota.
+    ip_hmac_segredo: SecretStr = Field(min_length=32)
+    proxy_segredo: SecretStr = Field(min_length=32)
+
+    # Tentativas de senha errada, em memória, numa janela deslizante (ADR-0024; NIST SP 800-63B-4
+    # §3.2.2). A janela não passa de 15 min, o tempo que o Render gratuito leva para dormir
+    # parado: um reinício por ociosidade só apaga o que já venceu. Aqui os tetos só baixam.
+    login_falhas_por_conta: int = Field(default=10, gt=0, le=10)
+    login_falhas_por_ip: int = Field(default=30, gt=0, le=30)
+    login_janela_minutos: int = Field(default=15, gt=0, le=15)
+    # Contas novas por IP e por dia, no Postgres (um contador em memória zeraria a cada sono).
+    cadastros_por_ip_por_dia: int = Field(default=5, gt=0, le=5)
+    # Argon2id ocupa ~19 MiB por cálculo; no Render, 512 MB. As demais esperam pela vaga.
+    argon2_simultaneos: int = Field(default=2, gt=0, le=2)
+
     @field_validator("anthropic_api_key")
     @classmethod
     def _chave_obrigatoria_com_ia_ligada(
@@ -134,4 +175,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Instância única — evita reler o `.env` a cada requisição."""
-    return Settings()
+    # Os segredos sem default vêm do ambiente ou do `.env`, que o mypy não enxerga.
+    return Settings()  # type: ignore[call-arg]

@@ -6,6 +6,7 @@ por SQL, de fora da API: quem prova que a exclusão não deixa nada para trás �
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import date, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -19,15 +20,18 @@ from app.api.deps import (
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
+    obter_repositorio_uso,
     obter_repositorio_usuarios,
 )
 from app.core.config import get_settings
 from app.main import criar_app
-from app.models import SessaoUsuario, Usuario
+from app.models import SessaoUsuario, UsoDiario, Usuario
+from app.models.uso import chave_da_conta
 from app.services.autenticacao import hash_do_token
 from app.services.repositorio_analises import RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from app.services.repositorio_uso import RepositorioUsoPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
 from tests.conftest import ia_desligada, leitura_desligada, settings_de_teste
 from tests.test_api_analises import GOLPE_DE_PIX
@@ -48,6 +52,9 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: RepositorioSessoesPostgres(
+        fabrica_de_sessoes
+    )
+    app.dependency_overrides[obter_repositorio_uso] = lambda: RepositorioUsoPostgres(
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_historico] = lambda: RepositorioHistoricoPostgres(
@@ -245,6 +252,35 @@ async def test_excluir_apaga_tudo_da_conta_e_nada_da_outra(
     assert await _total(fabrica_de_sessoes, "indicadores_risco") == do_joao["indicadores"]
     assert (await maria_no_celular.get("/api/auth/eu")).status_code == 401
     assert (await joao.get("/api/auth/eu")).status_code == 200
+
+
+async def test_excluir_apaga_o_uso_diario_da_conta_e_so_dela(
+    maria: AsyncClient,
+    joao: AsyncClient,
+    fabrica_de_sessoes: async_sessionmaker[AsyncSession],
+) -> None:
+    """A promessa do ADR-0019 é "a exclusão apaga tudo": a linha `conta:<id>` da cota da IA sai
+    na mesma transação que a conta (ADR-0024). A do João e as de IP ficam."""
+    uso = RepositorioUsoPostgres(fabrica_de_sessoes)
+    dia = date(2026, 11, 14)
+    id_maria = await _id(fabrica_de_sessoes, "Maria")
+    id_joao = await _id(fabrica_de_sessoes, "Joao")
+    for dias_atras in range(2):
+        await uso.reservar("ia", chave_da_conta(id_maria), dia - timedelta(days=dias_atras), 1, 25)
+    await uso.reservar("ia", chave_da_conta(id_joao), dia, 1, 25)
+    await uso.reservar("ia", "ip:abc", dia, 1, 5)
+    await uso.reservar("cadastro", "ip:abc", dia, 1, 5)
+
+    resposta = await maria.post("/api/conta/excluir", json={"senha": SENHA})
+
+    assert resposta.status_code == 204
+    async with fabrica_de_sessoes() as sessao:
+        linhas = set((await sessao.execute(select(UsoDiario.finalidade, UsoDiario.chave))).all())
+    assert not any(chave == chave_da_conta(id_maria) for _, chave in linhas)
+    assert {("ia", chave_da_conta(id_joao)), ("ia", "ip:abc"), ("cadastro", "ip:abc")} <= linhas
+    # O cadastro da Maria e o do João gastaram a cota de cadastro do IP: ela é do IP, não da
+    # conta, e fica, com o mesmo prefixo das chaves de IP.
+    assert all(chave.startswith(("conta:", "ip:")) for _, chave in linhas)
 
 
 async def _id(fabrica: async_sessionmaker[AsyncSession], nome: str) -> uuid.UUID:

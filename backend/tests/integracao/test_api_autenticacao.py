@@ -13,12 +13,17 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import obter_repositorio_sessoes, obter_repositorio_usuarios
+from app.api.deps import (
+    obter_repositorio_sessoes,
+    obter_repositorio_uso,
+    obter_repositorio_usuarios,
+)
 from app.core.config import get_settings
 from app.main import criar_app
 from app.models import SessaoUsuario, Usuario
 from app.services.autenticacao import hash_do_token
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from app.services.repositorio_uso import RepositorioUsoPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
 from tests.conftest import settings_de_teste
 
@@ -35,6 +40,9 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: RepositorioSessoesPostgres(
+        fabrica_de_sessoes
+    )
+    app.dependency_overrides[obter_repositorio_uso] = lambda: RepositorioUsoPostgres(
         fabrica_de_sessoes
     )
     app.dependency_overrides[get_settings] = lambda: settings_de_teste()

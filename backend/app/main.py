@@ -14,19 +14,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.analises import router as router_analises
 from app.api.autenticacao import router as router_autenticacao
 from app.api.conta import router as router_conta
-from app.api.deps import obter_hasher
+from app.api.deps import criar_limitador, obter_hasher
 from app.api.gestao_conta import router as router_gestao_conta
 from app.api.health import router as router_health
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine, criar_sessionmaker
 from app.core.logs import configurar_logs
+from app.core.relogio import agora_utc, dia_de_sao_paulo
 from app.formulator.cliente import criar_cliente_ia
 from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
 from app.services.historico import faxina
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from app.services.repositorio_uso import RepositorioUsoPostgres
 
 # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
 # rodar nele. Trocar a política aqui, na importação do módulo, é o que faz qualquer processo que
@@ -46,9 +48,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     estado de produção até a Fase 4. Com a IA desligada, `app.state.cliente_ia` também fica
     `None`, e toda análise sai com o plano B (ADR-0020).
 
-    A única I/O da subida é a faxina do que venceu, análises do histórico e sessões (ADR-0015,
-    ADR-0019): oportunista, com o teto do registro, e nunca derruba o processo — se o banco
-    estiver fora, só loga.
+    A única I/O da subida é a faxina do que venceu — análises do histórico, sessões e o uso
+    diário da IA (ADR-0015, ADR-0019, ADR-0024): oportunista, com o teto do registro, e nunca
+    derruba o processo — se o banco estiver fora, só loga.
     """
     settings = get_settings()
     engine = criar_engine(settings.database_url)
@@ -63,6 +65,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         RepositorioSessoesPostgres(app.state.fabrica_de_sessoes),
         settings.historico_dias,
         settings.timeout_persistencia_s,
+        uso=RepositorioUsoPostgres(app.state.fabrica_de_sessoes),
+        hoje=dia_de_sao_paulo(agora_utc()),
     )
     try:
         yield
@@ -90,6 +94,9 @@ def criar_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    # Aqui, e não no `lifespan`: não abre conexão, e os testes (que não rodam o `lifespan`) também
+    # precisam de um — novo a cada app, sem as falhas do teste anterior (ADR-0024).
+    app.state.limitador = criar_limitador(settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origens_cors,

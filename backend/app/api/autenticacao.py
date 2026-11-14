@@ -6,13 +6,20 @@ O que é desta camada é o HTTP: status, mensagem em `detail` e o cookie `vs_ses
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
-from app.api.deps import NOME_DO_COOKIE, obter_servico_autenticacao, obter_usuario_atual
-from app.api.erros import ERRO_401, ERRO_401_LOGIN, ERRO_409, ERRO_422, ERRO_503
+from app.api.deps import (
+    NOME_DO_COOKIE,
+    obter_chave_ip,
+    obter_servico_autenticacao,
+    obter_usuario_atual,
+)
+from app.api.erros import ERRO_401, ERRO_401_LOGIN, ERRO_409, ERRO_422, ERRO_429, ERRO_503
 from app.core.config import Settings, get_settings
 from app.schemas.autenticacao import RespostaUsuario, SolicitacaoCadastro, SolicitacaoLogin
 from app.services.analise import EntradaInvalida
 from app.services.autenticacao import (
+    CadastrosDemais,
     CredenciaisInvalidas,
+    MuitasTentativas,
     ServicoAutenticacao,
     ServicoIndisponivel,
 )
@@ -24,6 +31,8 @@ _STATUS_DO_ERRO: dict[type[Exception], int] = {
     EntradaInvalida: status.HTTP_422_UNPROCESSABLE_CONTENT,
     EmailJaCadastrado: status.HTTP_409_CONFLICT,
     CredenciaisInvalidas: status.HTTP_401_UNAUTHORIZED,
+    MuitasTentativas: status.HTTP_429_TOO_MANY_REQUESTS,
+    CadastrosDemais: status.HTTP_429_TOO_MANY_REQUESTS,
     ServicoIndisponivel: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 _ERROS_DO_SERVICO = tuple(_STATUS_DO_ERRO)
@@ -73,16 +82,19 @@ def _resposta(usuario: UsuarioAutenticado) -> RespostaUsuario:
     response_model=RespostaUsuario,
     status_code=status.HTTP_201_CREATED,
     summary="Cria a conta e já entra nela",
-    responses={**ERRO_409, **ERRO_422, **ERRO_503},
+    responses={**ERRO_409, **ERRO_422, **ERRO_429, **ERRO_503},
 )
 async def cadastrar(
     solicitacao: SolicitacaoCadastro,
     response: Response,
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
+    chave_ip: str = Depends(obter_chave_ip),
     settings: Settings = Depends(get_settings),
 ) -> RespostaUsuario:
     try:
-        aberta = await servico.cadastrar(solicitacao.nome, solicitacao.email, solicitacao.senha)
+        aberta = await servico.cadastrar(
+            solicitacao.nome, solicitacao.email, solicitacao.senha, chave_ip
+        )
     except _ERROS_DO_SERVICO as erro:
         raise _http(erro) from erro
     _gravar_cookie(response, aberta.token, settings)
@@ -93,16 +105,17 @@ async def cadastrar(
     "/login",
     response_model=RespostaUsuario,
     summary="Entra na conta",
-    responses={**ERRO_401_LOGIN, **ERRO_422, **ERRO_503},
+    responses={**ERRO_401_LOGIN, **ERRO_422, **ERRO_429, **ERRO_503},
 )
 async def entrar(
     solicitacao: SolicitacaoLogin,
     response: Response,
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
+    chave_ip: str = Depends(obter_chave_ip),
     settings: Settings = Depends(get_settings),
 ) -> RespostaUsuario:
     try:
-        aberta = await servico.entrar(solicitacao.email, solicitacao.senha)
+        aberta = await servico.entrar(solicitacao.email, solicitacao.senha, chave_ip)
     except _ERROS_DO_SERVICO as erro:
         raise _http(erro) from erro
     _gravar_cookie(response, aberta.token, settings)
