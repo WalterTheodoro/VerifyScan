@@ -14,8 +14,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  mensagem de quem tem conta, pelos mesmos 7 dias), ADR-0013 e ADR-0019 (conta, sessão e
  *  exclusão), ADR-0011 (Neon), ADR-0020 (a mensagem vai à Anthropic; o que a IA escreveu segue a
  *  regra da mensagem), ADR-0023 (o print vai à Anthropic só para ser lido e nunca é guardado; do
- *  print, fica o texto lido e o contexto, com a regra da mensagem). `nivel` mantém a hierarquia
- *  de títulos de quem o usa. */
+ *  print, fica o texto lido e o contexto, com a regra da mensagem), ADR-0024 (a contagem diária
+ *  da IA e dos cadastros, pelo HMAC do IP ou pela conta, 2 dias; senhas erradas só em memória).
+ *  `nivel` mantém a hierarquia de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
   const titulo = "text-secao font-bold sm:text-secao-lg";
@@ -65,7 +66,8 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
           transferência internacional de dados (Lei Geral de Proteção de Dados, art. 33).
         </p>
         <p>
-          Se a inteligência artificial não responder, a análise sai só com as nossas regras.
+          Se a inteligência artificial não responder, ou se as análises com ela já tiverem
+          acabado no dia, a análise sai só com as nossas regras.
         </p>
       </section>
 
@@ -146,8 +148,42 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
           </li>
           <li>na Anthropic, a mensagem ou o print enviado para a análise, até 30 dias;</li>
           <li>no VerifyScan, a imagem do print: não é guardada;</li>
-          <li>a ligação das análises com a sua conta, 7 dias.</li>
+          <li>a ligação das análises com a sua conta, 7 dias;</li>
+          <li>
+            a contagem diária das análises com inteligência artificial e das contas criadas, 2
+            dias;
+          </li>
+          <li>a contagem de senhas erradas, 15 minutos, só na memória do servidor.</li>
         </ul>
+      </section>
+
+      <section aria-labelledby="limites" className="flex flex-col gap-junto">
+        <Titulo id="limites" className={titulo}>Limite de análises e proteção da conta</Titulo>
+        <p>
+          Cada análise com inteligência artificial tem um custo. Para ninguém gastar sozinho o que
+          é de todos, contamos quantas análises com ela cada pessoa fez no dia. Pelo mesmo motivo,
+          contamos as contas criadas a partir de cada conexão no dia.
+        </p>
+        <p>
+          Com a conta aberta, a contagem fica ligada à sua conta. Sem conta, ela fica ligada a um
+          código feito a partir do endereço IP da sua conexão com uma chave secreta do VerifyScan.{" "}
+          <strong>O endereço IP não é guardado.</strong> Sem a chave, não dá para voltar do código
+          ao endereço; mesmo assim, o código continua sendo um dado sobre você.
+        </p>
+        <p>
+          Guardamos só o código (ou a conta), o dia e quantas análises foram feitas. Nunca a
+          mensagem, nem a hora de cada análise. A contagem é apagada depois de 2 dias, e a de uma
+          conta sai junto quando ela é excluída.
+        </p>
+        <p>
+          Para proteger as contas de quem tenta adivinhar senhas, também contamos as senhas
+          erradas, por 15 minutos. Essa contagem fica só na memória do servidor e some quando ele
+          reinicia.
+        </p>
+        <p>
+          Fazemos isso para evitar abuso, o que a Lei Geral de Proteção de Dados permite como
+          interesse legítimo (art. 7º, inciso IX), usando só o necessário (art. 10, § 1º).
+        </p>
       </section>
 
       <section aria-labelledby="acessos" className="flex flex-col gap-junto">
