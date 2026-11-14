@@ -98,3 +98,11 @@ Não entrou variável de timeout nova.
 - O aviso de privacidade passa a cobrir o art. 9º da LGPD, incluindo o vínculo de 7 dias.
 - O histórico só existe para quem fez a análise logado. Uma análise anônima nunca é reivindicada
   depois, porque não há como provar de quem ela é.
+
+## Adendo — 2026-11-14 (ADR-0024)
+
+A cota diária da IA mudou a ordem do item 3. Com a IA ligada, o dono passa a ser resolvido antes
+da chamada à IA, numa janela própria (`TIMEOUT_COTA_S`), porque a cota é por conta ou por IP. O
+registro reaproveita esse dono e não consulta a sessão de novo; só a consulta se a janela estourou
+antes de resolvê-lo. Com a IA desligada, a ordem é a deste ADR. A análise continua sem depender da
+conta: sem a janela, o texto sai só com o motor, nunca com erro.

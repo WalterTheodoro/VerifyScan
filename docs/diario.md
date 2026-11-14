@@ -2527,3 +2527,104 @@ No teste em produção apareceram quatro problemas:
 - **Verificação:** `ruff`, `mypy` limpos; `pytest -m "not integracao"` 768 passando, 1 xfail;
   `-m integracao` 79. Os testes de receita culinária e de `cpf-receita-federal` falharam antes.
 - **Pendente:** "receita" e "federal" em rótulos diferentes (`receita.federal.example`) não casam.
+
+## 2026-11-14 — Fatia 10: limites de uso da IA, teto de gasto e proteção do login (ADR-0024)
+
+- **Problema:** cada análise chama a Anthropic (~US$ 0,00043 por texto, ~US$ 0,00126 por print),
+  sem nenhum limite. O login não limitava tentativas, e ~25 verificações Argon2id simultâneas
+  (~19 MiB cada) derrubariam o processo de 512 MB.
+- **O que mudou no backend:**
+  - **Cota diária de IA** em unidades: texto 1, print 3; 5 sem conta e 25 com conta. O dia vira à
+    meia-noite de São Paulo.
+    - Texto acima da cota: só o motor, com `motivo_sem_ia: "cota"` e a frase.
+    - Print acima da cota: 429.
+    - Toda resposta traz `ia_restantes_hoje`.
+  - **Teto global de US$ 1 por dia** pelo usage real. Resposta inválida, recusada ou cortada também
+    entra; o timeout é contado à parte, em `chamadas_com_timeout`.
+  - **Migração 0007:**
+    - `uso_diario`, com UPSERT atômico. A faxina apaga de anteontem para trás, e a exclusão da
+      conta apaga as linhas `conta:<id>` na mesma transação;
+    - `gasto_diario_ia`, sem prazo de guarda: sem dado pessoal, é a série do gasto não
+      contabilizado.
+  - **IP:** o frontend o repassa com `PROXY_SEGREDO`, e sem o segredo vale a entrada mais à
+    direita do `X-Forwarded-For`. O IPv6 é agrupado por /64, e no banco vai só o HMAC do IP.
+  - **Login:**
+    - semáforo de 2 vagas no Argon2;
+    - 10 senhas erradas por conta e 30 por IP em 15 min, em memória: login, troca e exclusão
+      dividem a chave da conta;
+    - 5 cadastros por IP por dia, no banco.
+  - **Os dois segredos são obrigatórios**, e o erro de configuração não mostra valores
+    (`hide_input_in_errors`). O fuso vem do `tzdata`, agora declarado.
+- **O que mudou no frontend:**
+  - o `proxy.ts` (Next 16) repassa o IP e o segredo, e apaga os cabeçalhos que o navegador mandou;
+  - o build de produção quebra sem `PROXY_SEGREDO`, e `proxyClientMaxBodySize` ficou explícito
+    (11 MB);
+  - a tela mostra:
+    - o aviso de cota num quadro com a borda anil;
+    - "Restam N análises com IA hoje", na cor do texto, com "Um print conta como 3" abaixo de 3;
+    - "Esta foi a última análise com IA de hoje" no zero;
+  - /privacidade ganhou "Limite de análises e proteção da conta" (art. 7º, IX e art. 10, § 1º da
+    LGPD, conferidos no Planalto).
+- **Achados no caminho:**
+  - **IP no log:** o log de acesso do uvicorn imprimiu o IP forjado (`203.0.113.250:0`): ele troca
+    o endereço pelo do `X-Forwarded-For` quando a conexão vem de 127.0.0.1. Desligado dentro da
+    aplicação, em vez de depender do comando de start do Render.
+  - **Chave do cadastro:** a cota de cadastro gravava o HMAC sem o prefixo `ip:`. Achado pelo teste
+    de integração da exclusão de conta, e corrigido.
+  - **Cabeçalhos do /health:** os `X-VerifyScan-*` forjados passavam intactos ao backend. O matcher
+    do `proxy.ts` passou a incluí-lo.
+  - **X-Forwarded-For no Render:** não é documentado. O único registro, o quadro de sugestões,
+    tem duas versões contraditórias, e a entrada mais à direita foi a escolha segura. O limite por
+    IP é de melhor esforço; quem garante o dinheiro é o teto global.
+  - **Edições em lote:** o heredoc do Git Bash falhou com blocos grandes de Python ("unexpected
+    EOF"). As edições em lote passaram a ir por scripts gravados no scratchpad.
+- **Decisões do Walter no caminho:**
+  - `tzdata` explícito;
+  - o timeout fica fora do custo, mas contado;
+  - print com o banco da cota fora → 503 com a frase honesta;
+  - `le=` folgado nas cotas, no teto e na janela da cota (Demo Day: todos atrás do mesmo IP);
+  - `gasto_diario_ia` sem prazo;
+  - exclusão da conta apaga o uso dela;
+  - os commits de cota e de login juntos.
+- **Invariante 8 (tetos, não medições):**
+
+  | Caminho | Antes | Agora |
+  |---|---|---|
+  | Texto, hoje | ≈ 17,3 s | ≈ 18,8 s |
+  | Print, hoje | ≈ 22,5 s | ≈ 24 s |
+  | Print, desenho completo | ≈ 27,2 s | ≈ 28,7 s |
+
+  `TIMEOUT_COTA_S` aceita até 5 s, mas acima de ~2,8 s o desenho completo do print passa dos 30 s.
+- **Motor:** não mudou (`ServicoAnalise`, `regras.yaml` e analisadores intactos). O
+  `avaliar_corpus` não foi rodado.
+- **Verificação:**
+  - **Backend:**
+    - `ruff format`, `ruff check` e `mypy app` limpos;
+    - `pytest -m "not integracao"`: 768 → **866** passando, 1 xfail;
+    - `-m integracao`: 79 → **94** passando, entre eles 20 reservas simultâneas com cota 5 dando
+      exatamente 5 (e exatamente 1 print), em conexões separadas;
+    - `alembic check` limpo.
+  - **Frontend:** `npm test` 74 → **86**; `lint`, `tsc --noEmit` e `build` limpos; o build sem
+    `PROXY_SEGREDO` quebra, como planejado.
+  - **De ponta a ponta:**
+    - Next em dev com um servidor de eco no lugar do backend: os cabeçalhos forjados pelo navegador
+      foram trocados, um corpo de 7 MB passou inteiro, e nem o segredo nem `x-middleware-*`
+      voltaram ao navegador;
+    - servidor real com a IA desligada: 10 logins com 401 e o 11º com 429, e o IP fora do log.
+  - **Medição em 390 px:** build de produção na 3001, Edge pelo Playwright, API respondida por
+    dados fixos. **23/23 conferências**, sem rolagem lateral (`scrollWidth` 390):
+    - resultado com "Restam", com a cota e sem número;
+    - print com 429, sem "conexão";
+    - entrar, cadastro, troca de senha e exclusão com 429;
+    - /privacidade.
+- **Testes antes do código, e depois:**
+  - **Antes** (falharam ou nem importavam): relógio de São Paulo, IP e HMAC, serviço da cota,
+    limitador de tentativas, semáforo, limites de login pela API e o teste de integração da
+    exclusão apagando o uso. No frontend, `ip.test.ts` e `cota.test.ts` foram escritos antes, mas
+    rodados só depois da implementação.
+  - **Depois do código**, passando de primeira: cota pela API, privacidade do IP, configuração,
+    faxina do uso, integração do repositório de uso e as frases de 429 e 503 do frontend.
+- **Pendente:**
+  - **Depois do deploy:** o teste de caixa-preta do `X-Forwarded-For` forjado (ADR-0024).
+  - **Na fatia da reputação externa:** refazer a conta da janela da cota.
+  - As linhas `RATE_LIMIT_*` do `.env.example` seguem sem uso; o limite desta fatia é por dia.

@@ -104,6 +104,11 @@ uv run uvicorn app.main:app --port 8000 --loop none --reload
 O `uv sync` cria o `.venv` e instala tudo a partir do `uv.lock` — não é preciso ativar o ambiente
 virtual: `uv run` já faz isso.
 
+Antes do `alembic upgrade`, o `.env` precisa de `IP_HMAC_SEGREDO` e `PROXY_SEGREDO` (ADR-0024),
+com pelo menos 32 caracteres cada. Eles não têm default: sem eles, nem o Alembic nem o uvicorn
+sobem, e o erro diz qual falta. Gere cada um com
+`uv run python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+
 O `alembic upgrade head` aplica as migrações que faltam no banco do `docker compose`. Rode-o
 depois de todo `docker compose up` com volume novo e sempre que puxar uma migração nova — o
 esquema só muda por migração, nunca à mão.
@@ -147,6 +152,11 @@ Abra <http://localhost:3000> e cole uma mensagem suspeita para analisar.
 O navegador nunca chama o backend direto: o Next repassa `/api/*` e `/health` para
 `API_URL_INTERNA` (default `http://localhost:8000` fora de produção; ADR-0014). Um
 `npm run build` exige a variável no `.env.local` — sem ela, o build falha de propósito.
+
+No caminho, o `proxy.ts` repassa ao backend o IP do visitante, com o segredo compartilhado
+(ADR-0024). Para isso, `PROXY_SEGREDO` no `.env.local` precisa ter o mesmo valor do `.env` do
+backend. No `npm run dev` ele é opcional: sem ele, o backend vê o IP do Next. O `npm run build`
+exige a variável.
 
 Em <http://localhost:3000/status> fica a página de infraestrutura, que consulta `/health` e
 mostra o estado de Postgres e Redis separadamente.
@@ -337,7 +347,23 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    `IMAGEM_MAX_BYTES=5242880` (máximo 7500000). Nos logs vão só bytes, dimensões, latência, tokens
    e o motivo do plano B: nunca a imagem, a transcrição nem o contexto. A migração `0006` roda no
    build.
-8. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
+9. **Limites de uso, teto de gasto e login (ADR-0024).** No backend → **Environment**, **antes do
+   merge** (o `alembic upgrade` do build lê o `Settings` e quebra sem eles):
+   - `IP_HMAC_SEGREDO`, como segredo: a chave do HMAC do IP de quem não tem conta. Gere uma vez e
+     não troque: trocar zera as cotas do dia;
+   - `PROXY_SEGREDO`, como segredo, com o **mesmo valor** do frontend (item 10);
+   - opcionais, com estes defaults:
+     - `IA_COTA_SEM_CONTA=5` (até 200), `IA_COTA_COM_CONTA=25` (até 500);
+     - `IA_TETO_GASTO_DIARIO_USD=1.00` (até 20);
+     - `IA_PRECO_ENTRADA_USD_POR_MILHAO=0.10` e `IA_PRECO_SAIDA_USD_POR_MILHAO=0.50`;
+     - `TIMEOUT_COTA_S=1.5` (até 5; acima de ~2,8 s o pior caso do print passa dos 30 s);
+     - `LOGIN_FALHAS_POR_CONTA=10`, `LOGIN_FALHAS_POR_IP=30`, `LOGIN_JANELA_MINUTOS=15`,
+       `CADASTROS_POR_IP_POR_DIA=5` e `ARGON2_SIMULTANEOS=2` (só podem baixar).
+
+   Num evento em que todo mundo sai pelo mesmo IP (o Demo Day), suba `IA_COTA_SEM_CONTA` naquela
+   data. A migração `0007` roda no build. **Backend e frontend desta fatia sobem juntos:** sem o
+   IP repassado pelo frontend, todo visitante sem conta cai no IP do frontend e divide uma cota só.
+10. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
    - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
      `/health`. É lida no build; sem ela, o build falha;
    - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
@@ -346,7 +372,9 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
    - `NEXT_PUBLIC_URL_DESPERTAR=https://verifyscan.onrender.com` — o endereço público do
      backend. O navegador faz um GET direto a `/health` nele, só para acordá-lo: pelo proxy, o
      Render responde 502 e não acorda o backend (adendo do ADR-0017). Também é lida no build. Sem
-     ela, o build passa, mas o primeiro acesso em produção não acorda o backend.
+     ela, o build passa, mas o primeiro acesso em produção não acorda o backend;
+   - `PROXY_SEGREDO`, como segredo, com o mesmo valor do backend (ADR-0024). O `proxy.ts` o lê em
+     execução, mas o build de produção quebra sem ele.
 
    **`NEXT_PUBLIC_API_URL` pode sair do painel:** o código não a lê mais.
 

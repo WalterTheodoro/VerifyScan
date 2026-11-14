@@ -42,7 +42,7 @@ PowerShell. Nada de `&&` encadeado em scripts do `package.json` sem alternativa 
 # subir dependências de infra
 docker compose up -d
 
-# backend
+# backend (o .env precisa de IP_HMAC_SEGREDO e PROXY_SEGREDO, sem default: ADR-0024)
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -102,7 +102,9 @@ verifyscan/
 ├─ backend/
 │  └─ app/
 │     ├─ api/              # rotas FastAPI (finas, sem regra de negócio)
-│     ├─ services/         # a regra de negócio mora aqui — é o destino do que api/ não pode ter
+│     ├─ services/         # a regra de negócio mora aqui — é o destino do que api/ não pode ter;
+│     │                    #   cota da IA e teto de gasto (cota.py), senhas erradas em memória
+│     │                    #   (tentativas.py), uso diário no banco (repositorio_uso.py; ADR-0024)
 │     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer (léxico, PSL embutida,
 │     │                    #   ADR-0022), EmailAnalyzer
 │     ├─ ocr/              # o print: imagem.py (bytes iniciais, Pillow, sem metadados) e
@@ -110,13 +112,15 @@ verifyscan/
 │     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
 │     ├─ scoring/          # ScoringEngine, regras.yaml, respostas.yaml (plano B), combinar()
 │     ├─ formulator/       # análise com IA: cliente, prompt, saída e limpeza (ADR-0020)
-│     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario
+│     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario,
+│     │                    #   UsoDiario, GastoDiarioIA
 │     ├─ schemas/          # Pydantic (contrato da API)
-│     └─ core/             # config, segurança (hash Argon2id), cache, logs, timeouts
+│     └─ core/             # config, segurança (hash Argon2id com semáforo), cache, logs, timeouts,
+│                          #   IP do visitante e HMAC (ip.py), dia de São Paulo (relogio.py)
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
 │  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
 │  │                       #   IA + explicação só com dono, 0006 tipo imagem + contexto do print só
-│  │                       #   com dono); esquema só por aqui
+│  │                       #   com dono, 0007 uso diário e gasto da IA); esquema só por aqui
 │  ├─ tools/               # avaliar_corpus + linha_de_base_motor.json (gate do CI, só calibração),
 │  │                       #   sortear_divisao, pii, testar_ia + amostras_ia.yaml, gerar_prints +
 │  │                       #   avaliar_prints + prints_sinteticos.yaml (só ids e variações)
@@ -124,6 +128,7 @@ verifyscan/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
    ├─ next.config.ts       # proxy /api/* e /health → API_URL_INTERNA (ADR-0014)
+   ├─ proxy.ts             # repassa o IP do visitante com o PROXY_SEGREDO (ADR-0024)
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
       │                    #   (botão, Ctrl+V, soltar; ADR-0023)
@@ -141,7 +146,8 @@ verifyscan/
       └─ _lib/             # chamadas ao backend (conta.ts, historico.ts, gestao-conta.ts), aviso de
                            #   conta excluída (sessionStorage), os hooks de envio e carga, imagem.ts
                            #   (canvas, tamanho da Anthropic, sem EXIF/XMP, 5 MB, lado ≥ 200 px),
-                           #   print.ts, falha-da-analise.ts (a frase de cada falha) e
+                           #   print.ts, ip.ts (IP do visitante para o proxy), cota.ts ("Restam N"),
+                           #   falha-da-analise.ts (a frase de cada falha) e
                            #   tela-da-analise.ts (reducer da tela: quando o erro sai); testes em
                            #   node:test (*.test.ts, sem imports, type stripping)
 ```
@@ -168,11 +174,15 @@ quebrar uma delas, **pare e pergunte**.
    Pillow o reencoda sem metadados (ADR-0023; multipart gravaria em disco acima de 1 MB). O teste
    verifica que nada foi escrito na árvore do projeto, que nenhum arquivo foi aberto para escrita e
    que nenhum temporário foi criado. Do print, fica só a transcrição e o contexto, com dono, pelas
-   regras do texto (0004) e da explicação da IA (0005).
+   regras do texto (0004) e da explicação da IA (0005). O IP de quem pediu também nunca é gravado
+   nem logado (nem pelo log de acesso do uvicorn, desligado no código): na cota e no limite de
+   login vai só o HMAC dele, com segredo (ADR-0024).
 3. **O sistema funciona sem a LLM** (RNF08). Desligada (`IA_ATIVADA=false`), fora do ar, acima de
    15 s, recusando, cortada ou com resposta inválida: a resposta sai só do motor, com o plano B do
    nível (`scoring/respostas.yaml`) e `explicacao_indisponivel: true`. A análise nunca falha por
-   causa da IA. A saída da IA e a mensagem nunca vão para log.
+   causa da IA. A saída da IA e a mensagem nunca vão para log. Cota do dia esgotada ou teto de
+   gasto atingido: o texto sai só do motor, com `motivo_sem_ia: "cota"`; banco da cota fora, o
+   plano B comum (ADR-0024).
 4. **O sistema funciona sem as APIs externas.** VirusTotal e Safe Browsing são *enriquecimento*.
    Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`. E **o sistema
    nunca abre o link da mensagem**: nem GET, nem HEAD, nem DNS, nem seguir redirecionamento
@@ -186,13 +196,17 @@ quebrar uma delas, **pare e pergunte**.
    nem recalibração. Falha ao registrar não derruba a análise: a transação inteira é descartada,
    vira WARNING sem conteúdo da mensagem e a resposta sai igual (ADR-0012).
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
-8. **Orçamento de tempo** (KPI < 30s): leitura do print ≤ 10 s **em série** (a transcrição é a
-   entrada das heurísticas; ocupa o lugar do OCR) · depois, em paralelo: heurísticas locais ≤ 300ms
-   · RDAP ≤ 3s · reputação externa ≤ 5s · por fim LLM, uma chamada, sem nova tentativa: ≤ 15 s no
-   texto e ≤ 10 s no print (ADR-0020, ADR-0023) · registro ≤ 2 s, em série, por último (ADR-0012).
-   Pior caso: texto ≈ 17 s hoje; print ≈ 22,5 s hoje e ≈ 27,2 s no desenho completo. O proxy do
-   Next corta em 90 s (ADR-0014). Os tetos só podem baixar (o `Settings` recusa valor maior). Todo
-   I/O externo tem timeout explícito (ADR-0002).
+8. **Orçamento de tempo** (KPI < 30s): janela da cota ≤ 1,5 s **em série** antes de qualquer
+   chamada à IA (sessão + reserva; no texto, depois do motor; ADR-0024) · leitura do print ≤ 10 s
+   **em série** (a transcrição é a entrada das heurísticas; ocupa o lugar do OCR) · depois, em
+   paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa ≤ 5s · por fim LLM, uma
+   chamada, sem nova tentativa: ≤ 15 s no texto e ≤ 10 s no print (ADR-0020, ADR-0023) · registro
+   ≤ 2 s, em série, por último, com o gasto da IA em paralelo no mesmo teto (ADR-0012, ADR-0024).
+   Pior caso: texto ≈ 18,8 s hoje; print ≈ 24 s hoje e ≈ 28,7 s no desenho completo. O proxy do
+   Next corta em 90 s (ADR-0014). Os tetos só podem baixar (o `Settings` recusa valor maior), com
+   uma exceção: `TIMEOUT_COTA_S` aceita até 5 s, mas acima de ~2,8 s o desenho completo do print
+   passa dos 30 s — a fatia da reputação refaz essa conta (ADR-0024). Todo I/O externo tem timeout
+   explícito (ADR-0002).
 
 ## 6. Convenções de código
 
