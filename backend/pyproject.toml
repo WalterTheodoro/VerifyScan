@@ -33,6 +33,11 @@ dependencies = [
     # com teto de pixels contra bomba de descompressão. A stdlib não lê PNG, JPEG nem WebP.
     # 12.3.0: a 13.0.0 tinha 11 dias na adoção (regra dos 14 dias do ADR-0022).
     "pillow==12.3.0",
+    # Fuso de America/Sao_Paulo para o dia da cota da IA (fatia 10, ADR-0024). O `zoneinfo` da
+    # stdlib lê o banco de fusos do sistema, que o Windows não tem e a imagem do Render não
+    # garante; só dados, mantido pelos desenvolvedores do Python. Já vinha no lock pelo psycopg,
+    # só no Windows. Versão fixa, publicada há mais de 14 dias (regra do ADR-0022).
+    "tzdata==2026.3",
 ]
 
 [dependency-groups]
@@ -90,6 +95,8 @@ select = [
 "app/formulator/*.py" = ["N818"]
 # E os motivos da recusa do print e da leitura (`ImagemInvalida`, `LeituraFalhou`, ADR-0023).
 "app/ocr/*.py" = ["N818"]
+# E o Argon2 sem vaga no semáforo (`HasherOcupado`, ADR-0024).
+"app/core/seguranca.py" = ["N818"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mypy
