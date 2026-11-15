@@ -8,19 +8,23 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import obter_repositorio_sessoes, obter_usuario_atual
+from app.core.relogio import dia_de_sao_paulo
 from app.services.historico import faxina
+from app.services.repositorio_uso import GastoDaChamada
 from app.services.repositorio_usuarios import UsuarioAutenticado
 from tests.conftest import (
     RelogioFalso,
     RepositorioHistoricoEmMemoria,
     RepositorioSessoesEmMemoria,
+    RepositorioUsoEmMemoria,
     SessaoEmMemoria,
 )
 
@@ -87,7 +91,44 @@ async def test_faxina_respeita_o_teto_e_nunca_levanta(
 ) -> None:
     """Um teto só para os dois passos: a listagem não espera mais que antes desta fatia."""
     with caplog.at_level(logging.WARNING):
-        await faxina(historico, SessoesLentas(relogio), historico_dias=7, timeout_s=0.05)
+        await faxina(
+            historico,
+            SessoesLentas(relogio),
+            historico_dias=7,
+            timeout_s=0.05,
+            uso=RepositorioUsoEmMemoria(),
+            hoje=date(2026, 10, 1),
+        )
 
     assert historico.desvinculacoes == 1
     assert "TimeoutError" in caplog.text
+
+
+# ─── uso diário da IA (fatia 10, ADR-0024) ────────────────────────────────────────────────────
+
+
+async def test_listar_apaga_o_uso_de_anteontem_e_mantem_ontem_e_hoje(
+    navegador: AsyncClient, uso: RepositorioUsoEmMemoria, relogio: RelogioFalso
+) -> None:
+    hoje = dia_de_sao_paulo(relogio())
+    for dias_atras in range(4):
+        dia = hoje - timedelta(days=dias_atras)
+        await uso.reservar("ia", "ip:abc", dia, 1, 5)
+        await uso.reservar("cadastro", "ip:abc", dia, 1, 5)
+
+    assert (await navegador.get("/api/historico")).status_code == 200
+
+    assert sorted({dia for _, _, dia in uso.usos}) == [hoje - timedelta(days=1), hoje]
+    assert len(uso.usos) == 4
+
+
+async def test_o_gasto_agregado_nao_e_apagado(
+    navegador: AsyncClient, uso: RepositorioUsoEmMemoria, relogio: RelogioFalso
+) -> None:
+    """O gasto é um total do dia, sem pessoa: fica, para medir o custo e os timeouts no tempo."""
+    antigo = dia_de_sao_paulo(relogio()) - timedelta(days=30)
+    await uso.somar_gasto(antigo, GastoDaChamada(10, 1, Decimal("0.000002"), 1, 1))
+
+    assert (await navegador.get("/api/historico")).status_code == 200
+
+    assert antigo in uso.gastos

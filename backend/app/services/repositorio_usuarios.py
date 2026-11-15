@@ -13,7 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
 
-from app.models import SessaoUsuario, Usuario
+from app.models import SessaoUsuario, UsoDiario, Usuario
+from app.models.uso import chave_da_conta
 
 # Nome que a naming_convention da Base dá ao UNIQUE de usuarios.email (ADR-0012).
 _UNIQUE_DO_EMAIL = "uq_usuarios_email"
@@ -154,8 +155,16 @@ class RepositorioUsuariosPostgres:
 
     async def apagar(self, usuario_id: uuid.UUID) -> None:
         """Apaga a conta. Sessões, análises ligadas (com o texto) e os indicadores delas vão
-        pelos ON DELETE CASCADE das migrações 0001, 0002 e 0003 — quem apaga é o banco."""
+        pelos ON DELETE CASCADE das migrações 0001, 0002 e 0003 — quem apaga é o banco.
+
+        O uso diário da cota da IA (`conta:<id>`, ADR-0024) não tem chave estrangeira — a chave
+        é texto, que também guarda o HMAC do IP de quem não tem conta —, então sai aqui, na mesma
+        transação: ou a conta e o uso, ou nada.
+        """
         async with self._fabrica_de_sessoes() as sessao, sessao.begin():
+            await sessao.execute(
+                delete(UsoDiario).where(UsoDiario.chave == chave_da_conta(usuario_id))
+            )
             await sessao.execute(delete(Usuario).where(Usuario.id == usuario_id))
 
 

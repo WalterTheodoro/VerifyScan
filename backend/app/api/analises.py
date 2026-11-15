@@ -6,11 +6,11 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 
-from app.api.deps import ler_token_de_sessao, obter_orquestrador
+from app.api.deps import ler_token_de_sessao, obter_chave_ip, obter_orquestrador
 from app.core.config import Settings, get_settings
 from app.schemas.analise import RespostaAnalise, SolicitacaoAnalise, SolicitacaoAnalisePrint
 from app.services.analise import EntradaInvalida
-from app.services.orquestrador import LeituraIndisponivel, OrquestradorAnalise
+from app.services.orquestrador import CotaEsgotada, LeituraIndisponivel, OrquestradorAnalise
 
 router = APIRouter(prefix="/api", tags=["análise"])
 
@@ -29,12 +29,14 @@ async def criar_analise(
     solicitacao: SolicitacaoAnalise,
     orquestrador: OrquestradorAnalise = Depends(obter_orquestrador),
     token: str | None = Depends(ler_token_de_sessao),
+    chave_ip: str = Depends(obter_chave_ip),
 ) -> RespostaAnalise:
     # A análise em si é síncrona e só CPU (orçamento de 300ms, ADR-0002); o orquestrador
-    # acrescenta o registro no banco, que tem timeout próprio e nunca derruba a resposta. O
-    # token só serve ao registro, para ligar a análise à conta (ADR-0015).
+    # acrescenta a cota da IA e o registro no banco, com tetos próprios, e nenhum dos dois derruba
+    # a resposta. O token e a chave do IP dizem de quem é a cota (ADR-0024); o token também liga
+    # a análise à conta (ADR-0015).
     try:
-        return await orquestrador.analisar(solicitacao.texto, token)
+        return await orquestrador.analisar(solicitacao.texto, token, chave_ip)
     except EntradaInvalida as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
@@ -94,13 +96,19 @@ async def _ler_corpo_limitado(request: Request, limite: int) -> bytes:
                 "demais. Sem nível. `detail` é a mensagem ao usuário."
             )
         },
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "A IA está desligada."},
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "A cota de prints de hoje acabou. `detail` manda colar o texto."
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "A IA está desligada, ou a cota não pôde ser conferida."
+        },
     },
 )
 async def criar_analise_de_print(
     request: Request,
     orquestrador: OrquestradorAnalise = Depends(obter_orquestrador),
     token: str | None = Depends(ler_token_de_sessao),
+    chave_ip: str = Depends(obter_chave_ip),
     settings: Settings = Depends(get_settings),
 ) -> RespostaAnalise:
     # JSON com base64, e não multipart: o `UploadFile` do Starlette grava em arquivo temporário
@@ -117,10 +125,14 @@ async def criar_analise_de_print(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=_IMAGEM_INVALIDA
         ) from erro
     try:
-        return await orquestrador.analisar_print(imagem, solicitacao.texto, token)
+        return await orquestrador.analisar_print(imagem, solicitacao.texto, token, chave_ip)
     except EntradaInvalida as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
+        ) from erro
+    except CotaEsgotada as erro:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(erro)
         ) from erro
     except LeituraIndisponivel as erro:
         raise HTTPException(

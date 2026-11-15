@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from anthropic import AsyncAnthropic
+from anthropic import APITimeoutError, AsyncAnthropic
 from anthropic.types import Message
 
 from app.core.config import Settings
@@ -32,6 +32,42 @@ class RespostaIA:
     modelo: str
     tokens_entrada: int
     tokens_saida: int
+
+
+# Os dois jeitos de uma chamada estourar o tempo: o nosso `asyncio.timeout` e o timeout do próprio
+# SDK, que no texto tem o mesmo valor e pode disparar primeiro.
+ERROS_DE_TEMPO: tuple[type[Exception], ...] = (TimeoutError, APITimeoutError)
+
+
+@dataclass
+class ConsumoDaIA:
+    """O que as chamadas de UMA requisição gastaram, para o teto diário (fatia 10, ADR-0024).
+
+    Uma instância por requisição, só em memória. Quem soma é quem chama a API — o `AnalisadorIA`
+    e o `LeitorDePrint` —, logo que a resposta chega e antes de interpretá-la: resposta recusada,
+    cortada ou inválida também foi cobrada. Chamada que estoura o nosso teto de tempo não devolve
+    usage; ela só é contada em `timeouts`, para o gasto que fica fora da conta ser medido.
+    """
+
+    tokens_entrada: int = 0
+    tokens_saida: int = 0
+    chamadas: int = 0
+    timeouts: int = 0
+
+    def somar(self, resposta: RespostaIA) -> None:
+        self.tokens_entrada += resposta.tokens_entrada
+        self.tokens_saida += resposta.tokens_saida
+        self.chamadas += 1
+
+    def contar_timeout(self) -> None:
+        self.timeouts += 1
+
+    def zerar(self) -> None:
+        self.tokens_entrada = self.tokens_saida = self.chamadas = self.timeouts = 0
+
+    @property
+    def vazio(self) -> bool:
+        return self.chamadas == 0 and self.timeouts == 0
 
 
 class ClienteIA(Protocol):

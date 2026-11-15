@@ -23,6 +23,7 @@ from app.api.deps import (
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
+    obter_repositorio_uso,
     obter_repositorio_usuarios,
 )
 from app.core.config import get_settings
@@ -31,6 +32,7 @@ from app.main import criar_app
 from app.services.repositorio_analises import RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from app.services.repositorio_uso import RepositorioUsoPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
 from tests.conftest import ClienteIAFalso, leitura_desligada, saida_da_ia, settings_de_teste
 from tests.test_api_analise_com_ia import PENDENCIA_DOS_CORREIOS
@@ -215,6 +217,9 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: RepositorioSessoesPostgres(
+        fabrica_de_sessoes
+    )
+    app.dependency_overrides[obter_repositorio_uso] = lambda: RepositorioUsoPostgres(
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_historico] = lambda: RepositorioHistoricoPostgres(

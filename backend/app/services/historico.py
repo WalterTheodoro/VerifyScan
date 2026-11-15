@@ -1,4 +1,4 @@
-"""Histórico da conta: listar, apagar e a faxina do que venceu (ADR-0015, ADR-0019).
+"""Histórico da conta: listar, apagar e a faxina do que venceu (ADR-0015, ADR-0019, ADR-0024).
 
 Dois tetos, escolhidos pelo modo de falha, como no ADR-0013:
 - **o que a pessoa pediu** (listar, apagar) usa `timeout_autenticacao_s`; estourou, 503 com
@@ -12,17 +12,23 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import date, timedelta
 
+from app.core.relogio import Relogio, dia_de_sao_paulo
 from app.services.autenticacao import ServicoIndisponivel
 from app.services.repositorio_historico import AnaliseDoHistorico, RepositorioHistorico
 from app.services.repositorio_sessoes import RepositorioSessoes
+from app.services.repositorio_uso import RepositorioUso
 from app.services.repositorio_usuarios import UsuarioAutenticado
 
 logger = logging.getLogger(__name__)
 
 # Teto da listagem. Sem paginação nesta fatia: 7 dias de uso de uma pessoa cabem com folga.
 LIMITE_DA_LISTAGEM = 200
+
+# Dias de uso guardados, contando hoje: hoje e ontem (ADR-0024). Ontem fica para a cota de quem
+# está perto da meia-noite não depender do instante exato da faxina.
+USO_GUARDADO_DIAS = 2
 
 
 class AnaliseNaoEncontrada(Exception):
@@ -37,18 +43,23 @@ async def faxina(
     sessoes: RepositorioSessoes,
     historico_dias: int,
     timeout_s: float,
+    *,
+    uso: RepositorioUso,
+    hoje: date,
 ) -> None:
-    """Desvincula as análises vencidas (dono e texto) e apaga as sessões vencidas. Nunca levanta.
+    """Desvincula as análises vencidas (dono e texto), apaga as sessões vencidas e o uso diário
+    de anteontem para trás (ADR-0024). Nunca levanta.
 
     Roda sem agendador, nos dois momentos em que o processo já está acordado: na subida (lifespan)
-    e a cada listagem. Um teto só para os dois passos: a listagem não espera mais do que esperava
-    antes desta fatia. Se o primeiro falhar, o segundo fica para a próxima vez. O log leva só o
-    tipo da exceção, como no registro (ADR-0012).
+    e a cada listagem. Um teto só para os três passos: a listagem não espera mais do que esperava
+    antes. Se um passo falhar, os seguintes ficam para a próxima vez. O log leva só o tipo da
+    exceção, como no registro (ADR-0012).
     """
     try:
         async with asyncio.timeout(timeout_s):
             await historico.desvincular_vencidas(timedelta(days=historico_dias))
             await sessoes.apagar_todas_vencidas()
+            await uso.apagar_antigos(hoje - timedelta(days=USO_GUARDADO_DIAS - 1))
     except Exception as exc:
         logger.warning("Faxina do histórico e das sessões não rodou: %s", type(exc).__name__)
 
@@ -61,9 +72,13 @@ class ServicoHistorico:
         historico_dias: int,
         timeout_s: float,
         timeout_faxina_s: float,
+        uso: RepositorioUso,
+        relogio: Relogio,
     ) -> None:
         self._repositorio = repositorio
         self._sessoes = sessoes
+        self._uso = uso
+        self._relogio = relogio
         self._historico_dias = historico_dias
         self._timeout_s = timeout_s
         self._timeout_faxina_s = timeout_faxina_s
@@ -73,7 +88,14 @@ class ServicoHistorico:
         return self._historico_dias
 
     async def listar(self, usuario: UsuarioAutenticado) -> list[AnaliseDoHistorico]:
-        await faxina(self._repositorio, self._sessoes, self._historico_dias, self._timeout_faxina_s)
+        await faxina(
+            self._repositorio,
+            self._sessoes,
+            self._historico_dias,
+            self._timeout_faxina_s,
+            uso=self._uso,
+            hoje=dia_de_sao_paulo(self._relogio()),
+        )
         async with self._banco():
             return await self._repositorio.listar(
                 usuario.id, timedelta(days=self._historico_dias), LIMITE_DA_LISTAGEM

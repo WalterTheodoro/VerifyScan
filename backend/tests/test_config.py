@@ -1,5 +1,7 @@
 """Settings — a URL do banco aceita a string do Neon como ela vem, e o Redis é opcional."""
 
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
@@ -144,3 +146,77 @@ def test_o_processo_de_teste_roda_com_a_ia_desligada() -> None:
     from app.core.config import get_settings
 
     assert get_settings().ia_ativada is False
+
+
+# ─── fatia 10: cota, teto de gasto, segredos e login (ADR-0024) ──────────────────────────────
+
+
+def test_defaults_da_cota_e_do_login() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert (settings.ia_cota_sem_conta, settings.ia_cota_com_conta) == (5, 25)
+    assert settings.ia_teto_gasto_diario_usd == Decimal("1.00")
+    assert settings.timeout_cota_s == 1.5
+    assert (settings.login_falhas_por_conta, settings.login_falhas_por_ip) == (10, 30)
+    assert settings.login_janela_minutos == 15
+    assert settings.cadastros_por_ip_por_dia == 5
+    assert settings.argon2_simultaneos == 2
+
+
+@pytest.mark.parametrize(
+    ("campo", "maximo"),
+    [
+        ("ia_cota_sem_conta", 200),
+        ("ia_cota_com_conta", 500),
+        ("ia_teto_gasto_diario_usd", 20),
+        ("timeout_cota_s", 5),
+    ],
+)
+def test_cota_e_teto_podem_subir_ate_a_trava_contra_engano(campo: str, maximo: float) -> None:
+    """Num evento, a sala inteira sai por um IP só: a cota precisa poder subir sem mexer no
+    código. O `le=` barra só o valor absurdo digitado por engano."""
+    assert Settings(_env_file=None, **{campo: maximo})  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{campo: maximo + 1})  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    "campo",
+    [
+        "login_falhas_por_conta",
+        "login_falhas_por_ip",
+        "login_janela_minutos",
+        "cadastros_por_ip_por_dia",
+        "argon2_simultaneos",
+    ],
+)
+def test_limites_de_seguranca_so_baixam(campo: str) -> None:
+    padrao = getattr(Settings(_env_file=None), campo)  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{campo: padrao + 1})  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("segredo", ["IP_HMAC_SEGREDO", "PROXY_SEGREDO"])
+def test_segredo_ausente_nao_sobe(segredo: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem default: com um conhecido, o HMAC do IP se desfaria; sem o do proxy, todo visitante
+    cairia numa cota só."""
+    monkeypatch.delenv(segredo)
+
+    with pytest.raises(ValidationError, match=segredo.lower()):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_segredo_curto_nao_sobe_e_nao_aparece_no_erro() -> None:
+    curto = "curto-demais-0123"
+
+    with pytest.raises(ValidationError) as erro:
+        Settings(_env_file=None, ip_hmac_segredo=curto)  # type: ignore[call-arg]
+
+    assert curto not in str(erro.value)
+
+
+def test_segredos_nao_aparecem_no_repr() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.ip_hmac_segredo.get_secret_value() not in repr(settings)
+    assert settings.proxy_segredo.get_secret_value() not in repr(settings)

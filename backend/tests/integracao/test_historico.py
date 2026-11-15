@@ -25,6 +25,7 @@ from app.api.deps import (
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
+    obter_repositorio_uso,
     obter_repositorio_usuarios,
 )
 from app.core.config import get_settings
@@ -33,6 +34,7 @@ from app.models import Analise, IndicadorRisco, Usuario
 from app.services.repositorio_analises import RegistroAnalise, RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
+from app.services.repositorio_uso import RepositorioUsoPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres, UsuarioAutenticado
 from tests.conftest import ia_desligada, leitura_desligada, settings_de_teste
 from tests.test_api_analises import GOLPE_DE_PIX
@@ -52,6 +54,9 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: RepositorioSessoesPostgres(
+        fabrica_de_sessoes
+    )
+    app.dependency_overrides[obter_repositorio_uso] = lambda: RepositorioUsoPostgres(
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_historico] = lambda: RepositorioHistoricoPostgres(

@@ -18,7 +18,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.formulator.cliente import ClienteLeitura, RespostaIA
+from app.formulator.cliente import ERROS_DE_TEMPO, ClienteLeitura, ConsumoDaIA, RespostaIA
 from app.ocr.imagem import ImagemPreparada
 from app.schemas.analise import (
     Canal,
@@ -195,10 +195,14 @@ class ParadaInesperada(Exception):
 
 
 class LeitorDePrint:
-    def __init__(self, cliente: ClienteLeitura | None, timeout_s: float) -> None:
-        """`cliente=None` é a IA desligada: sem ela, não há como ler o print."""
+    def __init__(
+        self, cliente: ClienteLeitura | None, timeout_s: float, consumo: ConsumoDaIA | None = None
+    ) -> None:
+        """`cliente=None` é a IA desligada: sem ela, não há como ler o print. `consumo` recebe o
+        usage da leitura, como no `AnalisadorIA` (ADR-0024)."""
         self._cliente = cliente
         self._timeout_s = timeout_s
+        self._consumo = consumo
 
     @property
     def disponivel(self) -> bool:
@@ -217,11 +221,16 @@ class LeitorDePrint:
         try:
             async with asyncio.timeout(self._timeout_s):
                 resposta = await self._cliente.ler(PROMPT_LEITURA, imagem.jpeg, SCHEMA_LEITURA)
+            # Antes de interpretar: a leitura ilegível ou inválida também foi cobrada.
+            if self._consumo is not None:
+                self._consumo.somar(resposta)
             leitura = _interpretar(resposta)
         except LeituraFalhou as exc:
             _logar_falha(exc.motivo, inicio)
             raise
         except Exception as exc:
+            if isinstance(exc, ERROS_DE_TEMPO) and self._consumo is not None:
+                self._consumo.contar_timeout()
             _logar_falha(type(exc).__name__, inicio)
             raise LeituraFalhou(type(exc).__name__) from exc
         logger.info(

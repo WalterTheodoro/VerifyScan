@@ -17,6 +17,7 @@ import {
   type Orientacao,
 } from "./_componentes/resultado";
 import { consumirContaExcluida } from "./_lib/conta-excluida";
+import { fraseDoRestante } from "./_lib/cota";
 import { fraseDaFalha } from "./_lib/falha-da-analise";
 import {
   ImagemRecusada,
@@ -71,6 +72,11 @@ type RespostaAnalise = {
   explicacao_ia?: ExplicacaoIA | null;
   // Fatia 9 (ADR-0023): a transcrição e o contexto, só no caminho de imagem.
   leitura_do_print?: LeituraDoPrint | null;
+  // Fatia 10 (ADR-0024): a cota diária de IA. `motivo_sem_ia` separa a cota de uma falha da IA,
+  // que também chega com `explicacao_indisponivel`; `aviso_sem_ia` é a frase pronta do backend.
+  ia_restantes_hoje?: number | null;
+  motivo_sem_ia?: "cota" | null;
+  aviso_sem_ia?: string | null;
 };
 
 // Com a IA, a análise leva em geral 2 a 4 s, e o teto é 15 s (ADR-0020). Depois disto, a tela diz
@@ -526,6 +532,7 @@ export default function PaginaAnalise() {
                       tituloRef={tituloDoResultado}
                       animar
                     />
+                    <AvisoDaCota resultado={estado.resultado} />
                     <AvisoDoHistorico
                       salva={estado.resultado.salva_no_historico}
                       comTexto={estado.resultado.texto_salvo === true}
@@ -916,6 +923,17 @@ function OQueEleProcura() {
 /** Abaixo do resultado: se a análise foi para o histórico. Deslogado, nada — a análise sem
  *  conta continua sendo o caminho principal. Logado e não salva (sessão vencida, banco lento),
  *  diz a verdade em vez de prometer. */
+/** A cota de IA depois da análise (ADR-0024). Cota esgotada: a frase do backend, num quadro, para
+ *  a pessoa saber que esta análise saiu só com as regras automáticas — e não confundir com uma
+ *  falha. Senão, quanto resta, discreto, na cor do texto. */
+function AvisoDaCota({ resultado }: { resultado: RespostaAnalise }) {
+  if (resultado.motivo_sem_ia === "cota" && resultado.aviso_sem_ia) {
+    return <p className="cartao border-l-[10px] border-anil p-5">{resultado.aviso_sem_ia}</p>;
+  }
+  const restante = fraseDoRestante(resultado.ia_restantes_hoje);
+  return restante ? <p>{restante}</p> : null;
+}
+
 function AvisoDoHistorico({
   salva,
   comTexto,

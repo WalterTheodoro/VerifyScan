@@ -39,6 +39,13 @@ ERRO_422: Respostas = {
         "mantém o formato padrão do FastAPI (`detail` em lista)."
     }
 }
+ERRO_429: Respostas = {
+    status.HTTP_429_TOO_MANY_REQUESTS: {
+        "description": "Acima de um limite de uso: senhas erradas demais (por conta ou por IP) "
+        "ou contas novas demais do mesmo IP no dia (ADR-0024). `detail` diz o que fazer, sem "
+        "revelar se a conta existe."
+    }
+}
 ERRO_503: Respostas = {
     status.HTTP_503_SERVICE_UNAVAILABLE: {
         "description": "Banco fora ou lento demais. `detail` pede para tentar de novo."

@@ -13,7 +13,8 @@ import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI
@@ -23,20 +24,24 @@ from PIL import Image
 from app.api.deps import (
     obter_analisador_ia,
     obter_leitor_de_print,
+    obter_relogio,
     obter_repositorio_analises,
     obter_repositorio_historico,
     obter_repositorio_sessoes,
+    obter_repositorio_uso,
     obter_repositorio_usuarios,
 )
 from app.core.config import Settings, get_settings
 from app.formulator.analisador import AnalisadorIA
 from app.formulator.cliente import RespostaIA
 from app.main import criar_app
+from app.models.uso import Finalidade
 from app.ocr.leitura import LeitorDePrint
 from app.schemas.health import SaudeServico
 from app.services.health import VerificadorSaude
 from app.services.repositorio_analises import RegistroAnalise
 from app.services.repositorio_historico import AnaliseDoHistorico
+from app.services.repositorio_uso import GastoDaChamada, Reserva
 from app.services.repositorio_usuarios import (
     CredenciaisArmazenadas,
     DadosConta,
@@ -313,6 +318,60 @@ class RepositorioUsuariosEmMemoria:
 
 
 @dataclass
+class GastoEmMemoria:
+    tokens_entrada: int = 0
+    tokens_saida: int = 0
+    custo_usd: Decimal = Decimal(0)
+    chamadas: int = 0
+    chamadas_com_timeout: int = 0
+    teto_avisado: bool = False
+
+
+class RepositorioUsoEmMemoria:
+    """Falso determinístico de `RepositorioUso`, com as regras do SQL: soma só até o limite, e o
+    aviso de teto só uma vez. A atomicidade do UPSERT é provada em `tests/integracao/test_uso.py`.
+    """
+
+    def __init__(self) -> None:
+        self.usos: dict[tuple[str, str, date], int] = {}
+        self.gastos: dict[date, GastoEmMemoria] = {}
+
+    async def reservar(
+        self, finalidade: Finalidade, chave: str, dia: date, unidades: int, limite: int
+    ) -> Reserva:
+        usadas = self.usos.get((finalidade, chave, dia), 0)
+        if usadas + unidades > limite:
+            return Reserva(concedida=False, usadas=usadas)
+        self.usos[(finalidade, chave, dia)] = usadas + unidades
+        return Reserva(concedida=True, usadas=usadas + unidades)
+
+    async def gasto_do_dia(self, dia: date) -> Decimal:
+        return self.gastos[dia].custo_usd if dia in self.gastos else Decimal(0)
+
+    async def somar_gasto(self, dia: date, gasto: GastoDaChamada) -> Decimal:
+        atual = self.gastos.setdefault(dia, GastoEmMemoria())
+        atual.tokens_entrada += gasto.tokens_entrada
+        atual.tokens_saida += gasto.tokens_saida
+        atual.custo_usd += gasto.custo_usd
+        atual.chamadas += gasto.chamadas
+        atual.chamadas_com_timeout += gasto.chamadas_com_timeout
+        return atual.custo_usd
+
+    async def marcar_teto_avisado(self, dia: date, teto: Decimal) -> bool:
+        atual = self.gastos.get(dia)
+        if atual is None or atual.custo_usd < teto or atual.teto_avisado:
+            return False
+        atual.teto_avisado = True
+        return True
+
+    async def apagar_antigos(self, antes_de: date) -> int:
+        antigos = [chave for chave in self.usos if chave[2] < antes_de]
+        for chave in antigos:
+            del self.usos[chave]
+        return len(antigos)
+
+
+@dataclass
 class AnaliseVinculada:
     """Uma linha de `analises` no falso: o dono pode virar `None` (desvinculação)."""
 
@@ -404,8 +463,18 @@ def historico(relogio: RelogioFalso) -> RepositorioHistoricoEmMemoria:
 
 
 def settings_de_teste(**valores: object) -> Settings:
-    """Settings sem o `.env`: o COOKIE_SECURE=false do `.env` local não decide o teste."""
+    """Settings sem o `.env`: o COOKIE_SECURE=false do `.env` local não decide o teste.
+
+    Cotas no teto: os testes que não tratam de cota fazem vários prints seguidos e não podem
+    esbarrar nela. Os de cota (`test_api_analise_cota.py`) passam os valores de produção.
+    """
+    valores = {"ia_cota_sem_conta": 200, "ia_cota_com_conta": 500, **valores}
     return Settings(_env_file=None, **valores)  # type: ignore[call-arg]
+
+
+@pytest.fixture
+def uso() -> RepositorioUsoEmMemoria:
+    return RepositorioUsoEmMemoria()
 
 
 @pytest.fixture
@@ -414,6 +483,8 @@ def app(
     usuarios: RepositorioUsuariosEmMemoria,
     sessoes: RepositorioSessoesEmMemoria,
     historico: RepositorioHistoricoEmMemoria,
+    uso: RepositorioUsoEmMemoria,
+    relogio: RelogioFalso,
 ) -> FastAPI:
     """Uma instância nova por teste, para que os overrides não vazem entre casos.
 
@@ -426,6 +497,8 @@ def app(
     app.dependency_overrides[obter_repositorio_usuarios] = lambda: usuarios
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: sessoes
     app.dependency_overrides[obter_repositorio_historico] = lambda: historico
+    app.dependency_overrides[obter_repositorio_uso] = lambda: uso
+    app.dependency_overrides[obter_relogio] = lambda: relogio
     app.dependency_overrides[obter_analisador_ia] = ia_desligada
     app.dependency_overrides[obter_leitor_de_print] = leitura_desligada
     # Lambda, e não a função direto: o FastAPI lê a assinatura do override, e o `**valores`

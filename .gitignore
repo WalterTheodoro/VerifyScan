@@ -23,3 +23,6 @@ next-env.d.ts
 # Prints sintéticos da medição da fatia 9 (tools/gerar_prints.py, ADR-0023): imagens geradas,
 # nunca versionadas. Só o script e a lista de ids e variações vão para o repositório.
 corpus/prints-gerados/
+
+# Cobertura medida localmente (coverage.py): resultado de máquina, nunca versionado.
+.coverage

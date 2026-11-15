@@ -37,6 +37,10 @@ jobs:
       # Sem o driver de propósito, como vem do Neon: exercita a normalização do Settings.
       DATABASE_URL: postgresql://verifyscan:verifyscan_ci@localhost:5432/verifyscan_teste
       TEST_DATABASE_URL: postgresql://verifyscan:verifyscan_ci@localhost:5432/verifyscan_teste
+      # Os dois segredos da fatia 10 não têm default, e o Alembic lê o Settings (ADR-0024).
+      # Valores do CI, públicos de propósito: não protegem nada fora deste runner.
+      IP_HMAC_SEGREDO: segredo-publico-do-ci-nao-e-segredo-0123456789
+      PROXY_SEGREDO: segredo-publico-do-ci-nao-e-segredo-9876543210
     steps:
       - uses: actions/checkout@v4
 

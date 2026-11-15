@@ -22,6 +22,25 @@ test("413 e 422 do backend mostram a frase que veio dele", () => {
   assert.equal(fraseDaFalha({ doBackend: true, status: 422, corpo: { detail: naoLeu } }), naoLeu);
 });
 
+test("429 da cota de prints e 503 da leitura mostram a frase do backend (ADR-0024)", () => {
+  const cota =
+    "Você atingiu o limite de prints de hoje. Copie e cole o texto da mensagem, que ainda pode " +
+    "ser analisado.";
+  const indisponivel =
+    "A leitura de prints não está disponível agora. Copie e cole o texto da mensagem.";
+  assert.equal(fraseDaFalha({ doBackend: true, status: 429, corpo: { detail: cota } }), cota);
+  assert.equal(
+    fraseDaFalha({ doBackend: true, status: 503, corpo: { detail: indisponivel } }),
+    indisponivel,
+  );
+});
+
+test("429 sem JSON não é falta de conexão", () => {
+  const frase = fraseDaFalha({ doBackend: false, status: 429 });
+  assert.notEqual(frase, SEM_CONEXAO);
+  assert.match(frase, /Tente de novo/);
+});
+
 test("413 sem JSON (cortado no caminho) é o tamanho, não a conexão", () => {
   assert.equal(fraseDaFalha({ doBackend: false, status: 413 }), GRANDE);
 });

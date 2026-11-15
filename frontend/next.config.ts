@@ -25,6 +25,17 @@ function obterApiUrlInterna(): string {
   return "http://localhost:8000";
 }
 
+// O segredo que o `proxy.ts` manda ao backend junto com o IP do visitante (ADR-0024). Ele é lido
+// em execução, mas a ausência é conferida aqui, no build: sem ele, o backend nunca confia no IP
+// repassado, e todo visitante sem conta cai no IP do frontend — uma cota de IA só para todos, e
+// 30 senhas erradas de qualquer um travariam o login de todos. Melhor o build quebrar.
+if (process.env.NODE_ENV === "production" && !process.env.PROXY_SEGREDO?.trim()) {
+  throw new Error(
+    "Defina PROXY_SEGREDO com o mesmo valor do backend. Localmente, coloque-o em " +
+      "frontend/.env.local (sem ele, fora de produção, o IP do visitante não é repassado).",
+  );
+}
+
 const nextConfig: NextConfig = {
   // O Next regenera frontend/CLAUDE.md e frontend/AGENTS.md a cada `npm run dev`. Um CLAUDE.md
   // aninhado competiria com o arquivo de contexto do projeto, que é o da raiz do monorepo.
@@ -48,6 +59,12 @@ const nextConfig: NextConfig = {
   experimental: {
     // O backend gratuito leva até ~60 s para acordar; o default de 30 s cortaria o primeiro acesso.
     proxyTimeout: 90_000,
+    // Com o `proxy.ts` (ADR-0024), o Next guarda o corpo do pedido em memória até este teto e,
+    // acima dele, corta o corpo e só avisa no log. O default (10 MB) fica a ~0,4 MB do maior
+    // corpo que o backend aceita: `imagem_max_bytes` no teto de 7,5 MB vira ~10,07 MB em base64
+    // com a folga do JSON (`_limite_do_corpo`, em backend/app/api/analises.py). Hoje, com 5 MB,
+    // o corpo chega a ~7,06 MB.
+    proxyClientMaxBodySize: "11mb",
   },
 };
 
