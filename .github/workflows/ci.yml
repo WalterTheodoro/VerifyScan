@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   backend:
-    name: backend — ruff, mypy, pytest
+    name: backend — ruff, mypy, pytest e cobertura
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -77,10 +77,13 @@ jobs:
         # `Depends` e são substituídas por falsos determinísticos. Só os marcados `integracao`
         # falam com o Postgres do serviço acima; eles refazem o esquema pelo Alembic
         # (downgrade base → upgrade head) e não deixam linha para trás.
-        run: uv run pytest -q -rs
+        #
+        # Com cobertura de `app/` (ADR-0025): reprova abaixo do `fail_under` do pyproject.toml
+        # (75%, a meta da disciplina). Aqui os de integração rodam, então contam na medida.
+        run: uv run pytest -q -rs --cov=app --cov-report=term-missing
 
   frontend:
-    name: frontend — eslint, testes
+    name: frontend — eslint, testes e cobertura
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -100,5 +103,8 @@ jobs:
       - name: eslint
         run: npm run lint
 
-      - name: testes
+      - name: testes e cobertura
+        # Mesmo comando da máquina e da prova de autoria (ADR-0025): Vitest com cobertura de
+        # `app/**` inteiro. Reprova se as linhas cobertas ficarem abaixo do threshold do
+        # vitest.config.ts (25%, a meta da disciplina).
         run: npm test
