@@ -216,3 +216,25 @@ abrir a página (ADR-0017) faz `SELECT 1` e costuma acordá-lo antes do envio.
   frontend quebra sem o segredo.
 - **O `alembic upgrade` do build do Render lê o `Settings`:** os dois segredos precisam estar no
   painel antes do merge.
+
+## Adendo — 2026-11-15 (cota anônima dobrada em rede dual-stack)
+
+**Medido em produção, sem conta:** a cota de 5 liberou **9 análises com IA**. O "Restam N" depois
+de cada análise foi 4, 3, 2, 4, 3, 1, 2, 1, 0. São duas contagens estáveis e intercaladas — 4, 3,
+2, 1, 0 e 4, 3, 2, 1 —, ou seja, duas chaves. A segunda ainda tinha 1: o teto efetivo foi 10, não
+9.
+
+- **Causa provável: a máquina é dual-stack.** O navegador alterna entre IPv4 e IPv6, e são dois
+  endereços reais. A normalização deste ADR (IPv6 por /64, IPv4 escrito como IPv6 volta a ser
+  IPv4) não liga um ao outro, nem tem como: nada no pedido diz que os dois são da mesma pessoa.
+- **Decisão: não corrigir.**
+  - O limite por IP já estava declarado como de melhor esforço ("O limite por IP é de melhor
+    esforço", nas consequências).
+  - A garantia do dinheiro é o teto global de gasto, que não depende de IP.
+  - O efeito é dobrar a cota anônima, não anulá-la.
+- **O bloqueio em si funciona**, conferido na mesma medição:
+  - a análise que chega à cota sai sem IA, com o aviso certo;
+  - o print é barrado com 429;
+  - com conta, a cota de 25 funciona (medido em 15/11: `ia_restantes_hoje` 24, exclusão da conta 204,
+    login depois 401).
+- **Segue pendente** o teste de caixa-preta do `X-Forwarded-For` forjado.

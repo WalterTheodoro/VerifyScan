@@ -178,10 +178,51 @@ uv run pytest -q
 ```powershell
 Set-Location frontend
 npm run lint
+npm test
 ```
 
 O CI roda exatamente isso a cada push (`.github/workflows/ci.yml`), com `ruff format --check` no
-lugar do `ruff format`, mais `alembic upgrade head` e `alembic check` contra um Postgres de teste.
+lugar do `ruff format`, mais `alembic upgrade head` e `alembic check` contra um Postgres de teste,
+e com a cobertura ligada nos dois lados (seção seguinte).
+
+### Cobertura de testes
+
+Dois relatórios, um comando cada. Os dois medem o código inteiro de `app/`, inclusive os arquivos
+que nenhum teste importa, e saem com erro abaixo da meta (ADR-0025).
+
+| | Backend | Frontend |
+|---|---|---|
+| Pasta | `backend` | `frontend` |
+| Comando | `uv run pytest -q --cov=app --cov-report=term-missing` | `npm test` |
+| Meta | **75%** | **25%** de linhas |
+| Onde a meta está | `fail_under` em `[tool.coverage.report]`, no `pyproject.toml` | `coverage.thresholds.lines`, no `vitest.config.ts` |
+| Relatório | tabela por arquivo no terminal | tabela por arquivo no terminal, `coverage/index.html` e `coverage/coverage-summary.json` |
+| Medido em 22/11/2026 | 92,41%, só unitários (866 testes) | 52,01% de linhas (158 testes) |
+
+```powershell
+Set-Location backend
+uv run pytest -q --cov=app --cov-report=term-missing
+```
+
+```powershell
+Set-Location frontend
+npm test
+```
+
+- **Backend e o Postgres de teste:** se o `.env` tem `TEST_DATABASE_URL`, o comando roda também os
+  testes de integração e precisa do `docker compose up -d`. Com o Postgres fora do ar eles não são
+  pulados: cada um espera a conexão falhar, e a execução demora e termina em erro. Sem o Docker,
+  meça só os unitários:
+
+  ```powershell
+  uv run pytest -q -m "not integracao" --cov=app --cov-report=term-missing
+  ```
+
+  O número acima é o deste comando. Com a integração, a cobertura só sobe (os repositórios, que
+  falam com o banco, são o que os unitários não alcançam).
+- **A cobertura do backend não liga sozinha:** o `uv run pytest -q` do dia a dia segue sem ela, que
+  deixa a suíte uns 28% mais lenta. Só o CI e o comando acima a usam.
+- **Frontend:** `npm test` sempre mede. A pasta `frontend/coverage/` é ignorada pelo git.
 
 ### Banco de teste (testes de integração)
 

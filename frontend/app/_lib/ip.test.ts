@@ -3,7 +3,7 @@
 //   npm test
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { CABECALHO_IP, CABECALHO_SEGREDO, cabecalhosParaOBackend, ipDoVisitante } from "./ip.ts";
 

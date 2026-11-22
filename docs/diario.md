@@ -2628,3 +2628,105 @@ No teste em produção apareceram quatro problemas:
   - **Depois do deploy:** o teste de caixa-preta do `X-Forwarded-For` forjado (ADR-0024).
   - **Na fatia da reputação externa:** refazer a conta da janela da cota.
   - As linhas `RATE_LIMIT_*` do `.env.example` seguem sem uso; o limite desta fatia é por dia.
+
+## 2026-11-15 — Fatia 11: cobertura de testes do frontend (ADR-0025)
+
+- **Problema:** a prova de autoria pede, por relatório, 25% de cobertura no frontend e 75% no
+  backend. O `node --test` não carrega JSX nem import sem extensão, então não lista o que não tem
+  teste, e o relatório dele não servia como prova do frontend inteiro.
+- **O que mudou:**
+  - Vitest 4.1.12 com cobertura v8. `npm test` virou `vitest run --coverage`, e o relatório cobre
+    `app/**/*.{ts,tsx}` inteiro, testado ou não. O `coverage.all` do pedido não existe desde o
+    Vitest 4; a forma vigente é o `coverage.include`.
+  - Threshold de 25% de linhas no `vitest.config.ts`. O CI roda o mesmo `npm test`, então reprova
+    abaixo disso.
+  - Os 7 testes antigos passaram para o Vitest trocando só a linha do import. As asserções
+    continuam em `node:assert/strict`, iguais byte a byte. A única reescrita foi o relógio falso
+    do `servidor.test.ts`.
+  - Testes novos, de comportamento:
+    - `_lib`: `conta`, `historico`, `gestao-conta`, `conta-excluida`, `use-carga` e
+      `use-envio-conta`;
+    - componentes, em jsdom com Testing Library: `marca`, `logo`, `nivel-risco`, `rodape` e
+      `campo-senha`.
+- **Números do frontend** (antes → depois):
+  - testes: 86 → **158**, em 7 → 18 arquivos;
+  - linhas cobertas, medidas pelo Vitest: **35,05% (279/796)** só com a migração →
+    **52,01% (414/796)**. Instruções 51,74%, ramos 45,74%, funções 40%;
+  - a estimativa de ~16% do pedido contava arquivos. O v8 conta linha com instrução, e JSX de
+    várias linhas vale pouco: a `page.tsx` tem 1092 linhas e 141 contáveis;
+  - prova do gate: com o threshold em 99%, o comando sai com código 1;
+  - `npm run lint`, `tsc --noEmit` e `npm run build` limpos (o build com um `PROXY_SEGREDO`
+    fictício só no shell).
+- **O que deu errado no caminho:**
+  - **npm 10.9 quebrou** (`Cannot read properties of null (reading 'edgesOut')`) ao resolver os
+    peers opcionais do Vitest, tanto com o Vite 8 quanto com o 7.
+    - O `--legacy-peer-deps` instalava, mas o lock não passava no `npm ci` comum.
+    - Rodar o npm 11 por `npx` foi negado pela política de permissões da sessão.
+    - O que resolveu foi um `overrides` amarrando o `vite` à versão da raiz (7.3.7). Nenhum pacote
+      existente mudou de versão, exceto o `@types/estree` transitivo.
+  - **Expectativa errada num teste:** o `enviarConta` com 2xx e corpo inválido devolve a mensagem
+    de "sem servidor", não o "Confira os dados". Ajustei o teste ao código, que faz sentido:
+    resposta inesperada não é culpa do que a pessoa digitou.
+  - **Diferenças do jsdom:** não implementa a propriedade `spellcheck` e escreve `#ffffff` como
+    `rgb(...)`. Já o cálculo de nome acessível da Testing Library junta "Mostrar" e " senha" em
+    "Mostrarsenha". O teste confere o texto do botão; como cada leitor de tela calcula esse nome
+    não foi verificado.
+- **Sem teste, de propósito:** `page.tsx`, `resultado.tsx`, `lista.tsx`, `dados.tsx`, os
+  formulários de entrar e cadastro, `cabecalho`, `area-sessao`, `status/page.tsx`, `porteiro`,
+  `menu`, `avisos-do-envio`, `aquecimento` e as páginas e layouts finos.
+  - São telas de estado e rede, conferidas pela medição de tela em 390 px.
+  - Um teste que só renderiza não afirmaria nada, e um que afirma precisaria simular o backend
+    inteiro.
+  - O `aviso-privacidade` é diferente: tem ramos que valem teste (título h2 ou h3, com ou sem o
+    contato). Ficou de fora porque a parte (c) do plano só entraria se faltasse para a meta, e a
+    medição já estava em 52%.
+- **Cota anônima dobrada, medida em produção** (adendo ao ADR-0024):
+  - Sem conta, a cota de 5 liberou 9 análises com IA. Os restantes foram 4, 3, 2, 4, 3, 1, 2, 1,
+    0: duas contagens intercaladas, logo duas chaves, e o teto efetivo seria 10.
+  - Causa provável: a máquina é dual-stack, e o navegador alterna entre IPv4 e IPv6.
+  - Decisão: **não corrigir**. O limite por IP já era de melhor esforço, a garantia do dinheiro é
+    o teto global, e o efeito dobra a cota em vez de anulá-la.
+  - O bloqueio funciona: a análise na cota sai sem IA com o aviso certo, o print é barrado com
+    429, e com conta a cota de 25 funciona (`ia_restantes_hoje` 24, exclusão da conta 204, login
+    depois 401).
+- **Pendente:**
+  - **Cobertura do backend reproduzível** (pytest-cov no pyproject, comando, seção no README e
+    avaliação do CI): parada porque o Smart App Control do Windows passou a bloquear o
+    `python.exe` do `.venv`, e o `uv run` não roda. O `pytest-cov` 7.1.0 e o `[tool.coverage]`
+    já estão no pyproject, ainda sem medição; o número entra aqui depois do desbloqueio.
+    (Feito em 22/11: entrada seguinte.)
+  - Os comentários "sem imports, para o teste rodar no Node direto" em seis arquivos de `_lib`
+    perderam o motivo; ficam até esses arquivos mudarem.
+  - O CI do frontend roda lint e testes, mas não `tsc` nem `build`.
+  - Segue pendente o teste de caixa-preta do `X-Forwarded-For` forjado (ADR-0024).
+
+## 2026-11-22 — Fatia 11, segunda parte: cobertura do backend (ADR-0025)
+
+- **Problema:** a cobertura do backend tinha ficado parada em 15/11, com o `pytest-cov` no
+  pyproject e nenhuma medição. O Smart App Control deixou de bloquear o `python.exe` do `.venv`
+  (não mudei nada para isso; hoje o `uv run` simplesmente rodou).
+- **O que mudou:**
+  - Comando documentado: `uv run pytest -q --cov=app --cov-report=term-missing`. A meta de 75%
+    fica em `fail_under`, no pyproject. A cobertura segue fora do `addopts`.
+  - O passo `pytest` do CI do backend passou a rodar com `--cov`: reprova abaixo de 75%.
+  - README com uma seção só de cobertura: os dois comandos, as metas e onde sai cada relatório.
+  - O ADR-0025 ganhou a parte do backend e o título deixou de falar só do frontend.
+- **Números do backend:**
+  - **92,41%** só com os unitários (866 testes; 2622 instruções, 199 sem cobertura);
+  - tempo da suíte de unitários: 105 s sem cobertura → 135 s com (+28%);
+  - prova do gate: com `--cov-fail-under=99` o comando sai com erro;
+  - o que fica baixo sem a integração: os repositórios (49% a 58%) e o `services/health.py` (53%).
+- **Frontend reconferido:** 158 testes, 52,01% de linhas, igual a 15/11.
+- **O que deu errado no caminho:**
+  - A primeira medição não terminou em 10 minutos. O `.env` tem `TEST_DATABASE_URL`, o Docker
+    estava desligado, e os 94 testes de integração não são pulados nesse caso: cada um espera a
+    conexão falhar. Interrompi e medi com `-m "not integracao"`. Virou aviso no README, porque é
+    exatamente o que aconteceria na prova de autoria com o Docker fechado.
+- **Pendente:**
+  - **A medida do backend com a integração** não foi feita (Docker desligado). O primeiro número
+    com ela será o do CI, depois do push; vale anotar aqui.
+  - O CI com cobertura ainda não rodou: o threshold do backend só foi provado na máquina.
+  - Os testes de integração demoram a falhar com o banco fora; um teto de conexão curto na
+    fixture resolveria, mas é fora do escopo desta fatia.
+  - Seguem os pendentes de 15/11: comentários "sem imports" em `_lib`, `tsc` e `build` fora do CI
+    do frontend, e o teste de caixa-preta do `X-Forwarded-For` forjado (ADR-0024).

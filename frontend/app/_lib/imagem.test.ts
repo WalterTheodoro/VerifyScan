@@ -1,5 +1,5 @@
-// Testes do preparo do print (fatia 9, ADR-0023), no `node:test` do próprio Node, sem dependência
-// nova. O Node não tem canvas: o verificador de metadados roda sobre arquivos montados aqui, byte a
+// Testes do preparo do print (fatia 9, ADR-0023), no Vitest, em ambiente Node (ADR-0025). O Node
+// não tem canvas: o verificador de metadados roda sobre arquivos montados aqui, byte a
 // byte, e o `prepararImagem` roda com um canvas falso — o que prova a guarda (sobrou metadado, não
 // envia). A prova com o canvas de verdade é a medição de tela, que confere os bytes que saem do
 // navegador.
@@ -7,7 +7,7 @@
 //   npm test
 
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test } from "vitest";
 
 import {
   ARQUIVO_MAX_BYTES,

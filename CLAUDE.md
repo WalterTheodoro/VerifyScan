@@ -55,6 +55,7 @@ uv run mypy app
 uv run pytest -q                       # integração pulada sem TEST_DATABASE_URL
 uv run pytest -q -m integracao         # só os que falam com o Postgres de teste
 uv run pytest -q -m "not integracao"   # só unitários, sem banco
+uv run pytest -q --cov=app --cov-report=term-missing   # cobertura; reprova abaixo de 75% (ADR-0025)
 
 # banco de teste (uma vez) e conferência de esquema
 docker compose exec postgres createdb -U verifyscan verifyscan_teste
@@ -79,6 +80,7 @@ cd frontend
 npm install
 npm run dev        # http://localhost:3000
 npm run lint
+npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25% (ADR-0025)
 ```
 
 ## 4. Estrutura
@@ -129,6 +131,7 @@ verifyscan/
 └─ frontend/
    ├─ next.config.ts       # proxy /api/* e /health → API_URL_INTERNA (ADR-0014)
    ├─ proxy.ts             # repassa o IP do visitante com o PROXY_SEGREDO (ADR-0024)
+   ├─ vitest.config.ts     # testes e cobertura: include app/**, threshold 25% (ADR-0025)
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
       │                    #   (botão, Ctrl+V, soltar; ADR-0023)
@@ -149,7 +152,8 @@ verifyscan/
                            #   print.ts, ip.ts (IP do visitante para o proxy), cota.ts ("Restam N"),
                            #   falha-da-analise.ts (a frase de cada falha) e
                            #   tela-da-analise.ts (reducer da tela: quando o erro sai); testes em
-                           #   node:test (*.test.ts, sem imports, type stripping)
+                           #   Vitest ao lado do arquivo (*.test.ts, *.test.tsx); componentes e
+                           #   hooks em jsdom com Testing Library (ADR-0025)
 ```
 
 ## 5. Invariantes — nunca violar
