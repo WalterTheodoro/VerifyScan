@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Relatório gerado pelo `npm test` (ADR-0025): HTML e JS de máquina, não é código nosso.
+    "coverage/**",
   ]),
 ]);
 

@@ -1,10 +1,10 @@
-// Testes da espera pelo backend (ADR-0017), no `node:test` do próprio Node: roda o .ts direto
-// (type stripping), sem dependência nova. `fetch` e relógio são falsos — nenhuma chamada de rede.
+// Testes da espera pelo backend (ADR-0017), no Vitest, em ambiente Node (ADR-0025). `fetch` e
+// relógio são falsos — nenhuma chamada de rede.
 //
 //   npm test
 
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, mock, test } from "node:test";
+import { afterEach, beforeEach, describe, test, vi } from "vitest";
 
 import {
   aquecer,
@@ -71,7 +71,7 @@ const esvaziar = () => new Promise((resolver) => setImmediate(resolver));
 async function avancar(ms: number) {
   for (let falta = ms; falta > 0; falta -= 500) {
     await esvaziar();
-    mock.timers.tick(Math.min(500, falta));
+    vi.advanceTimersByTime(Math.min(500, falta));
   }
   await esvaziar();
 }
@@ -82,11 +82,12 @@ const aoCaminho = (caminho: string) => chamadas.filter((c) => c.caminho === cami
 beforeEach(() => {
   chamadas = [];
   esquecerBackend();
-  mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  // Lista explícita: o `setImmediate` de `esvaziar` precisa continuar real.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: 0 });
 });
 
 afterEach(() => {
-  mock.timers.reset();
+  vi.useRealTimers();
 });
 
 describe("classificação: veio do backend ou de outra coisa", () => {

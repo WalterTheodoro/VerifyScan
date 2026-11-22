@@ -4,7 +4,7 @@
 //   npm test
 
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 
 import { proximaTela, TELA_INICIAL, type Acao, type Tela } from "./tela-da-analise.ts";
 
