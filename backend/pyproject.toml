@@ -51,6 +51,7 @@ dev = [
     # Só para `tools/gerar_prints.py`: desenha prints sintéticos em HTML e fotografa em PNG, com o
     # Edge já instalado no Windows (sem baixar navegador). Nunca roda na aplicação nem no CI.
     "playwright==1.63.0",
+    "pytest-cov==7.1.0",
 ]
 
 [build-system]
@@ -121,3 +122,16 @@ addopts = "--strict-markers"
 markers = [
     "integracao: fala com o Postgres de TEST_DATABASE_URL (local ou CI, nunca o Neon). Pulado sem a variável.",
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# coverage — só quando pedida (ADR-0025); fora do `addopts` para não pesar no uso diário
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#   uv run pytest -q --cov=app --cov-report=term-missing
+#
+# Sem TEST_DATABASE_URL, os testes de integração são pulados e o número é o dos unitários.
+# O CI roda o mesmo comando com o Postgres de teste, então lá os de integração contam também.
+
+[tool.coverage.report]
+# A meta da disciplina. Abaixo dela o pytest com `--cov` sai com erro, aqui e no CI.
+fail_under = 75
