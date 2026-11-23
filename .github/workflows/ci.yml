@@ -83,7 +83,7 @@ jobs:
         run: uv run pytest -q -rs --cov=app --cov-report=term-missing
 
   frontend:
-    name: frontend — eslint, testes e cobertura
+    name: frontend — eslint, tsc, testes e cobertura
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,6 +102,20 @@ jobs:
 
       - name: eslint
         run: npm run lint
+
+      - name: tipos das rotas
+        # O `tsc` precisa dos tipos que o Next gera (`LayoutProps`, em `.next/types`): num checkout
+        # limpo eles não existem. O `typegen` lê o `next.config.ts`, que em produção exige estas
+        # duas variáveis. Valores do CI, públicos de propósito: não protegem nada fora deste runner.
+        env:
+          API_URL_INTERNA: http://localhost:8000
+          PROXY_SEGREDO: segredo-publico-do-ci-nao-e-segredo-9876543210
+        run: npx next typegen
+
+      - name: tsc
+        # Além dos erros de tipo, é a trava das opções do Sentry (ADR-0026): elas passam por
+        # `satisfies`, e uma opção que o SDK não conhece reprova aqui.
+        run: npx tsc --noEmit
 
       - name: testes e cobertura
         # Mesmo comando da máquina e da prova de autoria (ADR-0025): Vitest com cobertura de
