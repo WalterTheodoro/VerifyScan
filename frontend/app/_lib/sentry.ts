@@ -5,12 +5,41 @@
 //
 // - sem Session Replay, que grava a tela e o que é digitado (ele não está nas integrações padrão,
 //   e nenhum arquivo o liga);
-// - `sendDefaultPii: false`;
+// - a coleta automática do SDK desligada, categoria por categoria (`COLETA`);
 // - `limparEvento` em todo erro e em toda transação, antes do envio;
 // - o navegador não fala com o Sentry: manda o evento para o nosso domínio (`CAMINHO_DO_TUNEL`),
 //   e a rota `app/sentry-tunnel/route.ts` o reenvia sem os cabeçalhos de IP (`pedidoSemIp`).
 //
-// Tudo aqui é função pura, sem importar o SDK: os testes rodam sem ele e sem rede.
+// Tudo aqui é função pura; do SDK vem só o TIPO das opções, que some na compilação. Os testes
+// rodam sem ele e sem rede.
+
+import type { BrowserOptions } from "@sentry/nextjs";
+
+/** O que o SDK pode coletar sozinho, por categoria. TODAS estão escritas, de propósito: na versão
+ *  11 do SDK a opção `sendDefaultPii` deixou de existir, e a categoria que fica de fora de
+ *  `dataCollection` é COLETADA (o padrão é coletar tudo: usuário, cookies, corpos, query string).
+ *  O `Required` faz o compilador reclamar se uma versão nova do SDK trouxer outra categoria, e há
+ *  um teste que compara esta lista com a do SDK. */
+export const COLETA = {
+  // Sem isto o SDK pede ao Sentry para deduzir o IP de quem enviou o evento.
+  userInfo: false,
+  cookies: false,
+  // Só o valor dos cabeçalhos desta lista.
+  httpHeaders: {
+    request: { allow: ["content-type", "user-agent", "x-request-id"] },
+    response: false,
+  },
+  httpBodies: [],
+  urlQueryParams: false,
+  graphQL: { document: false, variables: false },
+  genAI: { inputs: false, outputs: false },
+  mcp: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  stackFrameVariables: false,
+  // Linhas do NOSSO código em volta de cada quadro da pilha: é código, não dado de ninguém.
+  frameContextLines: 5,
+} satisfies Required<NonNullable<BrowserOptions["dataCollection"]>>;
 
 /** Para onde o navegador manda os eventos. Fora de `/api`: o `proxy.ts` e as rewrites do backend
  *  não podem tocar neste caminho (o evento iria para o backend, com o segredo do proxy). Sem
@@ -139,7 +168,7 @@ export function opcoesDoSentry(dsn: string | undefined, ambiente?: string) {
   return {
     dsn: valor,
     environment: ambiente?.trim() || undefined,
-    sendDefaultPii: false,
+    dataCollection: COLETA,
     tracesSampleRate: AMOSTRA_DE_DESEMPENHO,
     // Na versão 11 do SDK o padrão é "stream": os trechos saem em lotes, e o
     // `beforeSendTransaction` é IGNORADO (o próprio SDK avisa no terminal). Com "static", a
@@ -149,7 +178,9 @@ export function opcoesDoSentry(dsn: string | undefined, ambiente?: string) {
     maxBreadcrumbs: 0,
     beforeSend: limparEvento,
     beforeSendTransaction: limparEvento,
-  };
+    // `satisfies`: o compilador recusa aqui uma opção que o SDK não conhece. Sem isto, o
+    // `sendDefaultPii`, que não existe mais, ficou sem efeito e sem aviso nenhum.
+  } satisfies BrowserOptions;
 }
 
 /** O pedido do navegador sem os cabeçalhos de IP, para entregar à função do túnel do SDK. Ela

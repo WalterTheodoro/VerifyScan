@@ -3,9 +3,9 @@
 Sem DSN, `iniciar_sentry` não faz nada: nenhuma rede, nenhum efeito nos testes nem no CI.
 
 O Sentry é um serviço de fora. A regra desta fatia vale em dobro aqui: nada do que a pessoa
-mandou pode sair do processo. O SDK já ajuda (`send_default_pii=False`, corpo do pedido nunca,
-sem variáveis locais), mas a garantia é o `limpar_evento`, que roda em todo evento e em toda
-transação antes do envio e trabalha por lista do que PODE ficar no pedido.
+mandou pode sair do processo. O SDK já ajuda (a coleta de cada categoria desligada em `COLETA`,
+corpo do pedido nunca, sem variáveis locais), mas a garantia é o `limpar_evento`, que roda em
+todo evento e em toda transação antes do envio e trabalha por lista do que PODE ficar no pedido.
 
 Três cuidados que não são óbvios:
 
@@ -20,7 +20,7 @@ Três cuidados que não são óbvios:
   não têm essa regra. O log já sai pelo terminal, com o mesmo `request_id`.
 """
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -31,7 +31,12 @@ from sentry_sdk.types import Event, Hint
 from app.core.config import Settings
 from app.core.requisicao import ROTA_NAO_MAPEADA
 
-# Cabeçalhos que nunca saem, em minúsculas. O SDK já mascara alguns sem `send_default_pii`; os
+if TYPE_CHECKING:
+    # O tipo do dicionário de coleta só existe para o verificador de tipos, no próprio SDK.
+    from sentry_sdk._types import DataCollectionUserOptions
+
+# Cabeçalhos que nunca saem, em minúsculas. O SDK já mascara os que não estão na lista de
+# `COLETA`; os
 # do proxy (`x-verifyscan-*`) ele não conhece.
 CABECALHOS_PROIBIDOS = frozenset(
     {
@@ -45,6 +50,32 @@ CABECALHOS_PROIBIDOS = frozenset(
         "x-verifyscan-segredo",
     }
 )
+
+
+# O que o SDK pode coletar sozinho, por categoria (`data_collection`, que substituiu o
+# `send_default_pii`). TODAS as categorias estão escritas, de propósito: a que fica de fora de um
+# `data_collection` passa a ser COLETADA, ao contrário do antigo `send_default_pii=False`. Há
+# teste que falha se uma versão nova do SDK trouxer uma categoria que não está aqui.
+COLETA: "DataCollectionUserOptions" = {
+    "user_info": False,
+    "cookies": {"mode": "off"},
+    # Só o valor dos cabeçalhos desta lista; o dos outros vira "[Filtered]".
+    "http_headers": {
+        "request": {
+            "mode": "allowlist",
+            "terms": ["content-type", "content-length", "user-agent", "x-request-id"],
+        }
+    },
+    "http_bodies": [],
+    "url_query_params": {"mode": "off"},
+    "graphql": {"document": False, "variables": False},
+    "gen_ai": {"inputs": False, "outputs": False},
+    "database_query_data": False,
+    "queues": False,
+    "stack_frame_variables": False,
+    # Linhas do NOSSO código em volta de cada quadro da pilha: é código, não dado de ninguém.
+    "frame_context_lines": 5,
+}
 
 
 def limpar_evento(evento_do_sdk: Event, _dica: Hint | None = None) -> Event:
@@ -72,6 +103,10 @@ def limpar_evento(evento_do_sdk: Event, _dica: Hint | None = None) -> Event:
     # Quem é a pessoa, e o rastro do que aconteceu antes (logs, chamadas HTTP).
     evento.pop("user", None)
     evento.pop("breadcrumbs", None)
+    # O que o código anexar com `set_extra`. Com o `data_collection`, o SDK deixa de aplicar o
+    # `EventScrubber` dele, que mascarava as chaves com cara de segredo: esta função é a única
+    # camada. Hoje nada usa `set_extra`; se um dia usar, o conteúdo não sai (ADR-0026).
+    evento.pop("extra", None)
     # Texto livre de um log que virasse evento.
     evento.pop("logentry", None)
     evento.pop("message", None)
@@ -84,6 +119,16 @@ def limpar_evento(evento_do_sdk: Event, _dica: Hint | None = None) -> Event:
         "transaction"
     ):
         evento["transaction"] = ROTA_NAO_MAPEADA
+    # Os atributos (`data`) dos trechos de desempenho e do contexto do trace: é neles que uma
+    # integração anota endereço, query string e cabeçalhos, e o `EventScrubber` do SDK, que os
+    # mascarava, saiu com o `data_collection`. Sai só o `data`: o resto do `contexts.trace` são os
+    # ids que ligam o erro à transação, e os trechos seguem com nome, duração e status.
+    trace = (evento.get("contexts") or {}).get("trace")
+    if isinstance(trace, dict):
+        trace.pop("data", None)
+    for trecho in evento.get("spans") or []:
+        if isinstance(trecho, dict):
+            trecho.pop("data", None)
     return evento_do_sdk
 
 
@@ -97,7 +142,7 @@ def iniciar_sentry(settings: Settings) -> bool:
         # Sem nenhum dos dois, `None`: o SDK segue sem versão.
         release=settings.app_version or settings.render_git_commit,
         traces_sample_rate=settings.sentry_traces_sample_rate,
-        send_default_pii=False,
+        data_collection=COLETA,
         # O corpo do pedido é a mensagem ou o print da pessoa.
         max_request_body_size="never",
         # Variável local de uma função da análise é o texto da mensagem.
