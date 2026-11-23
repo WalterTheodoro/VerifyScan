@@ -38,6 +38,13 @@ dependencies = [
     # garante; só dados, mantido pelos desenvolvedores do Python. Já vinha no lock pelo psycopg,
     # só no Windows. Versão fixa, publicada há mais de 14 dias (regra do ADR-0022).
     "tzdata==2026.3",
+    # Métricas em GET /metrics (ADR-0026): contadores, histogramas e o formato de texto que o
+    # Prometheus lê. Escrever o formato à mão refaria os histogramas e o escape dos rótulos. Sem
+    # dependências. Versão fixa, de 24/07/2026 (regra dos 14 dias do ADR-0022).
+    "prometheus-client==0.26.0",
+    # Rastreamento de erros (ADR-0026), ligado só com SENTRY_DSN. Versão fixa, de 05/11/2026: a
+    # 2.75.0 tinha 11 dias na adoção, e a 3.0 ainda é candidata a versão.
+    "sentry-sdk[fastapi]==2.74.0",
 ]
 
 [dependency-groups]

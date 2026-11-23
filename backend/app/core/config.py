@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +43,24 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     log_level: str = "INFO"
+    # `json`: uma linha por log, para a plataforma indexar. `texto`: legível, para o terminal de
+    # desenvolvimento (ADR-0026).
+    log_format: Literal["json", "texto"] = "json"
+
+    # Token de `GET /metrics` (ADR-0026). Sem ele a rota responde 404. O mínimo de 32 caracteres
+    # é contra um token adivinhável: a rota fica exposta na internet.
+    metrics_token: SecretStr | None = Field(default=None, min_length=32)
+
+    # Rastreamento de erros (ADR-0026). Sem DSN o Sentry nem é inicializado: é o estado do CI,
+    # dos testes e de quem roda localmente.
+    sentry_dsn: str | None = None
+    # Vazio: usa o `APP_ENV`.
+    sentry_environment: str | None = None
+    # Fração das requisições que viram transação de desempenho.
+    sentry_traces_sample_rate: float = Field(default=0.1, ge=0, le=1)
+    # A versão que aparece em cada erro. Sem `APP_VERSION`, o commit que o Render publicou.
+    app_version: str | None = None
+    render_git_commit: str | None = None
 
     # Origens autorizadas no CORS, separadas por vírgula.
     cors_origins: str = "http://localhost:3000"
@@ -165,6 +184,20 @@ class Settings(BaseSettings):
     @field_validator("redis_url")
     @classmethod
     def _redis_vazio_e_desativado(cls, valor: str | None) -> str | None:
+        return valor or None
+
+    @field_validator(
+        "metrics_token",
+        "sentry_dsn",
+        "sentry_environment",
+        "app_version",
+        "render_git_commit",
+        mode="before",
+    )
+    @classmethod
+    def _vazio_e_ausente(cls, valor: object) -> object:
+        """`METRICS_TOKEN=` ou `SENTRY_DSN=` no `.env` é o recurso desligado, não um valor de
+        tamanho zero."""
         return valor or None
 
     @property

@@ -4,6 +4,7 @@ uv run uvicorn app.main:app --port 8000 --loop none --reload
 """
 
 import asyncio
+import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,11 +18,14 @@ from app.api.conta import router as router_conta
 from app.api.deps import criar_limitador, obter_hasher
 from app.api.gestao_conta import router as router_gestao_conta
 from app.api.health import router as router_health
+from app.api.metricas import router as router_metricas
 from app.core.cache import criar_redis
 from app.core.config import get_settings
 from app.core.db import criar_engine, criar_sessionmaker
-from app.core.logs import configurar_logs
+from app.core.logs import configurar_logs, evento
 from app.core.relogio import agora_utc, dia_de_sao_paulo
+from app.core.requisicao import MiddlewareDeRequisicao
+from app.core.sentry import iniciar_sentry
 from app.formulator.cliente import criar_cliente_ia
 from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
@@ -33,6 +37,8 @@ from app.services.repositorio_uso import RepositorioUsoPostgres
 # No Windows o event loop padrão do asyncio é o Proactor, e o psycopg em modo async se recusa a
 # rodar nele. Trocar a política aqui, na importação do módulo, é o que faz qualquer processo que
 # importe a aplicação nascer com o Selector — o mesmo guard do alembic/env.py.
+logger = logging.getLogger(__name__)
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -60,6 +66,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = redis
     cliente_ia = criar_cliente_ia(settings)
     app.state.cliente_ia = cliente_ia
+    if cliente_ia is None:
+        # Uma vez por processo, e não a cada análise: IA desligada é configuração, não falha.
+        logger.info("IA desligada: as análises saem só do motor", extra=evento("ia_desligada"))
     await faxina(
         RepositorioHistoricoPostgres(app.state.fabrica_de_sessoes),
         RepositorioSessoesPostgres(app.state.fabrica_de_sessoes),
@@ -80,7 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def criar_app() -> FastAPI:
     settings = get_settings()
-    configurar_logs(settings.log_level)
+    configurar_logs(settings.log_level, settings.log_format)
+    # Antes de criar a app: o SDK se prende ao FastAPI na criação dela. Sem `SENTRY_DSN`, nada
+    # acontece (ADR-0026).
+    iniciar_sentry(settings)
     # Aqui, e não no `lifespan`: um `regras.yaml` ou `respostas.yaml` quebrado precisa derrubar
     # o processo na subida, e não a primeira requisição do usuário. Fica antes de qualquer rota.
     carregar_regras()
@@ -104,7 +116,11 @@ def criar_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Por último: o middleware acrescentado por último é o de fora, então o id da requisição
+    # existe antes de qualquer outro código rodar, e o log vê a resposta final (ADR-0026).
+    app.add_middleware(MiddlewareDeRequisicao)
     app.include_router(router_health)
+    app.include_router(router_metricas)
     app.include_router(router_analises)
     app.include_router(router_autenticacao)
     app.include_router(router_conta)

@@ -10,7 +10,15 @@ import logging
 import time
 from dataclasses import dataclass
 
-from app.formulator.cliente import ERROS_DE_TEMPO, ClienteIA, ConsumoDaIA, RespostaIA
+from app.core.logs import evento
+from app.core.metricas import contar_falha_da_ia
+from app.formulator.cliente import (
+    ERROS_DE_TEMPO,
+    ClienteIA,
+    ConsumoDaIA,
+    RespostaIA,
+    motivo_da_falha,
+)
 from app.formulator.prompt import EntradaIA, montar_entrada
 from app.formulator.saida import SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ExplicacaoIA, NivelRisco
@@ -82,10 +90,13 @@ class AnalisadorIA:
         except Exception as exc:
             if isinstance(exc, ERROS_DE_TEMPO) and self._consumo is not None:
                 self._consumo.contar_timeout()
+            motivo = motivo_da_falha(exc, (SaidaRecusada, SaidaCortada, ParadaInesperada))
+            contar_falha_da_ia(motivo)
             logger.warning(
                 "Análise com IA indisponível, resposta só do motor: %s em %d ms",
                 type(exc).__name__,
                 _ms_desde(inicio),
+                extra=evento("ia_falhou", motivo=motivo, etapa="analise"),
             )
             return None
         logger.info(
