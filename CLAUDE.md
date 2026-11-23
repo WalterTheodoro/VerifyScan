@@ -15,7 +15,7 @@ ela lê a mensagem, sugere um nível e escreve a explicação, e uma regra fixa 
 no maior dos dois — ela pode subir, nunca baixar (ADR-0020).
 
 Especificação completa: `docs/RFC-VerifyScan-v1.1.pdf`. Plano de execução: `docs/plano-de-execucao.md`.
-Decisões: `docs/adr/`.
+Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`.
 
 ## 2. Stack (fixa — não trocar sem ADR)
 
@@ -118,7 +118,10 @@ verifyscan/
 │     │                    #   UsoDiario, GastoDiarioIA
 │     ├─ schemas/          # Pydantic (contrato da API)
 │     └─ core/             # config, segurança (hash Argon2id com semáforo), cache, logs, timeouts,
-│                          #   IP do visitante e HMAC (ip.py), dia de São Paulo (relogio.py)
+│                          #   IP do visitante e HMAC (ip.py), dia de São Paulo (relogio.py);
+│                          #   observabilidade (ADR-0026): logs JSON e eventos (logs.py), id e log
+│                          #   da requisição (requisicao.py), métricas (metricas.py, em
+│                          #   GET /metrics com METRICS_TOKEN), Sentry só com DSN (sentry.py)
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
 │  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
 │  │                       #   IA + explicação só com dono, 0006 tipo imagem + contexto do print só
@@ -130,7 +133,10 @@ verifyscan/
 │     └─ integracao/       # únicos testes com banco: Postgres de TEST_DATABASE_URL (§6)
 └─ frontend/
    ├─ next.config.ts       # proxy /api/* e /health → API_URL_INTERNA (ADR-0014)
-   ├─ proxy.ts             # repassa o IP do visitante com o PROXY_SEGREDO (ADR-0024)
+   ├─ proxy.ts             # repassa o IP do visitante com o PROXY_SEGREDO (ADR-0024) e gera o
+   │                       #   X-Request-ID (ADR-0026)
+   ├─ instrumentation.ts   # Sentry no servidor do Next e, em instrumentation-client.ts, no
+   │                       #   navegador: só com NEXT_PUBLIC_SENTRY_DSN, sem Replay (ADR-0026)
    ├─ vitest.config.ts     # testes e cobertura: include app/**, threshold 25% (ADR-0025)
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
@@ -151,7 +157,10 @@ verifyscan/
                            #   (canvas, tamanho da Anthropic, sem EXIF/XMP, 5 MB, lado ≥ 200 px),
                            #   print.ts, ip.ts (IP do visitante para o proxy), cota.ts ("Restam N"),
                            #   falha-da-analise.ts (a frase de cada falha) e
-                           #   tela-da-analise.ts (reducer da tela: quando o erro sai); testes em
+                           #   tela-da-analise.ts (reducer da tela: quando o erro sai), sentry.ts (o
+                           #   que vai ao Sentry e o que nunca vai) e request-id.ts; fora de _lib:
+                           #   global-error.tsx (erro global, em pt-BR) e sentry-tunnel/ (reenvia
+                           #   os eventos ao Sentry sem o IP; público em /monitoramento); testes em
                            #   Vitest ao lado do arquivo (*.test.ts, *.test.tsx); componentes e
                            #   hooks em jsdom com Testing Library (ADR-0025)
 ```
@@ -180,7 +189,12 @@ quebrar uma delas, **pare e pergunte**.
    que nenhum temporário foi criado. Do print, fica só a transcrição e o contexto, com dono, pelas
    regras do texto (0004) e da explicação da IA (0005). O IP de quem pediu também nunca é gravado
    nem logado (nem pelo log de acesso do uvicorn, desligado no código): na cota e no limite de
-   login vai só o HMAC dele, com segredo (ADR-0024).
+   login vai só o HMAC dele, com segredo (ADR-0024). **Log, métrica e Sentry levam só metadado**
+   (tipo, nível, duração, status, motivo, template da rota): nunca o texto, a transcrição, a
+   imagem, link ou domínio analisado, e-mail, senha, IP ou HMAC dele, id de usuário, corpo, query
+   string, cookie, cabeçalho de autenticação ou do proxy, nem segredo. De uma exceção saem o tipo e
+   a pilha, nunca a mensagem. O evento do navegador vai ao Sentry pelo nosso servidor, sem o IP
+   (ADR-0026). Existe teste com conteúdo marcado para cada saída.
 3. **O sistema funciona sem a LLM** (RNF08). Desligada (`IA_ATIVADA=false`), fora do ar, acima de
    15 s, recusando, cortada ou com resposta inválida: a resposta sai só do motor, com o plano B do
    nível (`scoring/respostas.yaml`) e `explicacao_indisponivel: true`. A análise nunca falha por
