@@ -11,11 +11,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { cabecalhosParaOBackend } from "./app/_lib/ip";
+import { comRequestId } from "./app/_lib/request-id";
 
 export function proxy(request: NextRequest) {
-  return NextResponse.next({
-    request: { headers: cabecalhosParaOBackend(request.headers, process.env.PROXY_SEGREDO) },
-  });
+  // O id da requisição nasce aqui e segue com o pedido: o backend o põe em todo log dela e o
+  // devolve no cabeçalho da resposta (ADR-0026).
+  const cabecalhos = comRequestId(
+    cabecalhosParaOBackend(request.headers, process.env.PROXY_SEGREDO),
+  );
+  return NextResponse.next({ request: { headers: cabecalhos } });
 }
 
 // Só o que vai para o backend, os mesmos caminhos das rewrites. O /health não usa o IP, mas passa

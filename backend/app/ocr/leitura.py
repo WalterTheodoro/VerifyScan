@@ -18,7 +18,15 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.formulator.cliente import ERROS_DE_TEMPO, ClienteLeitura, ConsumoDaIA, RespostaIA
+from app.core.logs import evento
+from app.core.metricas import contar_falha_da_ia
+from app.formulator.cliente import (
+    ERROS_DE_TEMPO,
+    ClienteLeitura,
+    ConsumoDaIA,
+    RespostaIA,
+    motivo_da_falha,
+)
 from app.ocr.imagem import ImagemPreparada
 from app.schemas.analise import (
     Canal,
@@ -231,7 +239,13 @@ class LeitorDePrint:
         except Exception as exc:
             if isinstance(exc, ERROS_DE_TEMPO) and self._consumo is not None:
                 self._consumo.contar_timeout()
-            _logar_falha(type(exc).__name__, inicio)
+            # Só aqui é falha da IA. O `LeituraFalhou` de cima é a IA respondendo certo que a
+            # imagem não dá para ler.
+            motivo = motivo_da_falha(exc, (LeituraRecusada, LeituraCortada, ParadaInesperada))
+            contar_falha_da_ia(motivo)
+            _logar_falha(
+                type(exc).__name__, inicio, evento("ia_falhou", motivo=motivo, etapa="leitura")
+            )
             raise LeituraFalhou(type(exc).__name__) from exc
         logger.info(
             "Leitura do print em %d ms: imagem %dx%d enviada como %dx%d (%d bytes), %d tokens de "
@@ -278,8 +292,8 @@ def _interpretar(resposta: RespostaIA) -> Leitura:
     )
 
 
-def _logar_falha(motivo: str, inicio: float) -> None:
-    logger.warning("Leitura do print falhou: %s em %d ms", motivo, _ms_desde(inicio))
+def _logar_falha(motivo: str, inicio: float, extra: dict[str, object] | None = None) -> None:
+    logger.warning("Leitura do print falhou: %s em %d ms", motivo, _ms_desde(inicio), extra=extra)
 
 
 def _ms_desde(inicio: float) -> int:

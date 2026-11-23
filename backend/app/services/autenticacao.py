@@ -21,6 +21,7 @@ from datetime import timedelta
 from typing import NoReturn
 
 from app.core.ip import chave_hmac
+from app.core.logs import evento
 from app.core.seguranca import HasherOcupado, HasherSenha
 from app.services.analise import EntradaInvalida
 from app.services.cota import ServicoCota
@@ -154,7 +155,10 @@ class ServicoAutenticacao:
             async with self._banco():
                 cabe = await self._cota.reservar_cadastro(chave_ip)
             if not cabe:
-                logger.info("Cadastro recusado: limite de contas por IP no dia")
+                logger.info(
+                    "Cadastro recusado: limite de contas por IP no dia",
+                    extra=evento("cadastro_bloqueado"),
+                )
                 raise CadastrosDemais()
         async with self._argon2():
             senha_hash = await self._hasher.gerar(senha)
@@ -275,7 +279,10 @@ class ServicoAutenticacao:
 
     def _conferir_limite(self, conta: str, chave_ip: str | None) -> None:
         if self._limitador is not None and self._limitador.bloqueado(conta, chave_ip):
-            logger.info("Tentativa recusada: limite de senhas erradas")
+            logger.info(
+                "Tentativa recusada: limite de senhas erradas",
+                extra=evento("login_falhou", motivo="limite"),
+            )
             raise MuitasTentativas()
 
     @asynccontextmanager
@@ -305,7 +312,7 @@ class ServicoAutenticacao:
 
     def _recusar(self, conta: str, chave_ip: str | None) -> NoReturn:
         # INFO e sem identificar a conta: o log não pode virar lista de e-mails cadastrados.
-        logger.info("Login recusado")
+        logger.info("Login recusado", extra=evento("login_falhou", motivo="credenciais"))
         if self._limitador is not None:
             self._limitador.registrar_falha(conta, chave_ip)
         raise CredenciaisInvalidas()

@@ -299,6 +299,16 @@ contexto, o nível do print contra o do texto do mesmo caso, o plano B dos borra
 custo, e escreve o relatório em `docs/avaliacoes/`. Custa uns 6 centavos de dólar por rodada. Os
 prints são limpos demais: a taxa de erro medida é otimista (ADR-0023).
 
+### Observabilidade
+
+Logs em JSON com o id de cada requisição, métricas em `GET /metrics` (com `METRICS_TOKEN`) e
+erros no Sentry (só com `SENTRY_DSN` e `NEXT_PUBLIC_SENTRY_DSN`). Nenhum dos três leva o conteúdo
+da mensagem nem dado de quem usa: só tipo, nível, duração, status e motivo.
+
+Como ver os logs, consultar as métricas, achar um erro e a lista de eventos e métricas:
+[`docs/observabilidade.md`](docs/observabilidade.md). As decisões estão no
+[ADR-0026](docs/adr/ADR-0026-observabilidade.md).
+
 ### Infraestrutura
 
 ```powershell

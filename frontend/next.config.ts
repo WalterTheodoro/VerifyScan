@@ -1,4 +1,7 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
+
+import { CAMINHO_DO_TUNEL } from "./app/_lib/sentry";
 
 // O navegador fala só com o frontend, e o Next repassa /api/* e /health ao backend (ADR-0014).
 // Assim o cookie de sessão fica first-party no domínio do frontend: onrender.com está na Public
@@ -68,4 +71,23 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry (ADR-0026). Sem NEXT_PUBLIC_SENTRY_DSN, a configuração sai como sempre saiu: o build não
+// muda em nada. Com ela, o `withSentryConfig` acrescenta a reescrita do túnel (o navegador manda
+// os eventos para `CAMINHO_DO_TUNEL`, no nosso domínio, e a rota `app/sentry-tunnel` os reenvia)
+// e, só se houver SENTRY_AUTH_TOKEN, envia os source maps no build. Sem o token o build passa
+// igual: os erros chegam ao Sentry com a pilha do código minificado.
+const TEM_SENTRY = Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim());
+const TOKEN_DO_SENTRY = process.env.SENTRY_AUTH_TOKEN?.trim();
+
+export default TEM_SENTRY
+  ? withSentryConfig(nextConfig, {
+      tunnelRoute: CAMINHO_DO_TUNEL,
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: TOKEN_DO_SENTRY,
+      sourcemaps: { disable: !TOKEN_DO_SENTRY },
+      // Sem o aviso de "falta o token" a cada build, e sem telemetria do plugin para o Sentry.
+      silent: true,
+      telemetry: false,
+    })
+  : nextConfig;

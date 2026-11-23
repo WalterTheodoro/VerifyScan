@@ -19,9 +19,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date
+from time import perf_counter
 
 from app.analyzers.normalizacao import normalizar
 from app.core.ip import IP_DESCONHECIDO
+from app.core.logs import evento
+from app.core.metricas import TipoDeAnalise, contar_analise, contar_cota_excedida
 from app.formulator.analisador import AnalisadorIA, ResultadoIA
 from app.formulator.cliente import ConsumoDaIA
 from app.formulator.prompt import EntradaIA, PrintParaIA
@@ -137,7 +140,10 @@ class OrquestradorAnalise:
         """`EntradaInvalida` propaga sem registrar e sem gastar cota: o que não foi analisado não
         pontuou. `chave_ip` é o HMAC do IP, a chave da cota de quem não tem conta (ADR-0024).
         """
-        return await self._analisar(texto, token_de_sessao, chave_ip)
+        inicio = perf_counter()
+        resposta = await self._analisar(texto, token_de_sessao, chave_ip)
+        _registrar_conclusao("texto", resposta, inicio)
+        return resposta
 
     async def analisar_print(
         self,
@@ -155,6 +161,7 @@ class OrquestradorAnalise:
         A cota é reservada depois de conferir a imagem (imagem inválida não gasta unidade) e antes
         de ler (a leitura é cobrada). As 3 unidades cobrem a leitura e a análise.
         """
+        inicio = perf_counter()
         if not self._leitor.disponivel:
             raise LeituraIndisponivel(LEITURA_INDISPONIVEL)
         try:
@@ -167,11 +174,15 @@ class OrquestradorAnalise:
             if janela.situacao is None:
                 raise LeituraIndisponivel(LEITURA_INDISPONIVEL)
             if not janela.situacao.concedida:
+                _registrar_cota_excedida(janela)
                 raise CotaEsgotada(COTA_DE_PRINT)
         try:
-            return await self._ler_e_analisar(
+            resposta = await self._ler_e_analisar(
                 preparada, texto_da_pessoa, token_de_sessao, chave_ip, janela
             )
+            # A duração do print inclui preparar a imagem e a leitura, não só o miolo.
+            _registrar_conclusao("print", resposta, inicio)
+            return resposta
         finally:
             # A leitura que falhou também foi cobrada. No caminho feliz, o miolo já gravou o gasto
             # em paralelo com o registro e zerou o consumo: aqui não sobra nada a gravar.
@@ -265,6 +276,9 @@ class OrquestradorAnalise:
             resposta = self._com_ia(resposta, resultado_ia)
         if janela is not None:
             resposta = self._com_cota(resposta, janela)
+            # No print, a cota negada nem chega aqui: já saiu com `CotaEsgotada`.
+            if janela.situacao is not None and not janela.situacao.concedida:
+                _registrar_cota_excedida(janela)
         # O gasto vai em paralelo com o registro, cada um no próprio teto: a invariante 8 não
         # ganha etapa nova no fim da análise.
         registro, _ = await asyncio.gather(
@@ -420,3 +434,38 @@ class OrquestradorAnalise:
             )
             return None
         return usuario.id if usuario is not None else None
+
+
+# ── Observabilidade (ADR-0026): só metadado, nunca o texto, o dono nem a chave da cota ────────
+
+
+def _registrar_conclusao(tipo: TipoDeAnalise, resposta: RespostaAnalise, inicio: float) -> None:
+    """O evento `analise_concluida` e as métricas da análise que deu certo. Só observa: lê a
+    resposta pronta e não muda nada nela."""
+    duracao_s = perf_counter() - inicio
+    ia_subiu_nivel = resposta.nivel_risco != resposta.nivel_motor
+    campos: dict[str, object] = {
+        "tipo": tipo,
+        "nivel_motor": resposta.nivel_motor,
+        "nivel_final": resposta.nivel_risco,
+        "ia_usada": resposta.nivel_ia is not None,
+        "ia_subiu_nivel": ia_subiu_nivel,
+        "duracao_ms": round(duracao_s * 1000),
+    }
+    if tipo == "print":
+        # Hoje a API recebe uma imagem por análise.
+        campos["qtd_imagens"] = 1
+    logger.info("analise_concluida", extra=evento("analise_concluida", **campos))
+    contar_analise(tipo, resposta.nivel_risco, duracao_s, ia_subiu_nivel=ia_subiu_nivel)
+
+
+def _registrar_cota_excedida(janela: JanelaDaCota) -> None:
+    """A IA negada pela cota do dia ou pelo teto global. `com_conta` é um booleano: nunca o id."""
+    if janela.situacao is None:
+        return
+    com_conta = janela.usuario_id is not None
+    logger.info(
+        "cota_excedida",
+        extra=evento("cota_excedida", com_conta=com_conta, teto_global=janela.situacao.teto_global),
+    )
+    contar_cota_excedida(com_conta=com_conta)

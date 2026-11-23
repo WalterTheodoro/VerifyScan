@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app.core.logs import evento
+from app.core.metricas import anotar_gasto_de_hoje
 from app.core.relogio import Relogio, dia_de_sao_paulo
 from app.formulator.cliente import ConsumoDaIA
 from app.models.uso import chave_do_ip
@@ -45,10 +47,15 @@ _MILHAO = Decimal(1_000_000)
 
 @dataclass(frozen=True)
 class SituacaoCota:
-    """`restantes`: unidades que sobram hoje para esta chave (0 com o teto global atingido)."""
+    """`restantes`: unidades que sobram hoje para esta chave (0 com o teto global atingido).
+
+    `teto_global` diz só POR QUE a IA foi negada, para o log e a métrica (ADR-0026). Nenhuma
+    decisão o lê: quem decide é `concedida`, e a pessoa vê a mesma frase nos dois casos.
+    """
 
     concedida: bool
     restantes: int
+    teto_global: bool = False
 
 
 class ServicoCota:
@@ -87,8 +94,12 @@ class ServicoCota:
     ) -> SituacaoCota:
         """Confere o teto global e reserva as unidades. Erro do banco propaga: quem chama decide
         (o texto sai sem IA; o print, 503)."""
-        if await self._uso.gasto_do_dia(dia) >= self._teto_usd:
-            return SituacaoCota(concedida=False, restantes=0)
+        gasto = await self._uso.gasto_do_dia(dia)
+        # A reserva já lê o gasto do dia a cada análise: a métrica aproveita essa leitura, sem
+        # consulta nova, e volta a zero na primeira análise depois da meia-noite.
+        anotar_gasto_de_hoje(float(gasto))
+        if gasto >= self._teto_usd:
+            return SituacaoCota(concedida=False, restantes=0, teto_global=True)
         limite = self._cota_com_conta if com_conta else self._cota_sem_conta
         reserva = await self._uso.reservar("ia", chave, dia, unidades, limite)
         return SituacaoCota(concedida=reserva.concedida, restantes=max(0, limite - reserva.usadas))
@@ -125,6 +136,7 @@ class ServicoCota:
         try:
             async with asyncio.timeout(timeout_s):
                 total = await self._uso.somar_gasto(dia, gasto)
+                anotar_gasto_de_hoje(float(total))
                 if total >= self._teto_usd and await self._uso.marcar_teto_avisado(
                     dia, self._teto_usd
                 ):
@@ -132,6 +144,7 @@ class ServicoCota:
                         "Teto diário de gasto com a IA atingido (US$ %s): as análises seguem só "
                         "com o motor até a meia-noite",
                         self._teto_usd,
+                        extra=evento("teto_global_atingido"),
                     )
         except Exception as exc:
             logger.warning("Gasto da IA não registrado: %s", type(exc).__name__)

@@ -11,10 +11,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from anthropic import APITimeoutError, AsyncAnthropic
+from anthropic import APIError, APITimeoutError, AsyncAnthropic
 from anthropic.types import Message
+from pydantic import ValidationError
 
 from app.core.config import Settings
+from app.core.metricas import MotivoDaFalha
 from app.formulator.saida import SCHEMA_SAIDA
 
 # Em DEBUG, o SDK escreve no log as opções de cada pedido, e elas trazem a mensagem do usuário.
@@ -37,6 +39,22 @@ class RespostaIA:
 # Os dois jeitos de uma chamada estourar o tempo: o nosso `asyncio.timeout` e o timeout do próprio
 # SDK, que no texto tem o mesmo valor e pode disparar primeiro.
 ERROS_DE_TEMPO: tuple[type[Exception], ...] = (TimeoutError, APITimeoutError)
+
+
+def motivo_da_falha(exc: Exception, de_forma: tuple[type[Exception], ...]) -> MotivoDaFalha:
+    """Por que a chamada caiu no plano B, num conjunto fechado: é rótulo de métrica (ADR-0026).
+
+    `de_forma` são as exceções de quem chamou para a resposta recusada, cortada ou parada no meio;
+    o JSON fora do contrato (`ValidationError`) é forma para todos. A ordem importa: o timeout do
+    SDK também é um `APIError`.
+    """
+    if isinstance(exc, ERROS_DE_TEMPO):
+        return "timeout"
+    if isinstance(exc, APIError):
+        return "http"
+    if isinstance(exc, (*de_forma, ValidationError)):
+        return "forma"
+    return "outro"
 
 
 @dataclass

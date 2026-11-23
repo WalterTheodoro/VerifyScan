@@ -2730,3 +2730,79 @@ No teste em produção apareceram quatro problemas:
     fixture resolveria, mas é fora do escopo desta fatia.
   - Seguem os pendentes de 15/11: comentários "sem imports" em `_lib`, `tsc` e `build` fora do CI
     do frontend, e o teste de caixa-preta do `X-Forwarded-For` forjado (ADR-0024).
+
+## 2026-11-23 — Fatia 12: observabilidade (ADR-0026)
+
+- **Problema:** o Portfolio Playbook exige logs estruturados, métricas e rastreamento de erros. O
+  projeto tinha só logs de texto livre, sem id de requisição, sem contagem e sem aviso de erro; um
+  erro no navegador era invisível. A regra que manda na fatia: nada do usuário sai do processo.
+- **O que mudou:**
+  - **Logs em JSON**, com formatter próprio sobre o `logging` da biblioteca padrão
+    (`LOG_FORMAT=texto` para o terminal local). De uma exceção saem o tipo e a pilha
+    (arquivo:linha:função), nunca a mensagem.
+  - **Id da requisição:** o `proxy.ts` gera um UUID; o backend aceita só UUID canônico, põe em todo
+    log e devolve no cabeçalho. Um log por requisição, com o template da rota.
+  - **Eventos de domínio** (`analise_concluida`, `ia_falhou`, `cota_excedida`,
+    `teto_global_atingido`, `login_falhou`, `cadastro_bloqueado`, `ia_desligada`), como campos
+    nos logs que já existiam.
+  - **Métricas** no formato do Prometheus em `GET /metrics`, com `METRICS_TOKEN` (404 sem token
+    configurado, 401 com o errado).
+  - **Sentry** no backend e no frontend, só com DSN. No navegador, pelo túnel no nosso domínio
+    (`/monitoramento`), sem Session Replay. Página de erro global em português.
+  - **Aviso de privacidade:** seção nova sobre o aviso de erro, que só aparece com o Sentry ligado.
+  - `docs/observabilidade.md`, seção no README e as variáveis nos dois arquivos de exemplo.
+- **Decisões tomadas com o Walter antes do código:**
+  - O `/health` não mudou nem foi dividido: ele já faz `SELECT 1` e `PING`, e o aquecimento da
+    página depende disso (ADR-0017).
+  - IA desligada não é `ia_falhou`: vira `ia_desligada`, uma vez na subida. O teto global entra em
+    `cota_excedida`, com o campo `teto_global`. Motivos de `ia_falhou` num conjunto fechado.
+  - Sentry no navegador mantido, com túnel e a frase no aviso de privacidade.
+- **Números** (antes → depois):
+  - backend: 866 → **956** testes; cobertura só dos unitários 92,41% → **92,90%** (2873
+    instruções, 204 sem cobertura). `ruff` e `mypy` limpos;
+  - frontend: 158 → **184** testes, em 18 → 23 arquivos; linhas 52,01% → **55,75%** (475/852).
+    `eslint` e `tsc --noEmit` limpos;
+  - build do frontend: passa sem nenhuma variável do Sentry, e passa com DSN e sem
+    `SENTRY_AUTH_TOKEN`;
+  - o motor de risco não mudou: `avaliar_corpus` não foi rodado.
+- **O que achei lendo o código das bibliotecas, e não a documentação:**
+  - **A integração do Sentry com o SDK da Anthropic liga sozinha e captura as exceções da
+    chamada**, mesmo as tratadas. Toda queda no plano B viraria erro no Sentry. As integrações
+    automáticas ficaram desligadas.
+  - **O túnel do Sentry repassa o IP do visitante** nos dois modos. A rota é nossa e entrega ao
+    SDK o pedido sem os cabeçalhos de IP.
+  - **No `@sentry/nextjs` 11, o `beforeSendTransaction` é ignorado por padrão** (os trechos saem
+    em fluxo). Só apareceu porque subi o build e li o aviso no terminal: os testes com evento
+    falso passavam. Corrigido com `traceLifecycle: "static"`.
+  - **O uvicorn loga a exceção não tratada com a mensagem inteira.** Isso já vazava antes desta
+    fatia. Os logs dele passam agora pelo mesmo formatter.
+- **O que deu errado no caminho:**
+  - `npm install` quebrou com `Unable to resolve reference $vite`: o `overrides` da fatia 11 não
+    aguentou mais um pacote na árvore. Virou a versão literal (`7.3.7`). Nenhum pacote existente
+    mudou de versão; entraram 61.
+  - O `withSentryConfig` não é mais exportado de `@sentry/nextjs`: na versão 11 vem de
+    `@sentry/nextjs/config`. O `tsc` apontou.
+  - Meu primeiro teste de privacidade falhou por causa do próprio teste: o cliente HTTP de teste
+    loga a URL que o teste pediu. Os registros dele saem da conferência, com um `assert` de que
+    todo o resto vem de `app.*`.
+  - **Teste antes do código, só em parte.** Os testes de logs e do middleware falharam antes da
+    implementação. Os de eventos, métricas e Sentry foram escritos antes do código, mas só
+    rodados depois dele; os do frontend foram escritos junto.
+- **Como conferi que os testes de privacidade provam alguma coisa:** com a limpeza do Sentry
+  trocada por uma função que não faz nada, os três testes de ponta a ponta falham.
+- **Conferência no servidor de verdade** (uvicorn local, IA desligada no shell): logs em JSON com
+  o `request_id` do cabeçalho, `nao_mapeada` no 404, contadores subindo em `/metrics`, e nenhuma
+  ocorrência do conteúdo marcado no log. O túnel, com o build de produção local e um DSN de
+  domínio `.invalid`: 403 para outro DSN, tentativa de reenvio para o nosso.
+- **Pendente:**
+  - **Os 94 testes de integração não rodaram** (Docker desligado). A fatia mexeu em
+    `services/cota.py` e no orquestrador; o primeiro resultado com o Postgres será o do CI.
+  - **Nada foi enviado ao Sentry de verdade:** não há projeto nem DSN ainda. Falta criar o projeto,
+    ligar *Prevent Storing of IP Addresses* e conferir um erro real nos dois lados.
+  - O painel de métricas fica para depois da decisão de hospedagem.
+  - O `npm audit` aponta 12 avisos, todos de pacotes que já existiam (um crítico no `next`
+    16.3.3). Nenhum veio com o Sentry. Fora do escopo; vale uma fatia de atualização.
+  - `send_default_pii` está marcado como obsoleto no `sentry-sdk` 2.74.0; rever ao subir de versão.
+  - No Windows, os acentos dos logs saem na codificação do terminal. No Render (UTF-8) não muda.
+  - `instrumentation.ts`, `instrumentation-client.ts` e `proxy.ts` ficam na raiz do frontend, fora
+    do `app/**` que a cobertura mede. A lógica deles está em `app/_lib/`, que é medida.

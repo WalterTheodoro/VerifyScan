@@ -3,6 +3,9 @@ import Link from "next/link";
 // NEXT_PUBLIC_ porque as páginas são geradas no build e o valor entra no HTML. Sem a variável, o
 // aviso continua de pé e diz que o contato está em configuração.
 const CONTATO = process.env.NEXT_PUBLIC_CONTATO_PRIVACIDADE?.trim() ?? "";
+// A mesma variável que liga o Sentry (ADR-0026): sem ela, nenhum aviso de erro sai do site, e a
+// seção sobre isso não aparece. Também lida no build.
+const AVISA_ERROS = Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim());
 
 const LINK = "font-bold text-anil underline underline-offset-4 break-all";
 
@@ -15,7 +18,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  exclusão), ADR-0011 (Neon), ADR-0020 (a mensagem vai à Anthropic; o que a IA escreveu segue a
  *  regra da mensagem), ADR-0023 (o print vai à Anthropic só para ser lido e nunca é guardado; do
  *  print, fica o texto lido e o contexto, com a regra da mensagem), ADR-0024 (a contagem diária
- *  da IA e dos cadastros, pelo HMAC do IP ou pela conta, 2 dias; senhas erradas só em memória).
+ *  da IA e dos cadastros, pelo HMAC do IP ou pela conta, 2 dias; senhas erradas só em memória),
+ *  ADR-0026 (o aviso de erro vai à Sentry sem conteúdo, sem conta e sem IP, pelo nosso servidor;
+ *  a tela não é gravada).
  *  `nivel` mantém a hierarquia de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
@@ -194,13 +199,35 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
         </p>
       </section>
 
+      {AVISA_ERROS && (
+        <section aria-labelledby="erros" className="flex flex-col gap-junto">
+          <Titulo id="erros" className={titulo}>Quando o site dá erro</Titulo>
+          <p>
+            Se alguma coisa quebrar enquanto você usa o site, um aviso técnico vai para a Sentry,
+            uma empresa que ajuda a encontrar defeitos em programas. O aviso diz em que página e
+            em que parte do programa o erro aconteceu, e qual navegador você usa.
+          </p>
+          <p>
+            <strong>
+              O aviso nunca leva a mensagem que você colou, o print, o seu e-mail nem a sua senha.
+            </strong>{" "}
+            Ele passa primeiro pelo nosso servidor, que o repassa sem o endereço IP da sua
+            conexão. Não gravamos a sua tela nem o que você digita.
+          </p>
+          <p>Os servidores da Sentry ficam fora do Brasil.</p>
+        </section>
+      )}
+
       <section aria-labelledby="onde" className="flex flex-col gap-junto">
         <Titulo id="onde" className={titulo}>Onde ficam e com quem</Titulo>
         <p>
           Em servidores nos Estados Unidos, de três empresas: a Render, onde o site roda; a
           Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
-          artificial, como explicado acima. Não vendemos nem repassamos os seus dados a mais
-          ninguém.
+          artificial, como explicado acima.
+          {AVISA_ERROS && (
+            <> Os avisos de erro do site vão para a Sentry, também como explicado acima.</>
+          )}{" "}
+          Não vendemos nem repassamos os seus dados a mais ninguém.
         </p>
       </section>
 
