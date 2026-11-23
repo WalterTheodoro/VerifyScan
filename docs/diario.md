@@ -2806,3 +2806,74 @@ No teste em produção apareceram quatro problemas:
   - No Windows, os acentos dos logs saem na codificação do terminal. No Render (UTF-8) não muda.
   - `instrumentation.ts`, `instrumentation-client.ts` e `proxy.ts` ficam na raiz do frontend, fora
     do `app/**` que a cobertura mede. A lógica deles está em `app/_lib/`, que é medida.
+
+## 2026-11-23 — Atualização de segurança do frontend e coleta do Sentry
+
+- **Next 16.3.3 → 16.4.5** (de 03/11/2026, dentro da regra dos 14 dias do ADR-0022), e o
+  `eslint-config-next` junto. O `npm audit` foi de 12 avisos (1 crítico, 4 altos, 7 moderados)
+  para 10 (0 críticos, 3 altos, 7 moderados): fecharam o do `next`, que juntava 17 comunicados
+  (3 críticos de execução remota de código, 2 altos, 11 moderados e 1 baixo), e o do `sharp`. O
+  `sharp` (0.35.5), o `fastq` e um `semver` subiram por serem dependências dos dois pacotes;
+  nenhuma outra dependência foi tocada, e o `@sentry/nextjs` 11.11.0 aceitou a versão sem aviso.
+  `tsc`, lint, build (com e sem DSN) e os testes passam; cobertura igual antes da correção abaixo.
+- **Sobraram 3 avisos altos, não aplicados:** `brace-expansion` (pelo `eslint` e pelo
+  `eslint-config-next`), `source-map-js` (pelo `postcss` do Next e do Tailwind, e pelas
+  ferramentas de teste) e `zod` (pelo `eslint-config-next`). Os três aceitam a versão corrigida
+  dentro da faixa que já pedem.
+- **Backend: `send_default_pii` → `data_collection`** (adendo ao ADR-0026). No substituto, a
+  categoria omitida é coletada, então todas foram escritas, no modo mais restrito; ficou mais
+  fechado do que era. 956 → 959 testes, cobertura 92,90% (só unitários), sem aviso de depreciação.
+- **O que deu errado, e foi erro meu na fatia 12:** no `@sentry/nextjs` 11 o `sendDefaultPii` não
+  existe mais, e o padrão é coletar tudo. O `sendDefaultPii: false` do frontend não fazia nada. O
+  `tsc` não avisou porque as opções vinham de uma variável, e o teste conferia o valor da opção,
+  não o efeito. Apareceu quando fui conferir no código do SDK a frase "no frontend nada muda",
+  que eu já tinha escrito no ADR. O `limparEvento` segurava o conteúdo, e nenhum evento saiu (não
+  há DSN). Corrigido com `dataCollection` todo desligado, `satisfies` nas opções e um teste contra
+  a lista do SDK. Frontend: 184 → 186 testes, linhas 55,75% → 55,80%.
+- **Pendente:** os testes de integração seguem sem rodar na máquina (Docker desligado); os 3
+  avisos altos acima; o `tsc` fora do CI do frontend, que agora é também a trava das opções do
+  Sentry.
+
+## 2026-11-23 — Ajustes antes do commit da atualização de segurança
+
+Revisão do Walter sobre a entrada anterior, antes de commitar a `fix/next-seguranca`.
+
+- **Os três avisos altos fechados.** `npm update brace-expansion source-map-js zod
+  --before=2026-11-09` mudou quatro entradas do lock e nenhuma outra: `brace-expansion` 1.1.18 →
+  1.1.21 e 5.0.9 → 5.0.12, `source-map-js` 1.2.1 → 1.2.2, `zod` 4.4.3 → 4.6.7. O `npm audit` foi
+  de 10 avisos (3 altos, 7 moderados) para **7 moderados**, todos da família de lint; ficam para
+  outra fatia. No total da branch: 12 (1 crítico, 4 altos) → 7 (0 e 0).
+- **O que deu errado antes disso:** a primeira tentativa foi `npm audit fix --before=2026-11-09`.
+  Ele subiu também os 11 pacotes do `typescript-eslint` (8.68.0 → 8.72.1), um `ignore` e um
+  `semver`, e não fechou nenhum moderado, porque a correção deles exige versão posterior à data.
+  Foi desfeito (lock restaurado, `npm ci`) e relatado, como combinado.
+- **`tsc` no CI do frontend**, entre o lint e os testes, depois de um `next typegen`: num checkout
+  limpo falta o tipo `LayoutProps`, que o Next gera, e o `typegen` exige as duas variáveis que o
+  `next.config.ts` cobra em produção (valores públicos de CI no passo). Validado numa cópia limpa,
+  sem `.next`: passa, e reprova com o `sendDefaultPii` de volta. Fecha o pendente "`tsc` fora do
+  CI" de 15/11. O passo ainda não rodou no GitHub.
+- **O scrubber do SDK saiu com o `data_collection`, e eu não tinha registrado.** O Walter achou
+  lendo o `client.py`: com `data_collection`, o `event_scrubber` fica `None`. O `limpar_evento`
+  virou a única camada. Ele passou a remover o `extra` inteiro, o `data` de cada trecho de
+  desempenho e o `contexts.trace.data`; os ids do trace ficam. Cinco testes novos, um deles de
+  ponta a ponta com `set_extra` (falha com a limpeza desligada) e um que fixa
+  `event_scrubber is None`.
+- **O que continua sem garantia:** `set_tag` e `set_context`. O backend não usa nenhum dos dois; se
+  um dia usar com conteúdo do usuário, sai como foi escrito (ADR-0026).
+- **A regra dos 14 dias só valia para as dependências diretas** (adendo ao ADR-0022). A `master`
+  tem uma `brace-expansion` 5.0.13, de 11/11, que entrou em 23/11 com 12 dias, trazida pelo pacote
+  de rastreamento de erros. Daqui em diante, instalação e atualização no frontend usam `--before`.
+  A varredura dos dois locks da `master`, feita pelo Walter, achou **8 pacotes do frontend** (de
+  626) que entraram com menos de 14 dias, todos como dependência de outro pacote: `minimatch`
+  11.0.9, `tldts` e `tldts-core` 7.5.4, `@asamuzakjp/dom-selector` 10.0.6, `rollup` 4.68.3,
+  `glob` 14.0.6, `brace-expansion` 5.0.13 e `@babel/runtime` 7.29.14. No backend (70 pacotes),
+  nenhum. Conferi as oito versões no lock e as oito datas no registro. Decisão: não rebaixar;
+  nenhum tem aviso de segurança e todos completam os 14 dias até 30/11.
+- **Números:** backend 959 → **964** testes, 92,90% → **92,92%** (só unitários); frontend 186
+  testes, 55,80% de linhas, sem mudança. `ruff`, `mypy`, lint, `tsc` e os dois builds passam.
+- **Pendente:**
+  - os 7 avisos moderados da família de lint;
+  - tornar a regra dos 14 dias executável: `min-release-age` no `.npmrc` (pede npm mais novo que
+    o 10.9 de hoje) e `exclude-newer` no `[tool.uv]` (ADR-0022);
+  - os testes de integração seguem sem rodar na máquina (Docker desligado);
+  - nenhum evento foi enviado ao Sentry de verdade: ainda não há projeto nem DSN.

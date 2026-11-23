@@ -175,3 +175,71 @@ aquecimento, a tela e a rewrite do Next sem ganho para esta fatia. Nenhum ping a
   com e sem IA, com a IA falhando de três jeitos, pelo cadastro e pelo login, e procuram a marca
   em todo log, no corpo de `/metrics` e no que o SDK do Sentry enviaria (com o SDK de verdade e o
   transporte em memória). Com a limpeza desligada, esses testes falham.
+
+## Adendo — 2026-11-23 (`data_collection` no lugar de `send_default_pii`)
+
+No backend, o `send_default_pii=False` saiu e entrou o substituto que o aviso de depreciação do
+SDK indica, `data_collection` (constante `COLETA`, em `app/core/sentry.py`).
+
+- **Todas as categorias estão escritas, no modo mais restrito.** Lido no código da 2.74.0: uma
+  categoria omitida no `data_collection` passa a ser **coletada**, ao contrário do
+  `send_default_pii=False`, em que o omitido ficava desligado. Trocar só o nome da opção abriria a
+  coleta. Há um teste que compara `COLETA` com a lista de categorias que o SDK conhece: se uma
+  versão nova trouxer outra, ele falha até ela ser declarada.
+- **Ficou mais fechado do que era.** Com `send_default_pii=False` o SDK ainda coletava cookies e
+  query string por lista de bloqueio (tirava só as chaves com cara de segredo). Agora os dois
+  estão em `off`, o corpo do pedido em lista vazia, e dos cabeçalhos só sai o valor de
+  `content-type`, `content-length`, `user-agent` e `x-request-id`.
+- `include_local_variables=False` e `max_request_body_size="never"` continuam: não são obsoletos.
+- **O `EventScrubber` do SDK saiu com a troca.** Na 2.74.0, passar `data_collection` deixa
+  `options["event_scrubber"]` em `None` (`client.py`, `_get_options`). Era uma segunda camada,
+  que mascarava as chaves com cara de segredo (senha, token, sessão) em seis lugares do evento: no
+  pedido (cabeçalhos, cookies, corpo), no `extra`, no usuário, no rastro, nas variáveis dos
+  quadros da pilha e nos atributos dos trechos de desempenho. A primeira versão deste adendo não
+  registrou a perda.
+  - **O `limpar_evento` passou a ser a única camada sobre esses campos.** Ele já removia por
+    inteiro o corpo, os cookies, o usuário, o rastro e as variáveis dos quadros; agora remove
+    também o `extra`. Há teste com o evento falso e teste de ponta a ponta com `set_extra`, e um
+    teste que registra o fato (`event_scrubber is None`), para avisar se o SDK mudar isso.
+  - **Hoje nada vaza por aí:** o backend não usa `set_extra`, `set_context`, `set_tag` nem
+    `set_user`.
+  - **Custo de estar errado:** um `set_extra` futuro com chave sensível sairia sem máscara se o
+    `limpar_evento` deixasse de remover o `extra`, e não há mais nada atrás dele.
+  - **Lacuna fechada depois:** os atributos (`data`) dos trechos de desempenho e o
+    `contexts.trace.data`, que o scrubber mascarava e o `limpar_evento` não tocava. Agora saem
+    inteiros, como no frontend, com um teste para cada remoção. O resto do `contexts.trace` fica:
+    são os ids que ligam o erro à transação.
+  - **O que continua sem garantia: `set_tag` e `set_context`.** O `limpar_evento` não remove
+    as `tags` nem o `contexts` inteiros (o `contexts` traz o trace, o runtime e o sistema, que
+    servem para depurar), e o scrubber que mascarava chave com cara de segredo não existe mais.
+    Hoje o backend não chama nenhum dos dois. Uma chamada futura com conteúdo do usuário sairia
+    como foi escrita: quem a acrescentar precisa pôr só metadado, ou estender o `limpar_evento`.
+- O `limpar_evento` não mudou e segue sendo a garantia. Os testes de ponta a ponta, com conteúdo
+  marcado, passam sem alteração, e a inicialização não emite mais aviso de depreciação (testado).
+
+### No frontend, a opção não existia: correção de um erro da fatia 12
+
+Ao conferir a frase "no frontend nada muda", ela se mostrou falsa. **No `@sentry/nextjs` 11.11.0
+o `sendDefaultPii` não existe mais** (nenhum arquivo do SDK o lê), e o padrão do substituto,
+`dataCollection`, é **coletar tudo**: dados do usuário, cookies, corpos, query string. O
+`sendDefaultPii: false` que a fatia 12 entregou não fazia nada, e a decisão acima, que o lista
+como configuração do frontend, estava errada nesse ponto.
+
+- **Por que passou:** o TypeScript só recusa propriedade desconhecida num objeto escrito direto
+  na chamada. As opções vinham de uma função, numa variável; o `tsc` não reclamou, e os testes
+  conferiam o valor da opção, não o efeito dela.
+- **O que segurou:** o `limparEvento` já tirava, antes do envio, usuário, cookies, corpo, query
+  string e os atributos dos trechos. Nenhum evento chegou a sair: o Sentry ainda não tem projeto
+  nem DSN. Com `userInfo` ligado, o SDK pediria ao Sentry para deduzir o IP de quem enviou; pelo
+  túnel, seria o IP do nosso servidor.
+- **Correção:** `dataCollection` com todas as categorias desligadas (constante `COLETA`, em
+  `app/_lib/sentry.ts`), e dos cabeçalhos só o valor de `content-type`, `user-agent` e
+  `x-request-id`.
+- **Para não repetir:** as opções passam por `satisfies BrowserOptions`, e o compilador agora
+  recusa uma opção que o SDK não conhece (conferido: com o `sendDefaultPii` de volta, o `tsc`
+  falha). Um teste compara `COLETA` com a lista de categorias do SDK e confere que, com ela, o
+  SDK resolve tudo desligado.
+- **O `tsc` passou a rodar no CI do frontend**, entre o lint e os testes, depois de um
+  `next typegen` (num checkout limpo faltam os tipos que o Next gera, como o `LayoutProps`).
+  A trava do compilador vale então para todo push, e não só na máquina. Conferido numa cópia
+  limpa, sem `.next`: o passo passa, e reprova com o `sendDefaultPii` de volta.

@@ -3,11 +3,14 @@
 //   npm test
 
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import path from "node:path";
 import { test } from "vitest";
 
 import { config } from "../../proxy";
 import {
   CABECALHOS_PROIBIDOS,
+  COLETA,
   CAMINHO_DO_TUNEL,
   type EventoDoSentry,
   limparEvento,
@@ -145,7 +148,9 @@ test("com DSN, as opções obrigatórias", () => {
   assert.ok(opcoes);
   assert.equal(opcoes.dsn, "https://chave@o0.ingest.exemplo.invalid/1");
   assert.equal(opcoes.environment, "producao");
-  assert.equal(opcoes.sendDefaultPii, false);
+  // O `sendDefaultPii` não existe mais no SDK 11: quem desliga a coleta é o `dataCollection`.
+  assert.equal("sendDefaultPii" in opcoes, false);
+  assert.equal(opcoes.dataCollection, COLETA);
   assert.equal(opcoes.tracesSampleRate, 0.1);
   assert.equal(opcoes.maxBreadcrumbs, 0);
   assert.equal(opcoes.beforeSend, limparEvento);
@@ -154,6 +159,47 @@ test("com DSN, as opções obrigatórias", () => {
   const nomes = Object.keys(opcoes).join(" ").toLowerCase();
   assert.equal(nomes.includes("replay"), false, nomes);
   assert.equal("integrations" in opcoes, false);
+});
+
+test("nenhuma categoria de coleta automática fica ligada", () => {
+  assert.equal(COLETA.userInfo, false);
+  assert.equal(COLETA.cookies, false);
+  assert.equal(COLETA.urlQueryParams, false);
+  assert.deepEqual(COLETA.httpBodies, []);
+  assert.equal(COLETA.httpHeaders.response, false);
+  assert.deepEqual(COLETA.graphQL, { document: false, variables: false });
+  assert.deepEqual(COLETA.genAI, { inputs: false, outputs: false });
+  assert.deepEqual(COLETA.mcp, { inputs: false, outputs: false });
+  assert.equal(COLETA.databaseQueryData, false);
+  assert.equal(COLETA.queues, false);
+  assert.equal(COLETA.stackFrameVariables, false);
+  for (const permitido of COLETA.httpHeaders.request.allow) {
+    assert.equal(CABECALHOS_PROIBIDOS.includes(permitido), false, permitido);
+  }
+});
+
+test("toda categoria que o SDK conhece está declarada", () => {
+  // Categoria omitida é categoria COLETADA. A função do SDK que preenche os padrões não é
+  // exportada, por isso o caminho do arquivo: se ele mudar numa versão nova, este teste falha e
+  // obriga a conferir a lista de novo.
+  const sdk = createRequire(import.meta.url)(
+    path.resolve(
+      "node_modules/@sentry/core/build/cjs/utils/data-collection/resolveDataCollectionOptions.js",
+    ),
+  );
+
+  const padroes = sdk.resolveDataCollectionOptions({});
+
+  assert.deepEqual(Object.keys(COLETA).sort(), Object.keys(padroes).sort());
+  // O padrão do SDK é mesmo coletar: sem o `COLETA`, estas categorias sairiam ligadas.
+  assert.equal(padroes.userInfo, true);
+  assert.equal(padroes.cookies, true);
+  // Com o nosso, o SDK resolve tudo desligado.
+  const resolvido = sdk.resolveDataCollectionOptions({ dataCollection: COLETA });
+  assert.equal(resolvido.userInfo, false);
+  assert.equal(resolvido.cookies, false);
+  assert.equal(resolvido.urlQueryParams, false);
+  assert.deepEqual(resolvido.httpBodies, []);
 });
 
 test("o pedido que vai para o túnel não leva o IP nem o cookie", async () => {

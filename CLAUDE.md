@@ -78,6 +78,7 @@ uv run python -m tools.gerar_prints --divisao teste    # a medida limpa: gerar e
 # frontend
 cd frontend
 npm install
+npm install <pacote> --before=AAAA-MM-DD   # instalar ou atualizar: sempre com a data de 14 dias atrás (ADR-0022)
 npm run dev        # http://localhost:3000
 npm run lint
 npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25% (ADR-0025)
