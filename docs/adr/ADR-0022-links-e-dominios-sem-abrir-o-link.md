@@ -197,3 +197,67 @@ no teste.
 - **Latência:** p50 de 2,4 s com IA, máxima de 5,1 s. A análise local inteira de uma mensagem com
   três links (texto e links) levou 0,9 ms, longe dos 300 ms das heurísticas (ADR-0002).
 - O gate do CI foi regravado (regras v4, corpus de 176 casos).
+
+## Adendo — 2026-11-23 (a regra dos 14 dias só era conferida nas dependências diretas)
+
+**O que foi achado.** A regra deste ADR — dependência nova só com versão publicada há pelo menos 14
+dias — vinha sendo conferida à mão, e só no pacote que se pedia para instalar. O que ele traz
+junto não era olhado. A `master` tem `glob/node_modules/brace-expansion` **5.0.13, publicada em
+11/11/2026**, que entrou em 23/11 com o pacote de rastreamento de erros do frontend (commit
+`0f2a169`): **12 dias**. O pacote pedido (`@sentry/nextjs` 11.11.0, de 05/11) cumpria a regra; uma
+dependência de uma dependência dele, não.
+
+**Varredura dos dois locks da `master`**, feita pelo Walter, comparando a data de publicação de
+cada versão com o dia em que ela entrou no lock.
+
+- **Frontend** (`package-lock.json`, 626 pacotes): **8 entraram com menos de 14 dias.**
+
+  | Pacote | Versão | Publicada em |
+  |---|---|---|
+  | `minimatch` | 11.0.9 | 16/11 |
+  | `tldts` e `tldts-core` | 7.5.4 | 15/11 |
+  | `@asamuzakjp/dom-selector` | 10.0.6 | 14/11 |
+  | `rollup` e seus binários | 4.68.3 | 13/11 |
+  | `glob` | 14.0.6 | 12/11 |
+  | `brace-expansion` | 5.0.13 | 11/11 |
+  | `@babel/runtime` | 7.29.14 | 11/11 |
+
+  Todos vieram como dependência de outro pacote, nenhum foi pedido direto. As oito versões e as
+  oito datas foram conferidas de novo, no lock da `master` e no registro do npm.
+- **Backend** (`uv.lock`, 70 pacotes): **nenhum.** O mais recente é o `sentry-sdk` 2.74.0, de
+  05/11.
+- **Decisão: não rebaixar.** Nenhum dos oito tem aviso de segurança, todos completam os 14 dias
+  até 30/11, e já estão na `master`. Rebaixar mexeria no lock outra vez para ganhar poucos dias.
+
+**Decisão.** No frontend, toda instalação e toda atualização passam a usar `--before` com a data
+de corte (hoje menos 14 dias). O npm então não escolhe, para nenhum pacote da árvore, versão
+publicada depois dela:
+
+```powershell
+npm install <pacote>@<versão> --before=AAAA-MM-DD
+npm update <pacote> --before=AAAA-MM-DD
+```
+
+- Depois de cada comando, conferir no `package-lock.json` quais entradas mudaram, e não só a do
+  pacote pedido. Foi assim que apareceu, na mesma data, um `npm audit fix --before=2026-11-09`
+  que subiu uma família inteira de pacotes de lint sem fechar aviso nenhum; ele foi desfeito e
+  trocado por um `npm update` só dos três pacotes com aviso alto.
+- `npm ci` não precisa da opção: instala exatamente o que o lock diz.
+- **Não use `npm audit fix` sem a data**, nem com `--force`.
+
+**Consequências.**
+
+- A regra deixa de depender de alguém lembrar de olhar a data de cada pacote.
+- Uma correção de segurança publicada há menos de 14 dias fica de fora até a data chegar. Se ela
+  for urgente, é exceção a decidir e registrar, não a instalar em silêncio.
+- **O backend está em dia**, mas por conferência manual: ali a regra ainda depende de olhar a data.
+
+**Pendente, para outra fatia: tornar a regra executável**, para ela não depender de lembrar da
+opção em cada comando.
+
+- **Frontend:** `min-release-age=14` no `.npmrc`. Exige npm 11.10 ou mais novo (a máquina está no
+  10.9.9, e o CI usa o que vem com o Node 22) e não combina com `--before`: adotada uma, a outra
+  sai.
+- **Backend:** `exclude-newer = "14 days"` em `[tool.uv]`, no `pyproject.toml`. Exige uv 0.9.17
+  ou mais novo (a máquina está no 0.13.7).
+- Os dois requisitos de versão precisam ser conferidos na documentação quando a fatia for feita.
