@@ -274,7 +274,7 @@ async def _medir(
                 nivel_motor=resposta.nivel_motor,
                 fatores=tuple(resposta.fatores),
                 links=tuple(resposta.links),
-                print=PrintParaIA(mensagens=leitura.mensagens, contexto=leitura.contexto),
+                captura=PrintParaIA(mensagens=leitura.mensagens, contexto=leitura.contexto),
             ),
             timeout_s=timeout_imagem,
         )

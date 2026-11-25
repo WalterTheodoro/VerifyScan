@@ -1,5 +1,8 @@
 # VerifyScan
 
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=WalterTheodoro_VerifyScan&metric=alert_status)](https://sonarcloud.io/summary/overall?id=WalterTheodoro_VerifyScan)
+[![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=WalterTheodoro_VerifyScan&metric=coverage)](https://sonarcloud.io/summary/overall?id=WalterTheodoro_VerifyScan)
+
 Plataforma web que recebe uma mensagem suspeita — texto, link, print ou e-mail — e devolve
 **nível de risco (BAIXO / MÉDIO / ALTO), os fatores identificados e uma recomendação**, em
 português acessível a quem tem pouco letramento digital.
@@ -187,7 +190,9 @@ e com a cobertura ligada nos dois lados (seção seguinte).
 
 ### Cobertura de testes
 
-Dois relatórios, um comando cada. Os dois medem o código inteiro de `app/`, inclusive os arquivos
+Dois relatórios, um comando cada. O do backend mede `app/` inteiro; o do frontend, `app/` e os três
+arquivos de código da raiz (`proxy.ts`, `instrumentation.ts`, `instrumentation-client.ts`), sem
+testes nem configuração (ADR-0027). Os dois contam os arquivos
 que nenhum teste importa, e saem com erro abaixo da meta (ADR-0025).
 
 | | Backend | Frontend |
@@ -223,6 +228,24 @@ npm test
 - **A cobertura do backend não liga sozinha:** o `uv run pytest -q` do dia a dia segue sem ela, que
   deixa a suíte uns 28% mais lenta. Só o CI e o comando acima a usam.
 - **Frontend:** `npm test` sempre mede. A pasta `frontend/coverage/` é ignorada pelo git.
+
+### Análise estática
+
+O SonarQube Cloud analisa o backend, o frontend e os workflows do CI (ADR-0027). Não há comando
+local: quem roda é o job `sonar` do CI, depois dos testes, com a cobertura que os outros dois jobs
+geraram (`backend/coverage.xml` e `frontend/coverage/lcov.info`).
+
+- **Painel:** <https://sonarcloud.io/project/overview?id=WalterTheodoro_VerifyScan>
+- **O que entra, o que é teste e o que foi aceito:** `sonar-project.properties`, na raiz. Cada
+  questão ignorada está lá com o motivo; a triagem inteira está no ADR-0027.
+- **O Quality Gate ainda não bloqueia o merge.** O selo acima mostra o estado, mas o CI não
+  reprova por ele.
+- **O selo de cobertura não é nenhum dos dois números da seção anterior.** Ele mostra um número
+  só, do projeto inteiro: backend e frontend somados, com linhas e ramos na mesma conta. Os
+  arquivos medidos são os mesmos do pytest-cov e do Vitest; a conta é que é outra. No frontend o
+  Sonar também fica uns 3 pontos abaixo do Vitest, porque soma às linhas a cobrir as que só têm
+  dado de ramo. Para a prova de autoria valem os dois comandos da seção anterior.
+- **PR de fork:** o job é pulado, porque o fork não recebe o `SONAR_TOKEN`.
 
 ### Banco de teste (testes de integração)
 

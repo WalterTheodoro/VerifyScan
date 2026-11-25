@@ -186,19 +186,21 @@ class PrintParaIA:
 class EntradaIA:
     """Tudo o que a IA recebe de uma análise: a mensagem e o que o motor achou nela e nos links.
 
-    Com `print`, `mensagem` é o que o motor analisou (só o recebido), e a `<mensagem>` da IA traz a
-    conversa inteira, em partes.
+    Com `captura` (os dados do print), `mensagem` é o que o motor analisou (só o recebido), e a
+    `<mensagem>` da IA traz a conversa inteira, em partes.
     """
 
     mensagem: str
     nivel_motor: NivelRisco
     fatores: tuple[Fator, ...]
     links: tuple[LinkDaMensagem, ...]
-    print: PrintParaIA | None = None
+    # `captura`, e não `print`: um campo com o nome da função embutida faz o analisador do
+    # SonarQube Cloud desistir do arquivo inteiro (ADR-0027).
+    captura: PrintParaIA | None = None
 
     @property
     def sistema(self) -> str:
-        return PROMPT_SISTEMA if self.print is None else PROMPT_SISTEMA_PRINT
+        return PROMPT_SISTEMA if self.captura is None else PROMPT_SISTEMA_PRINT
 
 
 def montar_entrada(entrada: EntradaIA) -> str:
@@ -210,11 +212,11 @@ def montar_entrada(entrada: EntradaIA) -> str:
     """
     no_texto = [f"- {fator.descricao}" for fator in entrada.fatores if fator.tipo == "texto"]
     nos_links = [f"- um link: {'; '.join(link.observacoes)}" for link in entrada.links]
-    no_print = [] if entrada.print is None else ["no_print:", *_pistas_do_print(entrada.print)]
+    no_print = [] if entrada.captura is None else ["no_print:", *_pistas_do_print(entrada.captura)]
     mensagem = (
         [escape(entrada.mensagem, quote=False)]
-        if entrada.print is None
-        else _conversa(entrada.print)
+        if entrada.captura is None
+        else _conversa(entrada.captura)
     )
     return "\n".join(
         [

@@ -171,7 +171,7 @@ def _entrada_de_print(contexto: ContextoDoPrint = CONTEXTO) -> EntradaIA:
         nivel_motor="MEDIO",
         fatores=(FATOR,),
         links=(),
-        print=PrintParaIA(mensagens=CONVERSA, contexto=contexto, texto_da_pessoa="Recebi agora"),
+        captura=PrintParaIA(mensagens=CONVERSA, contexto=contexto, texto_da_pessoa="Recebi agora"),
     )
 
 

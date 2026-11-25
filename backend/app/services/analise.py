@@ -15,7 +15,7 @@ from app.analyzers.dominios import DomainAnalyzer
 from app.analyzers.normalizacao import normalizar
 from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor, URLExtraida
-from app.formulator.limpeza import PADRAO_EMAIL, PADRAO_ESQUEMA, PADRAO_TELEFONE
+from app.formulator.limpeza import PADRAO_ESQUEMA, PADRAO_TELEFONE, trocar_emails
 from app.ocr.leitura import textos_recebidos, trocar_nas_mensagens
 from app.schemas.analise import LinkDaMensagem, RespostaAnalise, TipoInput
 from app.scoring.motor import ScoringEngine
@@ -98,7 +98,7 @@ class ServicoAnalise:
         depois dos links (um wa.me/55119… é um link só). O extrator para em
         `maximo_por_analise`; por isso as voltas, até não sobrar link.
         """
-        exibido = PADRAO_EMAIL.sub(EMAIL_NA_TELA, texto.replace(_ABRE, "").replace(_FECHA, ""))
+        exibido = trocar_emails(texto.replace(_ABRE, "").replace(_FECHA, ""), EMAIL_NA_TELA)
         dominios: list[str] = []
 
         def provisorio(url: URLExtraida) -> str:

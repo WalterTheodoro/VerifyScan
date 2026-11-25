@@ -15,7 +15,8 @@ ela lê a mensagem, sugere um nível e escreve a explicação, e uma regra fixa 
 no maior dos dois — ela pode subir, nunca baixar (ADR-0020).
 
 Especificação completa: `docs/RFC-VerifyScan-v1.1.pdf`. Plano de execução: `docs/plano-de-execucao.md`.
-Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`.
+Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`. Análise estática:
+SonarQube Cloud, pelo CI (ADR-0027).
 
 ## 2. Stack (fixa — não trocar sem ADR)
 
@@ -81,7 +82,7 @@ npm install
 npm install <pacote> --before=AAAA-MM-DD   # instalar ou atualizar: sempre com a data de 14 dias atrás (ADR-0022)
 npm run dev        # http://localhost:3000
 npm run lint
-npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25% (ADR-0025)
+npm test           # Vitest + cobertura de app/** e do código da raiz; reprova abaixo de 25% (ADR-0025)
 ```
 
 ## 4. Estrutura
@@ -90,6 +91,8 @@ npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25%
 verifyscan/
 ├─ CLAUDE.md
 ├─ docker-compose.yml
+├─ sonar-project.properties   # análise estática (ADR-0027): escopo, cobertura importada e
+│                            #   cada questão aceita, com o motivo; roda só no job `sonar` do CI
 ├─ docs/
 │  ├─ RFC-VerifyScan-v1.1.pdf
 │  ├─ plano-de-execucao.md
@@ -138,7 +141,8 @@ verifyscan/
    │                       #   X-Request-ID (ADR-0026)
    ├─ instrumentation.ts   # Sentry no servidor do Next e, em instrumentation-client.ts, no
    │                       #   navegador: só com NEXT_PUBLIC_SENTRY_DSN, sem Replay (ADR-0026)
-   ├─ vitest.config.ts     # testes e cobertura: include app/**, threshold 25% (ADR-0025)
+   ├─ vitest.config.ts     # testes e cobertura: app/** + proxy.ts e instrumentation*.ts, threshold
+   │                       #   25% (ADR-0025); a mesma lista vale no Sonar (ADR-0027)
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
       │                    #   (botão, Ctrl+V, soltar; ADR-0023)

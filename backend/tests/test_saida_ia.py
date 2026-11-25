@@ -5,12 +5,20 @@ dentro do teto. A IA não pode entregar o link do golpe para a pessoa clicar.
 """
 
 import json
+import random
+import re
+import time
 from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
-from app.formulator.limpeza import afirma_seguranca, fala_do_sistema, limpar_texto
+from app.formulator.limpeza import (
+    afirma_seguranca,
+    fala_do_sistema,
+    limpar_texto,
+    trocar_emails,
+)
 from app.formulator.saida import SCHEMA_SAIDA, SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ITEM_MAX_CARACTERES, TIPO_MAX_CARACTERES, NivelRisco
 
@@ -352,3 +360,43 @@ def test_tipo_que_fala_dos_fatores_e_inutilizavel() -> None:
 
     with pytest.raises(SaidaInutilizavel):
         explicacao_da_saida(saida)
+
+
+def test_email_com_porcentagem_no_meio_sai_inteiro() -> None:
+    assert limpar_texto("Escreva para joao%silva@exemplo.com.br hoje.") == (
+        "Escreva para [e-mail removido] hoje."
+    )
+
+
+def test_dois_emails_colados_por_porcentagem_saem_os_dois() -> None:
+    """O caso que uma primeira correção do tempo deixou passar: o segundo e-mail ficava."""
+    assert trocar_emails("a@b.c%d@e.com", "[x]") == "[x]%[x]"
+    assert trocar_emails("a@b.c.%d@e.com", "[x]") == "[x].%[x]"
+
+
+# O padrão antes da correção do tempo. Fica só aqui, como referência do resultado esperado.
+_PADRAO_ANTIGO = re.compile(r"(?<![\w.+-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
+
+
+def test_troca_de_emails_da_o_mesmo_resultado_do_padrao_antigo() -> None:
+    """Entradas aleatórias com os caracteres que importam (semente fixa: sempre as mesmas)."""
+    sorteio = random.Random(20261125)
+    alfabeto = "ab1.%+-_@ @..é" + chr(10)
+    for _ in range(20_000):
+        entrada = "".join(sorteio.choice(alfabeto) for _ in range(sorteio.randint(0, 18)))
+        assert trocar_emails(entrada, "[x]") == _PADRAO_ANTIGO.sub("[x]", entrada), repr(entrada)
+
+
+def test_padrao_de_email_nao_demora_com_entrada_patologica() -> None:
+    """`a%a%a%…` sem arroba: o padrão antigo recomeçava depois de cada `%` e relia o resto todo
+    (tempo quadrático; 0,2 s com 16 mil caracteres). Tem de ser uma passada só."""
+    entrada = "a%" * 8000
+
+    tempos = []
+    for _ in range(3):
+        inicio = time.perf_counter()
+        assert trocar_emails(entrada, "") == entrada
+        tempos.append(time.perf_counter() - inicio)
+
+    # O melhor de três: uma pausa do sistema numa rodada não reprova o teste.
+    assert min(tempos) < 0.05
