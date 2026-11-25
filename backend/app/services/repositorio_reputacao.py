@@ -35,7 +35,7 @@ class RepositorioReputacao(Protocol):
         self, fonte: FonteReputacao, chaves: Sequence[str], agora: datetime
     ) -> dict[str, Veredito]: ...
 
-    async def guardar(self, itens: Sequence[ItemDeCache]) -> None: ...
+    async def guardar(self, itens: Sequence[ItemDeCache], agora: datetime) -> None: ...
 
     async def reservar(
         self, fonte: FonteReputacao, agora: datetime, consultas: int, por_minuto: int, por_dia: int
@@ -66,12 +66,12 @@ class RepositorioReputacaoPostgres:
             )
             return {chave: cast(Veredito, veredito) for chave, veredito in linhas.all()}
 
-    async def guardar(self, itens: Sequence[ItemDeCache]) -> None:
-        """Grava ou substitui cada resposta e, na mesma transação, apaga o que venceu: a tabela
-        se limpa no próprio uso, sem agendador."""
+    async def guardar(self, itens: Sequence[ItemDeCache], agora: datetime) -> None:
+        """Grava ou substitui cada resposta e, na mesma transação, apaga o que venceu até
+        `agora`: a tabela se limpa no próprio uso, sem agendador. A hora vem de quem chama, como
+        na leitura: é o mesmo relógio que decide o que vale e o que é apagado."""
         if not itens:
             return
-        agora = datetime.now(UTC)
         async with self._fabrica_de_sessoes() as sessao, sessao.begin():
             for item in itens:
                 novo = insert(ReputacaoCache).values(

@@ -94,7 +94,7 @@ class VerificadorDeReputacao:
             return
         try:
             async with asyncio.timeout(timeout_s):
-                await self._repositorio.guardar(itens)
+                await self._repositorio.guardar(itens, self._agora())
         except Exception as exc:
             logger.warning("Cache de reputação não gravado: %s", type(exc).__name__)
 

@@ -497,7 +497,7 @@ class RepositorioReputacaoEmMemoria:
                 achados[chave] = item[0]
         return achados
 
-    async def guardar(self, itens: Sequence[ItemDeCache]) -> None:
+    async def guardar(self, itens: Sequence[ItemDeCache], agora: datetime) -> None:
         if self.fora:
             raise ConnectionError("banco fora")
         for item in itens:
