@@ -19,8 +19,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  regra da mensagem), ADR-0023 (o print vai à Anthropic só para ser lido e nunca é guardado; do
  *  print, fica o texto lido e o contexto, com a regra da mensagem), ADR-0024 (a contagem diária
  *  da IA e dos cadastros, pelo HMAC do IP ou pela conta, 2 dias; senhas erradas só em memória),
- *  ADR-0026 (o aviso de erro vai à Sentry sem conteúdo, sem conta e sem IP, pelo nosso servidor;
- *  a tela não é gravada).
+ *  ADR-0026 (o aviso de erro, do site e do servidor, e as medidas de desempenho de ~10% das
+ *  visitas vão à Sentry, nos EUA, sem conteúdo, sem conta e sem IP; nenhum lado manda contagem
+ *  de sessões, e o navegador não manda idioma e fuso; a tela não é gravada).
  *  `nivel` mantém a hierarquia de títulos de quem o usa. */
 export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
   const Titulo = nivel;
@@ -201,20 +202,36 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
 
       {AVISA_ERROS && (
         <section aria-labelledby="erros" className="flex flex-col gap-junto">
-          <Titulo id="erros" className={titulo}>Quando o site dá erro</Titulo>
+          <Titulo id="erros" className={titulo}>Avisos de erro e de desempenho</Titulo>
           <p>
-            Se alguma coisa quebrar enquanto você usa o site, um aviso técnico vai para a Sentry,
-            uma empresa que ajuda a encontrar defeitos em programas. O aviso diz em que página e
-            em que parte do programa o erro aconteceu, e qual navegador você usa.
+            Usamos a Sentry, uma empresa que ajuda a encontrar defeitos em programas. Ela recebe
+            dois tipos de aviso técnico:
           </p>
+          <ul className="flex list-disc flex-col gap-junto pl-6">
+            <li>
+              <strong>quando alguma coisa quebra</strong>, no site ou no servidor: em que página o
+              erro aconteceu, em que parte do programa, que tipo de erro foi e qual navegador você
+              usa;
+            </li>
+            <li>
+              <strong>medidas de desempenho</strong>, em cerca de 1 a cada 10 visitas, mesmo sem
+              erro: o endereço da página, só o caminho (como /privacidade), o navegador e quanto
+              tempo a página levou para carregar.
+            </li>
+          </ul>
           <p>
             <strong>
-              O aviso nunca leva a mensagem que você colou, o print, o seu e-mail nem a sua senha.
+              Nunca vão a mensagem que você colou, o print, o seu e-mail, a sua senha, o endereço
+              IP da sua conexão nem o que você digita.
             </strong>{" "}
-            Ele passa primeiro pelo nosso servidor, que o repassa sem o endereço IP da sua
-            conexão. Não gravamos a sua tela nem o que você digita.
+            Não gravamos a sua tela. Os avisos do site passam primeiro pelo nosso servidor, que os
+            repassa sem o seu endereço IP.
           </p>
-          <p>Os servidores da Sentry ficam fora do Brasil.</p>
+          <p>
+            Os servidores da Sentry ficam nos Estados Unidos. Enviar os avisos para ela é, por
+            isso, uma transferência internacional de dados (Lei Geral de Proteção de Dados, art.
+            33).
+          </p>
         </section>
       )}
 
@@ -225,7 +242,11 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
           Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
           artificial, como explicado acima.
           {AVISA_ERROS && (
-            <> Os avisos de erro do site vão para a Sentry, também como explicado acima.</>
+            <>
+              {" "}
+              Os avisos de erro e as medidas de desempenho vão para a Sentry, também como
+              explicado acima.
+            </>
           )}{" "}
           Não vendemos nem repassamos os seus dados a mais ninguém.
         </p>
