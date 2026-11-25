@@ -23,6 +23,9 @@
 | 12 | §7.1 (tabela LGPD), linha "Texto enviado" | permanente → 7 dias, só autenticado, com aviso; anônimo nunca | 9 |
 | 13 | §2.3 (RF13), §5.4.8 e §7.1 | a LLM passa a ler a mensagem como dado e só pode subir o nível | Fase 7 |
 | 14 | §1.6 (KPIs) | "precisão > 85%" → precisão **e** recall > 85%, com MÉDIO = golpe | 10 |
+| 15 | §2.3 (RF06, RF08) e §5.4.4 | reputação pelo **domínio**, nunca pela URL inteira | fatia 14 |
+| 16 | §5.4.4 (cache) | Redis → tabela no Postgres; prazo do Google respeitado | fatia 14 |
+| 17 | §2.4 (RNF01) e §1.6 | pior caso do tempo de resposta com a reputação | fatia 14 |
 
 ---
 
@@ -232,3 +235,48 @@ Exigir os dois fecha as duas saídas. O MÉDIO conta como golpe porque o falso n
 (ADR-0005). O "casos reais" do texto original continua sendo a meta. Enquanto a coleta de
 mensagens reais depender do comitê de ética, o corpus é sintético e a medição não atesta casos
 reais, o que fica declarado como limitação (ADR-0021).
+
+### 15 — §2.3 (RF06 e RF08) e §5.4.4, reputação pelo domínio
+
+RF06 e RF08 passam a ler, juntos:
+
+> **RF06 / RF08** — O sistema consulta o **domínio** de até três links da mensagem em duas bases
+> externas, o Google Safe Browsing (Lookup API) e o VirusTotal (API pública), e soma ao risco o que
+> elas apontarem. Só o domínio é enviado: nunca o caminho, a query nem o fragmento do link. O
+> sistema não abre o link.
+
+Na §5.4.4, a tabela do VirusTotal muda de "detecções da URL" para o domínio:
+`malicious` ≥ 2 → +40; `malicious` = 1 ou `suspicious` ≥ 2 → +20. O Google Safe Browsing segue +40.
+
+**Por quê:** o caminho e a query de um link levam token, e-mail e CPF, e a regra de privacidade do
+projeto proíbe mandá-los para fora. Além disso, o que é consultado no VirusTotal passa a constar na
+base dele, visível à comunidade. Os limiares mudam porque um domínio costuma ter menos detecções
+que uma URL. O custo é perder a página maliciosa dentro de um domínio comum e não dizer nada sobre
+link encurtado; fica declarado como limitação (ADR-0028). O RF06 e o RF08 já descreviam a mesma
+capacidade (achado 14 da análise do RFC).
+
+### 16 — §5.4.4, cache no Postgres
+
+Trocar "os resultados são armazenados em cache no Redis por URL (hash SHA-256)", com TTL de 24
+horas, por:
+
+> Os resultados são guardados numa tabela do PostgreSQL, pela chave SHA-256 do domínio. Os do
+> VirusTotal valem 24 horas. Os do Google Safe Browsing valem só pelo prazo que o Google devolve em
+> cada resposta (`cacheDuration`), e só a correspondência é guardada.
+
+A "Nota de arquitetura — por que o cache vive só no Redis" deixa de valer.
+
+**Por quê:** o Redis está desligado em produção (plano gratuito), e o Postgres já é dependência. O
+argumento da nota, de não ter duas fontes de verdade, continua atendido: o cache vive num lugar só.
+O prazo do Google não é escolha: os termos de uso proíbem usar resposta mais velha que ele. O hash
+segue sendo pseudonimização, não anonimato (item 4).
+
+### 17 — §2.4 (RNF01) e §1.6, pior caso do tempo de resposta
+
+O RNF01 ("inferior a 30 segundos") não muda. O que muda é a conta que o sustenta: a consulta de
+reputação tem teto de 3 s e roda ao mesmo tempo que a conferência da cota, antes da IA. Pior caso,
+somando os tetos de cada etapa: **texto ≈ 20,3 s** (era ≈ 18,8 s) e **print ≈ 27 s** (era ≈ 24 s).
+
+**Por quê:** o RFC previa RDAP (3 s) e reputação (5 s) em paralelo com as heurísticas. O RDAP não
+foi implementado (o sistema não faz consulta de DNS nem de registro, ADR-0022), e a reputação ficou
+com 3 s. Os tetos só podem baixar: o sistema não sobe com valor maior (ADR-0028).

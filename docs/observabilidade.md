@@ -43,6 +43,7 @@ para ver todas as linhas daquela requisição.
 | `login_falhou` | senha errada, ou limite de tentativas | `motivo` (`credenciais`, `limite`) |
 | `cadastro_bloqueado` | limite de contas novas por conexão no dia | — |
 | `ia_desligada` | na subida, com `IA_ATIVADA=false` | — |
+| `reputacao_indisponivel` | uma base de reputação não respondeu (ADR-0028) | `fonte` (`safe_browsing`, `virustotal`), `motivo` (`timeout`, `limite`, `cota_local`, `http`, `resposta`, `erro`) |
 
 ## Métricas
 
@@ -69,8 +70,14 @@ curl.exe -H "Authorization: Bearer $env:METRICS_TOKEN" http://localhost:8000/met
 | `verifyscan_ia_subiu_nivel_total` | contador | — | em quantas análises a IA subiu o nível do motor |
 | `verifyscan_cota_excedida_total` | contador | `com_conta` | quantas análises ficaram sem IA pela cota ou pelo teto |
 | `verifyscan_gasto_ia_dolares_hoje` | medidor | — | o gasto com a IA no dia de São Paulo |
+| `verifyscan_reputacao_consultas_total` | contador | `fonte`, `resultado` (`limpo`, `suspeito`, `malicioso`, `cache`, `indisponivel`) | quantos domínios cada base avaliou, e o que disse |
+| `verifyscan_reputacao_falhas_total` | contador | `fonte`, `motivo` (os do evento, mais `sem_chave`) | por que uma base não respondeu; `cota_local` é o nosso contador do VirusTotal |
 | `http_requisicoes_total` | contador | `metodo`, `rota`, `status` | volume e erros por rota |
 | `http_duracao_segundos` | histograma | `rota` | tempo de resposta por rota |
+
+O domínio consultado nunca é rótulo nem campo de evento. A chave do Google Safe Browsing vai na
+query da chamada; por isso o log do cliente HTTP (`httpx`, `httpcore`) fica desligado, e a limpeza
+do evento do Sentry corta no `?` o nome do trecho de uma chamada HTTP (ADR-0028).
 
 **Limitações:** os contadores ficam na memória do processo. Zeram quando o backend reinicia (no
 Render gratuito, a cada sono por ociosidade), e com mais de um worker cada um conta o seu. O

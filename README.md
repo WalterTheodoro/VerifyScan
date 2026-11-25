@@ -412,6 +412,10 @@ Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos n
      o backend não sobe com mais), `IA_MAX_TOKENS=700`;
    - `LOG_LEVEL=INFO` já é o default: é ele que mostra, nos logs do Render, a latência e os tokens
      de cada análise com IA. O texto da mensagem e a resposta da IA nunca vão para o log.
+   - **Reputação de links (ADR-0028), opcional:** `SAFE_BROWSING_API_KEY` e
+     `VIRUSTOTAL_API_KEY`, **como segredos**. Sem uma delas, aquela base não é consultada e a
+     análise com link avisa que a verificação externa não foi possível. Só o domínio dos links
+     é enviado; o que vai ao VirusTotal passa a constar na base dele.
 
    A migração `0005` roda no build, como as outras.
 8. **Print da conversa (ADR-0023).** Usa a mesma chave e o mesmo `IA_ATIVADA`: com a IA desligada,

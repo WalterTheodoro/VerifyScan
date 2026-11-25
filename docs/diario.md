@@ -3006,3 +3006,72 @@ ADR-0027.
   para conferir na master, depois do merge.
 - **Pendente:** igualar a cobertura do frontend nos dois lados exigiria trocar o medidor do
   Vitest (dependência nova); não fiz.
+
+## 2026-11-25 — Análise estática: os testes do frontend contavam como código
+
+Fecha a fatia 13. Números finais e a história completa no ADR-0027.
+
+- **O que deu errado depois do merge do PR #31:** a master saiu com o frontend em 23,9% de linhas
+  e o projeto em 62,8%, e não nos 52,9% e 79,6% que eu tinha previsto. Os 24 arquivos de teste do
+  frontend estavam contando como código-fonte: 1223 linhas a cobrir, 0% de cobertura.
+- **O erro foi meu, em duas partes.** Quando o scanner avisou que `sonar.sources` e `sonar.tests`
+  não tinham efeito, troquei o escopo por exclusões sem procurar por quê, e tirei a exclusão dos
+  testes do frontend supondo que seriam reconhecidos como os do backend foram. Depois dei a
+  correção por conferida pela análise do PR, que mostrava 79,6%. A análise de PR só expõe os
+  arquivos alterados; os totais dela saíram iguais com os testes certos e errados.
+- **A causa:** a "configuração automática" do scanner, um recurso em beta aberto do SonarQube
+  Cloud desde 29/09/2026, ligada neste projeto. Ela ignora o que o arquivo declara como fonte e
+  teste e classifica sozinha, pelo sistema de build: achou o `pyproject.toml` (por isso
+  `backend/tests` virou teste) e não reconheceu os testes do frontend. O Walter pediu para eu
+  descobrir a causa antes de corrigir; foi isso que a encontrou.
+- **A correção (PR #32):** `-Dsonar.scanner.autoconfig.enabled=false` no job e fontes e testes
+  declarados no `sonar-project.properties`. O valor `false` não está escrito na documentação,
+  que só mostra o `true`; funcionou, e o aviso sumiu do log.
+- **Master, commit `8a35db2`, conferido por arquivo:** A em segurança, confiabilidade e
+  manutenibilidade (eram E, C e A); 0 questões abertas (eram 32); 144 arquivos como fonte e 84
+  como teste (59 do backend, 24 do frontend e o `vitest.setup.ts`); backend 96,3%; frontend 52,9%
+  de linhas e 51,0% de "coverage"; projeto 79,6%.
+- **No GitHub, pelo Walter:** varredura de segredos, proteção de push e alertas do Dependabot,
+  sem atualizações automáticas por causa da regra dos 14 dias (ADR-0022).
+- **Lição:** mudança de escopo no Sonar se confere na master e por arquivo, não pelo total do PR;
+  e um aviso da ferramenta de que a configuração "não tem efeito" pede a causa, não um contorno.
+- **Pendente:** ligar o bloqueio do Quality Gate; a análise depende de um valor não documentado
+  de um recurso em beta, e o sinal de que parou de valer é o aviso voltar ao log.
+
+## 2026-11-25 — Reputação de links: Google Safe Browsing e VirusTotal (fatia 14)
+
+RF06 e RF08 do RFC, que não existiam no código. Decisão completa no ADR-0028; desvios do RFC na
+errata, itens 15 a 17.
+
+- **Como começou:** o Walter pediu um levantamento dos requisitos do RFC contra o código. O
+  `reputation/` tinha uma linha de comentário, e a API respondia
+  `verificacao_externa_indisponivel: false` em toda análise, sem nunca ter verificado nada.
+- **O que entrou:** as duas bases, consultadas só pelo domínio (host no Google, domínio registrável
+  no VirusTotal), de no máximo 3 links, em paralelo, com teto de 3 s; fatores `reputacao_*` no
+  `regras.yaml` (+40, +40, +20), somados pelo motor; cache e contador no Postgres (migração 0008);
+  flag verdadeira só quando havia link e alguma base não respondeu; atribuição do Google na tela;
+  frase neutra no histórico; aviso de privacidade; duas métricas e um evento.
+- **O que a documentação mudou no plano.** Li os termos antes de codar, e três coisas não eram
+  como o pedido supunha: (1) o VirusTotal não é "só consulta": o que é consultado entra na base
+  dele, visível à comunidade, e pode ser examinado; por isso vai só o domínio registrável, e o
+  aviso de privacidade diz isso. (2) Os termos do Google só deixam mostrar o aviso enquanto a
+  resposta é recente; no histórico o fator virou um registro datado, sem citar a base. (3) A
+  atribuição exige um link para a página do Google: é o primeiro link de saída da placa.
+- **Um risco que não estava no pedido:** o `httpx` escreve em INFO a URL de cada chamada, e a do
+  Safe Browsing leva a chave na query. Hoje o log raiz não mostra INFO, mas bastaria alguém baixar
+  o nível. O log do cliente HTTP foi desligado de vez, com teste.
+- **Ordem dos testes, com honestidade:** o plano era teste antes do código em cada passo. No passo
+  do contrato rodei a suíte antiga contra a mudança; nos passos dos provedores e do verificador
+  escrevi o código e os testes na mesma rodada, e os testes passaram quase todos de primeira (um
+  erro era meu, no próprio teste). Não houve teste falhando antes do código nesses passos.
+- **Números locais:** backend **1035** testes unitários, **92,43%** (66 novos em
+  `test_reputacao.py`); frontend **198** testes, **57,75%** de linhas (5 novos). `ruff`, `mypy`,
+  lint e `tsc` passam. O gate do corpus passa: o `avaliar_corpus` usa o `ServicoAnalise`, que não
+  consulta nada, então os números do motor não mudam.
+- **Não verificado:** nenhuma chamada real ao Google nem ao VirusTotal (não há chave aqui, e teste
+  não usa rede); os 12 testes de integração do cache e do contador (Docker desligado: rodam no
+  CI); o `alembic check` da 0008; o build do frontend. O formato da resposta do VirusTotal vem do
+  que conheço da API, não da página de referência, que não o descreve.
+- **Pendente:** cadastrar as duas chaves no Render e conferir a primeira análise de verdade;
+  o `uv.lock` mudou só na lista de dependências (o `httpx` 0.28.1 saiu do grupo de desenvolvimento
+  para as de execução); o Redis segue sem uso (o `cache.py` só cria o cliente).
