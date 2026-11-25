@@ -179,5 +179,10 @@ jobs:
         # Action de terceiro: presa pelo commit. v8.4.1, publicada em 03/11/2026 (ADR-0022).
         # Sem `sonar.qualitygate.wait`: o Quality Gate ainda não bloqueia o merge (ADR-0027).
         uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
+        with:
+          # Desliga a configuração automática do scanner: ligada, ela ignora o que o
+          # `sonar-project.properties` declara como fonte e como teste (ADR-0027). Vai na linha de
+          # comando porque é onde a documentação garante que o valor vence o do projeto.
+          args: -Dsonar.scanner.autoconfig.enabled=false
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
