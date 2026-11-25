@@ -45,14 +45,21 @@ CategoriaFator = Literal[
     "link_palavra_isca",
     "link_sem_https",
     "link_truque_endereco",
+    "reputacao_safe_browsing",
+    "reputacao_virustotal_malicioso",
+    "reputacao_virustotal_suspeito",
 ]
 """Unidade de agregação: cada categoria pontua no máximo uma vez (ADR-0004).
 
 As seis primeiras são as da §5.4.1 do RFC. `instrucao_ao_analisador` não está no RFC: é a defesa
 em profundidade contra injeção de prompt, para quando a IA cai (ADR-0020). As `link_*` são os
-sinais léxicos do DomainAnalyzer (Fase 3, ADR-0022), com `tipo="dominio"`. As de reputação
-entram na Fase 4.
+sinais léxicos do DomainAnalyzer (Fase 3, ADR-0022), com `tipo="dominio"`. As `reputacao_*`
+são o que as bases externas apontaram do domínio (ADR-0028), com `tipo="reputacao"`.
 """
+
+
+FonteReputacao = Literal["safe_browsing", "virustotal"]
+"""As duas bases externas consultadas, só pelo domínio (ADR-0028)."""
 
 
 class Fator(BaseModel):
@@ -81,6 +88,13 @@ class LinkDaMensagem(BaseModel):
     observacoes: list[str] = Field(min_length=1)
     # Fatia 9 (item 12): o fecho do bloco não pode tratar o endereço oficial como o do golpe.
     oficial: bool = Field(default=False, description="O domínio é o oficial de uma marca.")
+    # Fatia da reputação (ADR-0028). A tela usa isto para pôr "Aviso fornecido pelo Google" só
+    # no que veio do Google, como os termos do Safe Browsing exigem. Só na análise ao vivo: o
+    # histórico recalcula os links do texto e não consulta nada.
+    apontado_por: list[FonteReputacao] = Field(
+        default_factory=list,
+        description="As bases externas que apontaram este domínio como possivelmente perigoso.",
+    )
     conselho: str = Field(
         description=(
             "A frase do fim do bloco de links, do `regras.yaml`. A tela mostra a de um link não "
@@ -258,7 +272,11 @@ class RespostaAnalise(BaseModel):
     )
     verificacao_externa_indisponivel: bool = Field(
         default=False,
-        description="`true` quando VirusTotal / Safe Browsing não responderam (RNF09).",
+        description=(
+            "`true` quando havia domínio para consultar e alguma base externa (Google Safe "
+            "Browsing, VirusTotal) não respondeu, estava sem chave ou sem cota (RNF09, "
+            "ADR-0028). Mensagem sem link: `false`, não havia o que consultar."
+        ),
     )
 
     # Campos aditivos da fatia 10 (ADR-0024): a cota diária da IA.

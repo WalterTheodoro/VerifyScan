@@ -69,6 +69,7 @@ async def test_resposta_traz_o_dominio_de_cada_link_e_o_que_se_achou(cliente: As
                 "usa palavras comuns em golpes",
             ],
             "oficial": False,
+            "apontado_por": [],
             "conselho": carregar_regras().dominios.link_conselho,
         }
     ]
@@ -86,12 +87,13 @@ async def test_resposta_nunca_traz_o_link_inteiro(cliente: AsyncClient) -> None:
 
 
 async def test_sem_ia_a_explicacao_fica_indisponivel(cliente: AsyncClient) -> None:
-    """A flag diz à tela que a resposta saiu sem a IA (ADR-0020); a reputação externa ainda não
-    existe, e a flag dela segue falsa."""
+    """A flag diz à tela que a resposta saiu sem a IA (ADR-0020). A da reputação também é
+    verdadeira aqui: a mensagem tem link, e a app de teste não tem chave de nenhuma base externa
+    (ADR-0028; os casos estão em `test_reputacao.py`)."""
     corpo = (await cliente.post("/api/analises", json={"texto": GOLPE_DE_PIX})).json()
 
     assert corpo["explicacao_indisponivel"] is True
-    assert corpo["verificacao_externa_indisponivel"] is False
+    assert corpo["verificacao_externa_indisponivel"] is True
 
 
 async def test_sem_conta_a_analise_nao_vai_para_o_historico(cliente: AsyncClient) -> None:

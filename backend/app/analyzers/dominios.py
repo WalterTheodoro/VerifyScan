@@ -22,6 +22,7 @@ from publicsuffixlist import PublicSuffixList
 from pydantic import BaseModel, ConfigDict
 
 from app.analyzers.urls import URLExtraida
+from app.reputation.tipos import Alvo
 from app.schemas.analise import CategoriaFator, Fator, LinkDaMensagem
 from app.scoring.descricoes import ValoresDescricao
 from app.scoring.regras import ConfiguracaoDominios, Regras
@@ -92,6 +93,30 @@ class DomainAnalyzer:
                 )
             )
         return links
+
+    def alvos_de_reputacao(self, urls: Iterable[URLExtraida], maximo: int) -> list[Alvo]:
+        """O que pode ser perguntado às bases externas (ADR-0028): só o host e o domínio
+        registrável dos primeiros `maximo` hosts, sem repetir. O caminho, a query e o
+        fragmento do link nem entram no `Alvo`.
+
+        Endereço oficial de uma marca fica de fora, para não gastar consulta com ele. Vale o
+        mesmo critério do resto do analisador: o host É o domínio oficial ou termina em
+        `.` + ele. `itau.com.br.golpe.example` não é oficial, e é consultado.
+        """
+        alvos: dict[str, Alvo] = {}
+        for url in urls:
+            if len(alvos) == maximo:
+                break
+            avaliacao = self.avaliar(url)
+            if avaliacao.oficial_de is None and url.host not in alvos:
+                alvos[url.host] = Alvo(
+                    host=url.host, dominio=avaliacao.dominio, numerico=_e_numerico(url.host)
+                )
+        return list(alvos.values())
+
+    @property
+    def frase_sem_sinal(self) -> str:
+        return self._config.link_sem_sinal.renderizar()
 
     def avaliar(self, url: URLExtraida) -> AvaliacaoLink:
         host = url.host

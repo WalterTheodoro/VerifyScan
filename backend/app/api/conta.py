@@ -5,6 +5,8 @@ Todas exigem login por `obter_usuario_atual`, que já responde 401 sem sessão e
 lento.
 """
 
+from collections.abc import Sequence
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import (
@@ -16,11 +18,12 @@ from app.api.deps import (
 from app.api.erros import ERRO_401, ERRO_404_ANALISE, ERRO_503
 from app.schemas.analise import LinkDaMensagem
 from app.schemas.conta import FatorHistorico, ItemHistorico, RespostaConta, RespostaHistorico
+from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
 from app.services.analise import ServicoAnalise
 from app.services.autenticacao import ServicoAutenticacao, ServicoIndisponivel
 from app.services.historico import AnaliseNaoEncontrada, ServicoHistorico
-from app.services.repositorio_historico import AnaliseDoHistorico
+from app.services.repositorio_historico import AnaliseDoHistorico, FatorDoHistorico
 from app.services.repositorio_usuarios import UsuarioAutenticado
 
 router = APIRouter(prefix="/api", tags=["conta"])
@@ -44,10 +47,7 @@ def _item(
         created_at=analise.criada_em,
         nivel_risco=analise.nivel_risco,
         score_risco=analise.score,
-        fatores=[
-            FatorHistorico(categoria=f.categoria, descricao=f.descricao, peso=f.peso)
-            for f in analise.fatores
-        ],
+        fatores=_fatores_do_historico(analise.fatores),
         texto=analise.texto,
         orientacao=carregar_respostas().para(analise.nivel_risco),
         explicacao_ia=analise.explicacao_ia,
@@ -145,3 +145,31 @@ async def dados_da_conta(
             detail="Você precisa entrar na sua conta.",
         )
     return RespostaConta(nome=dados.nome, email=dados.email, criado_em=dados.criado_em)
+
+
+CATEGORIA_DE_REPUTACAO_NO_HISTORICO = "reputacao"
+
+
+def _fatores_do_historico(fatores: Sequence[FatorDoHistorico]) -> list[FatorHistorico]:
+    """Os fatores como foram gravados, menos os de reputação (ADR-0028): esses viram UMA linha,
+    com a frase neutra do `regras.yaml`, sem citar a base e sem afirmar o estado de hoje. Os termos
+    do Google só deixam mostrar o aviso dele enquanto a resposta é recente; no histórico fica o
+    registro do que a nossa análise viu naquele dia."""
+    saida: list[FatorHistorico] = []
+    de_reputacao = [f for f in fatores if f.categoria.startswith("reputacao_")]
+    for fator in fatores:
+        if fator not in de_reputacao:
+            saida.append(
+                FatorHistorico(
+                    categoria=fator.categoria, descricao=fator.descricao, peso=fator.peso
+                )
+            )
+    if de_reputacao:
+        saida.append(
+            FatorHistorico(
+                categoria=CATEGORIA_DE_REPUTACAO_NO_HISTORICO,
+                descricao=carregar_regras().reputacao.no_historico,
+                peso=sum(f.peso for f in de_reputacao),
+            )
+        )
+    return saida

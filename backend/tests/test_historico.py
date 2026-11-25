@@ -114,6 +114,7 @@ async def test_item_traz_os_links_da_mensagem_pelo_dominio(
             "dominio": "correios-rastreio.example",
             "observacoes": ["usa o nome Correios, mas não é um endereço oficial"],
             "oficial": False,
+            "apontado_por": [],
             "conselho": carregar_regras().dominios.link_conselho,
         }
     ]

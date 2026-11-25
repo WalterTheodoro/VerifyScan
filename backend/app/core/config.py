@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     database_url: str = "postgresql+psycopg://verifyscan:verifyscan@localhost:5432/verifyscan"
-    # Ausente ou vazia: Redis desativado — o estado de produção até a Fase 4. O /health
+    # Ausente ou vazia: Redis desativado — o estado de produção (nada o usa: ADR-0028). O /health
     # reporta "desativado" sem tocar a rede.
     redis_url: str | None = None
 
@@ -143,6 +143,19 @@ class Settings(BaseSettings):
     # o desenho completo do print passa dos 30 s (ADR-0024).
     timeout_cota_s: float = Field(default=1.5, gt=0, le=5)
 
+    # Reputação de links (ADR-0028). As duas chaves são opcionais: sem uma delas, aquela base
+    # não é consultada e a resposta diz que a verificação externa não foi possível.
+    # SecretStr: nunca aparece em `repr`, log nem erro.
+    safe_browsing_api_key: SecretStr | None = None
+    virustotal_api_key: SecretStr | None = None
+    # Teto da etapa inteira (ler o cache e consultar as duas bases, em paralelo). Só pode
+    # baixar: com 3 s, o pior caso do print vai a ≈ 27 s (invariante 8).
+    reputacao_timeout_s: float = Field(default=3, gt=0, le=3)
+    # Limites da API pública do VirusTotal: 4 por minuto e 500 por dia. O `le` é o limite dos
+    # termos de uso, e não uma folga: só dá para baixar.
+    virustotal_por_minuto: int = Field(default=4, ge=1, le=4)
+    virustotal_por_dia: int = Field(default=500, ge=1, le=500)
+
     # Segredos sem default (ADR-0024). Com um default conhecido, o HMAC de um IPv4 se desfaz
     # percorrendo os 2³² endereços; sem o segredo do proxy, todo visitante sem conta cairia no IP
     # do frontend e dividiria uma cota só. Faltar qualquer um derruba a subida, nunca a cota.
@@ -180,6 +193,14 @@ class Settings(BaseSettings):
     @classmethod
     def _normalizar_database_url(cls, valor: str) -> str:
         return normalizar_database_url(valor)
+
+    @field_validator("safe_browsing_api_key", "virustotal_api_key", mode="before")
+    @classmethod
+    def _chave_vazia_e_ausente(cls, valor: object) -> object:
+        """`CHAVE=` no `.env` é o mesmo que não ter a chave."""
+        if isinstance(valor, str) and not valor.strip():
+            return None
+        return valor
 
     @field_validator("redis_url")
     @classmethod

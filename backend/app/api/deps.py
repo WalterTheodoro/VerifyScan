@@ -6,6 +6,7 @@ Engine, fábrica de sessões e cliente Redis vêm de `app.state`, onde o `lifesp
 
 from functools import lru_cache
 
+import httpx
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -20,6 +21,9 @@ from app.core.seguranca import HasherSenha
 from app.formulator.analisador import AnalisadorIA
 from app.formulator.cliente import ClienteAnthropic, ConsumoDaIA
 from app.ocr.leitura import LeitorDePrint
+from app.reputation.safe_browsing import ClienteSafeBrowsing
+from app.reputation.verificador import VerificadorDeReputacao
+from app.reputation.virustotal import ClienteVirusTotal
 from app.scoring.motor import ScoringEngine
 from app.scoring.regras import carregar_regras
 from app.scoring.respostas import carregar_respostas
@@ -36,6 +40,10 @@ from app.services.historico import ServicoHistorico
 from app.services.orquestrador import OrquestradorAnalise
 from app.services.repositorio_analises import RepositorioAnalises, RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistorico, RepositorioHistoricoPostgres
+from app.services.repositorio_reputacao import (
+    RepositorioReputacao,
+    RepositorioReputacaoPostgres,
+)
 from app.services.repositorio_sessoes import RepositorioSessoes, RepositorioSessoesPostgres
 from app.services.repositorio_uso import RepositorioUso, RepositorioUsoPostgres
 from app.services.repositorio_usuarios import (
@@ -82,6 +90,7 @@ def obter_servico_analise() -> ServicoAnalise:
         motor=ScoringEngine(regras),
         respostas=carregar_respostas(),
         maximo_de_caracteres=get_settings().texto_max_caracteres,
+        reputacao=regras.reputacao,
     )
 
 
@@ -162,6 +171,46 @@ def obter_leitor_de_print(
     return LeitorDePrint(cliente, get_settings().ia_timeout_leitura_s, consumo)
 
 
+def obter_repositorio_reputacao(request: Request) -> RepositorioReputacao:
+    fabrica: async_sessionmaker[AsyncSession] = request.app.state.fabrica_de_sessoes
+    return RepositorioReputacaoPostgres(fabrica)
+
+
+def obter_verificador_de_reputacao(
+    request: Request,
+    repositorio: RepositorioReputacao = Depends(obter_repositorio_reputacao),
+    relogio: Relogio = Depends(obter_relogio),
+    settings: Settings = Depends(get_settings),
+) -> VerificadorDeReputacao:
+    """As duas bases externas (ADR-0028). Cada uma só existe com a chave dela; sem chave, o
+    verificador responde "indisponível" para aquela base, sem chamar nada.
+
+    O cliente HTTP nasce no `lifespan`, que não roda nos testes: neles não há cliente, e
+    nenhuma chamada sai para a rede."""
+    http: httpx.AsyncClient | None = getattr(request.app.state, "http_reputacao", None)
+    safe_browsing = virustotal = None
+    if http is not None and settings.safe_browsing_api_key is not None:
+        safe_browsing = ClienteSafeBrowsing(
+            http, settings.safe_browsing_api_key.get_secret_value(), settings.reputacao_timeout_s
+        )
+    if http is not None and settings.virustotal_api_key is not None:
+        virustotal = ClienteVirusTotal(
+            http,
+            settings.virustotal_api_key.get_secret_value(),
+            settings.reputacao_timeout_s,
+            carregar_regras().reputacao.virustotal,
+        )
+    return VerificadorDeReputacao(
+        safe_browsing=safe_browsing,
+        virustotal=virustotal,
+        repositorio=repositorio,
+        agora=relogio,
+        timeout_s=settings.reputacao_timeout_s,
+        virustotal_por_minuto=settings.virustotal_por_minuto,
+        virustotal_por_dia=settings.virustotal_por_dia,
+    )
+
+
 def obter_orquestrador(
     servico: ServicoAnalise = Depends(obter_servico_analise),
     analisador_ia: AnalisadorIA = Depends(obter_analisador_ia),
@@ -170,6 +219,7 @@ def obter_orquestrador(
     sessoes: RepositorioSessoes = Depends(obter_repositorio_sessoes),
     cota: ServicoCota = Depends(obter_servico_cota),
     consumo: ConsumoDaIA = Depends(obter_consumo),
+    reputacao: VerificadorDeReputacao = Depends(obter_verificador_de_reputacao),
     settings: Settings = Depends(get_settings),
 ) -> OrquestradorAnalise:
     return OrquestradorAnalise(
@@ -186,6 +236,7 @@ def obter_orquestrador(
         cota=cota,
         consumo=consumo,
         timeout_cota_s=settings.timeout_cota_s,
+        reputacao=reputacao,
     )
 
 

@@ -53,6 +53,20 @@ _COTA_EXCEDIDA = Counter(
     ["com_conta"],
     registry=REGISTRO,
 )
+# Reputação de links (ADR-0028). Rótulos de conjunto fechado: a base e o resultado. O domínio
+# consultado nunca é rótulo.
+_REPUTACAO_CONSULTAS = Counter(
+    "verifyscan_reputacao_consultas",
+    "Consultas de reputação de domínio, por base e resultado (inclui cache e indisponível).",
+    ["fonte", "resultado"],
+    registry=REGISTRO,
+)
+_REPUTACAO_FALHAS = Counter(
+    "verifyscan_reputacao_falhas",
+    "Vezes em que uma base de reputação não respondeu, por base e motivo.",
+    ["fonte", "motivo"],
+    registry=REGISTRO,
+)
 _GASTO_DE_HOJE = Gauge(
     "verifyscan_gasto_ia_dolares_hoje",
     "Gasto com a IA no dia de São Paulo, em dólares, como o banco informou por último.",
@@ -88,6 +102,15 @@ def contar_falha_da_ia(motivo: MotivoDaFalha) -> None:
 
 def contar_cota_excedida(*, com_conta: bool) -> None:
     _COTA_EXCEDIDA.labels(com_conta="true" if com_conta else "false").inc()
+
+
+def contar_consulta_de_reputacao(fonte: str, resultado: str) -> None:
+    """`resultado`: limpo, suspeito, malicioso, cache ou indisponivel."""
+    _REPUTACAO_CONSULTAS.labels(fonte=fonte, resultado=resultado).inc()
+
+
+def contar_falha_de_reputacao(fonte: str, motivo: str) -> None:
+    _REPUTACAO_FALHAS.labels(fonte=fonte, motivo=motivo).inc()
 
 
 def anotar_gasto_de_hoje(dolares: float) -> None:

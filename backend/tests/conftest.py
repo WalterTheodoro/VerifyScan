@@ -11,7 +11,7 @@ import dataclasses
 import io
 import json
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -27,6 +27,7 @@ from app.api.deps import (
     obter_relogio,
     obter_repositorio_analises,
     obter_repositorio_historico,
+    obter_repositorio_reputacao,
     obter_repositorio_sessoes,
     obter_repositorio_uso,
     obter_repositorio_usuarios,
@@ -37,10 +38,13 @@ from app.formulator.cliente import RespostaIA
 from app.main import criar_app
 from app.models.uso import Finalidade
 from app.ocr.leitura import LeitorDePrint
+from app.reputation.tipos import ItemDeCache, Veredito
+from app.schemas.analise import FonteReputacao
 from app.schemas.health import SaudeServico
 from app.services.health import VerificadorSaude
 from app.services.repositorio_analises import RegistroAnalise
 from app.services.repositorio_historico import AnaliseDoHistorico
+from app.services.repositorio_reputacao import inicio_do_dia, inicio_do_minuto
 from app.services.repositorio_uso import GastoDaChamada, Reserva
 from app.services.repositorio_usuarios import (
     CredenciaisArmazenadas,
@@ -472,6 +476,55 @@ def settings_de_teste(**valores: object) -> Settings:
     return Settings(_env_file=None, **valores)  # type: ignore[call-arg]
 
 
+class RepositorioReputacaoEmMemoria:
+    """Falso determinístico de `RepositorioReputacao`, com as regras do SQL: só devolve o que não
+    venceu e só soma até os dois limites. `fora=True` imita o banco fora do ar."""
+
+    def __init__(self) -> None:
+        self.cache: dict[tuple[str, str], tuple[Veredito, datetime]] = {}
+        self.uso: dict[tuple[str, str, datetime], int] = {}
+        self.fora = False
+
+    async def buscar(
+        self, fonte: FonteReputacao, chaves: Sequence[str], agora: datetime
+    ) -> dict[str, Veredito]:
+        if self.fora:
+            raise ConnectionError("banco fora")
+        achados = {}
+        for chave in chaves:
+            item = self.cache.get((fonte, chave))
+            if item is not None and item[1] > agora:
+                achados[chave] = item[0]
+        return achados
+
+    async def guardar(self, itens: Sequence[ItemDeCache]) -> None:
+        if self.fora:
+            raise ConnectionError("banco fora")
+        for item in itens:
+            self.cache[(item.fonte, item.chave)] = (item.veredito, item.expira_em)
+
+    async def reservar(
+        self, fonte: FonteReputacao, agora: datetime, consultas: int, por_minuto: int, por_dia: int
+    ) -> bool:
+        if self.fora:
+            raise ConnectionError("banco fora")
+        minuto = (fonte, "minuto", inicio_do_minuto(agora))
+        dia = (fonte, "dia", inicio_do_dia(agora))
+        if (
+            self.uso.get(minuto, 0) + consultas > por_minuto
+            or self.uso.get(dia, 0) + consultas > por_dia
+        ):
+            return False
+        self.uso[minuto] = self.uso.get(minuto, 0) + consultas
+        self.uso[dia] = self.uso.get(dia, 0) + consultas
+        return True
+
+
+@pytest.fixture
+def reputacao_em_memoria() -> RepositorioReputacaoEmMemoria:
+    return RepositorioReputacaoEmMemoria()
+
+
 @pytest.fixture
 def uso() -> RepositorioUsoEmMemoria:
     return RepositorioUsoEmMemoria()
@@ -485,6 +538,7 @@ def app(
     historico: RepositorioHistoricoEmMemoria,
     uso: RepositorioUsoEmMemoria,
     relogio: RelogioFalso,
+    reputacao_em_memoria: RepositorioReputacaoEmMemoria,
 ) -> FastAPI:
     """Uma instância nova por teste, para que os overrides não vazem entre casos.
 
@@ -498,6 +552,7 @@ def app(
     app.dependency_overrides[obter_repositorio_sessoes] = lambda: sessoes
     app.dependency_overrides[obter_repositorio_historico] = lambda: historico
     app.dependency_overrides[obter_repositorio_uso] = lambda: uso
+    app.dependency_overrides[obter_repositorio_reputacao] = lambda: reputacao_em_memoria
     app.dependency_overrides[obter_relogio] = lambda: relogio
     app.dependency_overrides[obter_analisador_ia] = ia_desligada
     app.dependency_overrides[obter_leitor_de_print] = leitura_desligada

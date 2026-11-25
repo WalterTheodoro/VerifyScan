@@ -1,4 +1,5 @@
-"""Cliente Redis. Usado como cache de reputação com TTL de 24h a partir da Fase 4."""
+"""Cliente Redis. Hoje sem uso: o cache de reputação que o RFC previa aqui ficou no Postgres,
+porque o Redis está desligado em produção (ADR-0028). Só o `/health` o consulta."""
 
 from redis.asyncio import Redis
 
