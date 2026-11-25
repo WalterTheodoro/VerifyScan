@@ -129,6 +129,11 @@ def limpar_evento(evento_do_sdk: Event, _dica: Hint | None = None) -> Event:
     for trecho in evento.get("spans") or []:
         if isinstance(trecho, dict):
             trecho.pop("data", None)
+            # O nome do trecho de uma chamada HTTP é "MÉTODO endereço". A do Safe Browsing leva
+            # a chave na query (ADR-0028): fica só o que vem antes do "?".
+            descricao = trecho.get("description")
+            if isinstance(descricao, str) and "?" in descricao:
+                trecho["description"] = descricao.split("?", 1)[0]
     return evento_do_sdk
 
 
