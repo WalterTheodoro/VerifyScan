@@ -27,9 +27,15 @@ repositório sozinha, sem configuração nossa e sem a cobertura. A única anál
 TypeScript e os workflows do GitHub Actions numa ferramenta só, e é o que o Playbook cita. A
 análise automática foi desligada no painel.
 
-**O que é analisado** (`sonar-project.properties`, na raiz). O scanner analisa o repositório
-inteiro e reconhece sozinho o que é teste; `sonar.sources` e `sonar.tests` não têm mais efeito
-(ele avisa no log). O escopo se ajusta só por exclusão:
+**O que é analisado** (`sonar-project.properties`, na raiz). As fontes são o repositório inteiro
+(`sonar.sources=.`), menos as exclusões da tabela. Os testes são declarados como teste
+(`sonar.tests` e `sonar.test.inclusions`): `backend/tests/**`, os `*.test.ts(x)` do frontend e o
+`vitest.setup.ts`. São analisados, mas não contam na cobertura nem nas linhas de código. Os mesmos
+padrões estão em `sonar.exclusions`, que só vale para fontes, para nenhum arquivo ser indexado
+duas vezes.
+
+Essa declaração só tem efeito porque o job desliga a **configuração automática do scanner**
+(`-Dsonar.scanner.autoconfig.enabled=false`); ver "Resultado na master", abaixo.
 
 | Fora de quê | O quê | Por quê |
 |---|---|---|
@@ -92,7 +98,8 @@ Lidas pela API pública em 25/11/2026. Nenhum *security hotspot* aberto.
 - **O escopo que eu tinha escrito foi ignorado.** A primeira versão usava `sonar.sources` e
   `sonar.tests`; o scanner avisa que não têm efeito e analisou os 462 arquivos, com o `corpus/`.
   `backend/tools` e `backend/alembic` entraram na cobertura com 0%, e o número do projeto saiu
-  65,8%. Corrigido para exclusões, como na tabela acima.
+  65,8%. Corrigido primeiro só com exclusões; a causa de verdade (a configuração automática do
+  scanner) só apareceu depois, e está em "Resultado na master".
 - **`prompt.py` não foi analisado:** o analisador de Python parou no campo `print` de
   `EntradaIA`. O campo é interno (não vai ao JSON da API nem ao esquema da IA) e foi renomeado
   para `captura`.
@@ -115,6 +122,69 @@ isso: o caso acima, 20 mil entradas aleatórias com semente fixa comparadas com 
 o de tempo. Se o Sonar seguir apontando a regra, ela será ignorada nesse arquivo, com o teste de
 tempo como justificativa.
 
+## Resultado na master
+
+Análise do commit `8a35db2`, em 25/11/2026, conferida por arquivo pela API pública.
+
+| | Antes (análise automática) | Agora |
+|---|---|---|
+| Segurança | E | **A** |
+| Confiabilidade | C | **A** |
+| Manutenibilidade | A | **A** |
+| Questões abertas | 32 | **0** |
+| *Security hotspots* | 0 | 0 |
+| Quality Gate | — | passou |
+
+| Cobertura | Sonar | Nossa medida |
+|---|---|---|
+| Backend (`backend/app`, 2885 linhas) | **96,3%** | 96,29% no CI (pytest-cov, com integração) |
+| Frontend, linhas (1008 no Sonar, 880 no Vitest) | **52,9%** | 55,90% (Vitest) |
+| Frontend, "coverage" (linhas e ramos) | **51,0%** | — |
+| Projeto, o número do selo | **79,6%** | — |
+
+Arquivos: 144 como fonte e 84 como teste (59 de `backend/tests`, 24 `*.test.ts(x)` e o
+`vitest.setup.ts`). Linhas a cobrir só em `backend/app` (68 arquivos), `frontend/app` (48) e nos
+três arquivos de código da raiz do frontend. `backend/tools` e `backend/alembic` são analisados e
+não contam na cobertura. As 32 questões antigas constam como fechadas; a API não distingue a
+corrigida da ignorada. Log sem `WARN` nem `ERROR`.
+
+### A configuração automática do scanner, e o erro que ela escondeu
+
+O SonarQube Cloud tem, em beta aberto desde 29/09/2026, a "configuração automática" do scanner
+(`sonar.scanner.autoconfig.enabled`). Ligada, como estava neste projeto, ela ignora
+`sonar.sources`, `sonar.tests` e `sonar.test.inclusions` e classifica os arquivos a partir do
+sistema de build que encontra. Não era a action nem o diretório base: o log mostrava o arquivo de
+propriedades lido, e depois as linhas `Detecting build system information` e um módulo
+`verifyscan-backend`, o nome do `pyproject.toml`. Foi assim que `backend/tests` virou teste
+sozinho (o `pyproject.toml` tem `testpaths`). Os testes do frontend não foram detectados.
+
+O erro foi meu, em duas partes. Ao ver o aviso de que as propriedades não tinham efeito, troquei o
+escopo por exclusões sem procurar a causa, e tirei a exclusão dos testes do frontend supondo que o
+scanner os reconheceria como reconheceu os do backend. E dei a correção por conferida olhando a
+análise do PR #31, que mostrava 79,6%. Na master (`6d81ca0`), os 24 arquivos de teste do frontend
+entraram como código, com 1223 linhas a cobrir e 0%: frontend 23,9% de linhas, projeto 62,8%.
+
+A correção (PR #32) desliga a configuração automática na linha de comando do scanner, que é onde a
+documentação diz que o valor vence o do projeto, e declara fontes e testes no
+`sonar-project.properties`. A documentação recomenda mesmo deixá-la desligada em projeto que tem
+configuração própria.
+
+## Camada complementar no GitHub
+
+Ativadas no repositório, em 25/11/2026, pelas configurações do GitHub (não há arquivo no
+repositório para isso):
+
+- **Varredura de segredos** (*secret scanning*): procura credenciais no histórico e em cada push.
+- **Proteção de push:** recusa o push que traz um segredo reconhecido, antes de ele entrar no
+  repositório. É a trava da invariante 7 que o Sonar não dá: ele só vê o segredo depois de
+  publicado.
+- **Alertas do Dependabot:** avisam de dependência com falha conhecida. **Sem atualizações
+  automáticas:** o Dependabot proporia a versão mais nova, e a regra dos 14 dias (ADR-0022) pede
+  que cada atualização seja escolhida e datada à mão. O alerta diz o que olhar; quem atualiza
+  continua sendo uma pessoa, com `--before`.
+
+O Sonar olha o código que escrevemos; essas três olham segredos e dependências.
+
 ## Consequências
 
 - **O "ignorada nesse arquivo" vale para a regra no arquivo inteiro**, não só para a linha da
@@ -125,15 +195,18 @@ tempo como justificativa.
   dado de ramo mas não têm dado de linha (ramos de expressões que continuam na linha de baixo), e
   o Sonar as soma às linhas a cobrir: 880 viram 1008. Conferido contra a primeira análise: a mesma
   conta sobre o relatório daquele dia dá os 993 e os 51,5% que o Sonar mostrou. Além disso, a
-  métrica "coverage" do Sonar mistura linhas e ramos. Esperado: Vitest 55,90% de linhas; Sonar
-  ≈52,9% de linhas e ≈51,0% de "coverage". Igualar exigiria trocar o medidor de cobertura do
+  métrica "coverage" do Sonar mistura linhas e ramos. Medido: Vitest 55,90% de linhas; Sonar
+  52,9% de linhas e 51,0% de "coverage". Igualar exigiria trocar o medidor de cobertura do
   Vitest, que é dependência nova; fica como opção.
 - **O selo de cobertura mostra um número só, do projeto inteiro**, backend e frontend somados,
-  com linhas e ramos: esperado perto de 80%. Não é nenhum dos dois números da prova de autoria.
+  com linhas e ramos: 79,6%. Não é nenhum dos dois números da prova de autoria.
 - **A cobertura do backend no Sonar é a do CI**, com os testes de integração (96,3% na primeira
   análise), não a da máquina sem Docker (≈93%).
 - O `npm ci --ignore-scripts` vale só para o CI. O build de produção não mudou.
-- **As notas da primeira análise (A em segurança, confiabilidade e manutenibilidade) são do código
-  novo do PR**, não do projeto. As do projeto, e o sumiço das questões ignoradas em linhas que o
-  PR não tocou, só aparecem na análise da master, depois do merge.
-- Pendente: reler a master depois do merge; ligar o bloqueio do Quality Gate.
+- **A análise de PR não serve para conferir escopo.** Ela só expõe os arquivos que o PR alterou,
+  e os totais dela saíram iguais (79,6%) com os testes classificados certo e errado. Mudança de
+  escopo se confere na master, por arquivo.
+- **A análise depende de um valor não documentado.** A documentação só descreve
+  `sonar.scanner.autoconfig.enabled=true`; o `false` funcionou, mas o recurso está em beta e pode
+  mudar. O sinal de que parou de valer é o `WARN` "configured but have no effect" no log do job.
+- Pendente: ligar o bloqueio do Quality Gate.
