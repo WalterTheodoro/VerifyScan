@@ -2877,3 +2877,65 @@ Revisão do Walter sobre a entrada anterior, antes de commitar a `fix/next-segur
     o 10.9 de hoje) e `exclude-newer` no `[tool.uv]` (ADR-0022);
   - os testes de integração seguem sem rodar na máquina (Docker desligado);
   - nenhum evento foi enviado ao Sentry de verdade: ainda não há projeto nem DSN.
+
+## 2026-11-25 — Ajustes rápidos: Sentry sem sessões, aviso de privacidade, 404 e regra dos 14 dias
+
+- **Por que:** com o Sentry ligado em produção, o túnel recebeu 41 chamadas em 30 páginas e 5
+  análises. A leitura de 15 envelopes (só tipos e nomes de campo) deu 14 `session`, um por página
+  aberta, e 1 `transaction`. Nada de IP, usuário, corpo, cookie, query string ou texto digitado,
+  mas o aviso de privacidade dizia que algo só ia "se alguma coisa quebrar", e não era verdade.
+- **Sentry no navegador:** saíram as integrações padrão `BrowserSession` (contagem de sessões) e
+  `CultureContext` (idioma, fuso e calendário). No SDK 11 não há opção para elas; o `init` do
+  navegador recebe `integrations` como função que as tira da lista (`opcoesDoNavegador`). O teste
+  lê as integrações padrão do próprio SDK. Amostra (0,1), túnel, servidor do Next e backend
+  iguais. ADR-0026 ganhou a seção "Revisão".
+- **Aviso de privacidade:** a seção virou "Avisos de erro e de desempenho": erros do site e do
+  servidor, medidas de desempenho em ~1 a cada 10 visitas, o que nunca vai, e Estados Unidos (com
+  a transferência internacional, LGPD art. 33) no lugar de "fora do Brasil".
+- **404 em português:** `app/not-found.tsx`, com cabeçalho, rodapé e botão para a página inicial.
+  Conferida no build local: status 404, título e texto em pt-BR.
+- **Regra dos 14 dias executável: não deu, nos dois lados** (ADR-0022, revisão). O npm 10.9.9 da
+  máquina e do CI só tem o `before` (data fixa), que não foi usado. O uv 0.13.7 aceita
+  `exclude-newer = "14 days"`, mas o `uv lock --check` acusou que o lock teria de mudar; a regra
+  da fatia era parar nesse caso, e a configuração foi desfeita sem mexer em nada.
+- **npm audit, 7 moderados:** todos são o mesmo aviso do `minimatch` (GHSA-g3hv-75wg-m249), que
+  chega pelo `typescript-eslint` 8.68.0 do `eslint-config-next`, só no lint. A correção vem no
+  `typescript-eslint` 8.73.0, de 16/11: 9 dias, fora da regra. Nada aplicado; entra a partir de
+  30/11 com `npm update --before`.
+- **Os erros do console em produção (só documentado):**
+  - os 401 em `/privacidade`, `/entrar` e nas outras páginas com cabeçalho vêm do
+    `GET /api/auth/eu` que a `AreaSessao` faz para saber se há alguém logado: deslogado, o
+    backend responde 401 (`obter_usuario_atual`, em `api/deps.py`), e o frontend o lê como
+    "deslogado" (`lerSessao`). O navegador registra o 401 no console mesmo tratado;
+  - em `/conta/historico` deslogado, além desse, o `GET /api/historico` também dá 401;
+  - a 404 no `/health` do backend é o `/favicon.ico` que o navegador pede ao abrir o JSON direto
+    no domínio do backend, que não tem favicon (conferido: `GET /favicon.ico` responde 404).
+- **Conferido no build local**, com DSN falso e o túnel interceptado (nada saiu da máquina): 31
+  páginas abertas, nenhum `session`, uma `transaction` sem `contexts.culture`.
+- **Números:** frontend 186 → **192** testes, **55,96%** de instruções e **56,32%** de linhas (o
+  55,80% da entrada anterior era de instruções); backend **1058**
+  testes, **96,32%** (com integração, contra o Postgres local). `ruff`, `mypy`, lint, `tsc` e o
+  build sem nenhuma variável do Sentry passam.
+- **Pendente:**
+  - medir de novo os envelopes em produção depois do deploy (esperado: nenhum `session`,
+    transação sem `contexts.culture`);
+  - decidir o `exclude-newer` do uv sabendo se o lock muda a cada dia;
+  - o `typescript-eslint` 8.73.0 a partir de 30/11;
+  - nada sobre sessões: fechado na adenda abaixo.
+
+**Adenda, no mesmo dia: sessões desligadas também nos servidores.**
+
+- **Backend:** o `sentry-sdk` 2.74.0 põe cada requisição numa contagem agregada (`sessions`) por
+  padrão. O teste de ponta a ponta (três requisições, SDK de verdade, envio em memória) falhou
+  primeiro com `{'event', 'sessions', 'transaction'}`; com `auto_session_tracking=False`, saem só
+  o erro e a transação. A opção não está obsoleta: o teste com `DeprecationWarning` virando erro
+  segue passando.
+- **Servidor do Next (Node):** mandava sessões de dois jeitos, a `ProcessSession` (uma por
+  processo) e a `Http` com `sessions` ligado (uma contagem por requisição). As duas saíram
+  (`integracoesDoServidor`, `OPCOES_DO_HTTP_NO_SERVIDOR`); o teste lê as integrações padrão do
+  SDK do Node. Conferido pelo código e pelo teste, não por envio real: o servidor fala com o
+  Sentry direto, sem o túnel.
+- **Runtime edge:** sem sessão nas integrações padrão e sem `startSession`. Nada mudou.
+- **Decisão do uv (item 5):** fica manual, como no ADR-0022; o `uv.lock` não foi tocado.
+- **Números:** frontend **193** testes, **56,53%** de linhas; backend **1059** testes, **96,32%**.
+  `ruff`, `mypy`, lint, `tsc` e o build sem variável do Sentry passam.
