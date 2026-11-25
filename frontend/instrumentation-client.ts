@@ -2,13 +2,14 @@
 //
 // Ligado só com NEXT_PUBLIC_SENTRY_DSN: sem a variável, o `init` nem é chamado. O que é enviado e
 // o que nunca é está em `app/_lib/sentry.ts`. Sem Session Replay: nenhuma integração é
-// acrescentada aqui, e o Replay não está nas integrações padrão do SDK.
+// acrescentada aqui, e o Replay não está nas integrações padrão do SDK. Das padrão, saem a
+// contagem de sessões e o idioma e fuso do navegador (`INTEGRACOES_DESLIGADAS`).
 
 import * as Sentry from "@sentry/nextjs";
 
-import { opcoesDoSentry } from "./app/_lib/sentry";
+import { opcoesDoNavegador } from "./app/_lib/sentry";
 
-const opcoes = opcoesDoSentry(
+const opcoes = opcoesDoNavegador(
   process.env.NEXT_PUBLIC_SENTRY_DSN,
   process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
 );

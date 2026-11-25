@@ -13,7 +13,12 @@ import {
   COLETA,
   CAMINHO_DO_TUNEL,
   type EventoDoSentry,
+  INTEGRACOES_DESLIGADAS,
+  INTEGRACOES_DESLIGADAS_NO_SERVIDOR,
+  integracoesDoServidor,
   limparEvento,
+  OPCOES_DO_HTTP_NO_SERVIDOR,
+  opcoesDoNavegador,
   opcoesDoSentry,
   pedidoSemIp,
 } from "./sentry";
@@ -159,6 +164,80 @@ test("com DSN, as opções obrigatórias", () => {
   const nomes = Object.keys(opcoes).join(" ").toLowerCase();
   assert.equal(nomes.includes("replay"), false, nomes);
   assert.equal("integrations" in opcoes, false);
+});
+
+/** As integrações padrão do SDK no navegador, do próprio SDK. O caminho do arquivo é de propósito:
+ *  se ele mudar numa versão nova, o teste falha e obriga a conferir os nomes de novo. */
+function integracoesPadraoDoNavegador(): { name: string }[] {
+  const sdk = createRequire(import.meta.url)(
+    path.resolve("node_modules/@sentry/browser/build/npm/cjs/prod/sdk.js"),
+  );
+  return sdk.getDefaultIntegrations({});
+}
+
+test("no navegador, sem DSN não há opções", () => {
+  assert.equal(opcoesDoNavegador(undefined), null);
+  assert.equal(opcoesDoNavegador("  "), null);
+});
+
+test("no navegador, as opções comuns mais o filtro das integrações", () => {
+  const dsn = "https://chave@o0.ingest.exemplo.invalid/1";
+  const opcoes = opcoesDoNavegador(dsn, "producao");
+
+  assert.ok(opcoes);
+  const { integrations, ...resto } = opcoes;
+  assert.deepEqual(resto, opcoesDoSentry(dsn, "producao"));
+  assert.equal(typeof integrations, "function");
+});
+
+test("no navegador, sem contagem de sessões e sem idioma e fuso", () => {
+  const padrao = integracoesPadraoDoNavegador();
+  const nomesPadrao = padrao.map((i) => i.name);
+  // Os nomes existem mesmo no SDK: um nome errado no filtro não tiraria nada.
+  for (const nome of INTEGRACOES_DESLIGADAS) {
+    assert.ok(nomesPadrao.includes(nome), nome);
+  }
+
+  const filtrar = opcoesDoNavegador("https://chave@o0.ingest.exemplo.invalid/1")?.integrations;
+  assert.ok(filtrar);
+  const nomes = filtrar(padrao as never).map((i) => i.name);
+
+  assert.equal(nomes.includes("BrowserSession"), false, nomes.join());
+  assert.equal(nomes.includes("CultureContext"), false, nomes.join());
+  // O resto fica: é o que captura os erros.
+  assert.deepEqual(
+    nomes,
+    nomesPadrao.filter((nome) => !INTEGRACOES_DESLIGADAS.includes(nome)),
+  );
+  assert.ok(nomes.includes("GlobalHandlers"));
+});
+
+test("no servidor do Next, sem a sessão do processo e sem sessões por requisição", () => {
+  const sdk = createRequire(import.meta.url)(
+    path.resolve("node_modules/@sentry/node/build/cjs/sdk/index.js"),
+  );
+  const padrao: { name: string }[] = sdk.getDefaultIntegrations({});
+  const nomesPadrao = padrao.map((i) => i.name);
+  for (const nome of INTEGRACOES_DESLIGADAS_NO_SERVIDOR) {
+    assert.ok(nomesPadrao.includes(nome), nome);
+  }
+  const nossaHttp = { name: "Http", nossa: true };
+
+  const resultado = integracoesDoServidor(padrao, nossaHttp);
+
+  const nomes = resultado.map((i) => i.name);
+  assert.equal(nomes.includes("ProcessSession"), false, nomes.join());
+  // Uma Http só, a nossa: a padrão contaria cada requisição como sessão.
+  assert.deepEqual(
+    resultado.filter((i) => i.name === "Http"),
+    [nossaHttp],
+  );
+  assert.deepEqual(
+    nomes.filter((n) => n !== "Http"),
+    nomesPadrao.filter((n) => n !== "Http" && n !== "ProcessSession"),
+  );
+  // A nossa Http não guarda o corpo dos pedidos nem conta sessões.
+  assert.deepEqual(OPCOES_DO_HTTP_NO_SERVIDOR, { maxRequestBodySize: "none", sessions: false });
 });
 
 test("nenhuma categoria de coleta automática fica ligada", () => {

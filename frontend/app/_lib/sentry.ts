@@ -13,7 +13,7 @@
 // Tudo aqui é função pura; do SDK vem só o TIPO das opções, que some na compilação. Os testes
 // rodam sem ele e sem rede.
 
-import type { BrowserOptions } from "@sentry/nextjs";
+import type { BrowserOptions, httpIntegration } from "@sentry/nextjs";
 
 /** O que o SDK pode coletar sozinho, por categoria. TODAS estão escritas, de propósito: na versão
  *  11 do SDK a opção `sendDefaultPii` deixou de existir, e a categoria que fica de fora de
@@ -181,6 +181,55 @@ export function opcoesDoSentry(dsn: string | undefined, ambiente?: string) {
     // `satisfies`: o compilador recusa aqui uma opção que o SDK não conhece. Sem isto, o
     // `sendDefaultPii`, que não existe mais, ficou sem efeito e sem aviso nenhum.
   } satisfies BrowserOptions;
+}
+
+/** Integrações padrão do SDK que ficam desligadas no navegador, pelo nome que o SDK dá a elas.
+ *  - "BrowserSession" manda um envio a cada página aberta, mesmo sem erro, para contar sessões
+ *    (Release Health). Não usamos a contagem, e o aviso de privacidade fala de erros e desempenho.
+ *  - "CultureContext" anexa o idioma, o fuso e o calendário do navegador a cada envio.
+ *  Na versão 11 do SDK não há opção para nenhuma das duas: o jeito é tirá-las da lista. */
+export const INTEGRACOES_DESLIGADAS: readonly string[] = ["BrowserSession", "CultureContext"];
+
+/** As opções do `Sentry.init` no navegador: as comuns, mais a lista de integrações sem as
+ *  desligadas. O SDK chama a função com as integrações padrão e usa o que ela devolver. */
+export function opcoesDoNavegador(dsn: string | undefined, ambiente?: string) {
+  const comuns = opcoesDoSentry(dsn, ambiente);
+  if (!comuns) {
+    return null;
+  }
+  return {
+    ...comuns,
+    integrations: <Integracao extends { name: string }>(padrao: Integracao[]) =>
+      padrao.filter((integracao) => !INTEGRACOES_DESLIGADAS.includes(integracao.name)),
+  } satisfies BrowserOptions;
+}
+
+/** No servidor do Next (runtime Node), a integração padrão "ProcessSession" abre uma sessão por
+ *  processo e a manda ao Sentry na primeira requisição. O runtime edge não tem nenhuma das duas
+ *  coisas. */
+export const INTEGRACOES_DESLIGADAS_NO_SERVIDOR: readonly string[] = ["ProcessSession"];
+
+/** A integração de HTTP do servidor do Next. `maxRequestBodySize`: o corpo dos pedidos a /api/* é
+ *  a mensagem ou o print da pessoa, e por padrão o SDK guarda um pedaço dele para anexar a um
+ *  erro. `sessions`: por padrão, cada requisição entra numa contagem agregada de sessões, enviada
+ *  mesmo sem erro. */
+export const OPCOES_DO_HTTP_NO_SERVIDOR = {
+  maxRequestBodySize: "none",
+  sessions: false,
+} as const satisfies NonNullable<Parameters<typeof httpIntegration>[0]>;
+
+/** As integrações do servidor do Next: as padrão, sem as desligadas e com a `Http` trocada pela
+ *  nossa (`http`, feita com `OPCOES_DO_HTTP_NO_SERVIDOR`). */
+export function integracoesDoServidor<Integracao extends { name: string }>(
+  padrao: Integracao[],
+  http: Integracao,
+): Integracao[] {
+  return padrao
+    .filter(
+      (integracao) =>
+        integracao.name !== "Http" && !INTEGRACOES_DESLIGADAS_NO_SERVIDOR.includes(integracao.name),
+    )
+    .concat(http);
 }
 
 /** O pedido do navegador sem os cabeçalhos de IP, para entregar à função do túnel do SDK. Ela
