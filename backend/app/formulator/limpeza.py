@@ -24,10 +24,27 @@ LINK_REMOVIDO = "[link removido]"
 EMAIL_REMOVIDO = "[e-mail removido]"
 TELEFONE_REMOVIDO = "[telefone removido]"
 
-# O `%` no trecho de trás: sem ele a busca recomeçava depois de cada `%` e relia o resto do texto
-# (tempo quadrático em `a%a%a%…`). O que casa não muda: o começo de um e-mail continua sendo o
-# começo da sequência inteira de caracteres do nome.
-PADRAO_EMAIL = re.compile(r"(?<![\w.+%-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
+# O e-mail, em tempo linear (ADR-0027). O padrão casa TODA sequência de caracteres de nome de
+# e-mail; ela só é um e-mail quando o grupo `dominio` também casa. Casar a sequência mesmo sem
+# domínio é o que impede a busca de recomeçar no meio dela e reler o resto: era isso que deixava o
+# tempo quadrático em `a%a%a%…`. O `++` (quantificador possessivo, Python 3.11+) não devolve
+# caractere depois de casar; aqui não muda o resultado, porque o que vem depois de cada trecho
+# (`@`, `.` ou o fim) nunca é um caractere do próprio trecho.
+#
+# Por isso o padrão não é usado direto com `.sub`: quem troca os e-mails é `trocar_emails`.
+_PADRAO_EMAIL = re.compile(
+    r"(?<![\w.+-])[\w.+%-]++(?P<dominio>@[a-zA-Z0-9-]++(?:\.[a-zA-Z0-9-]++)+(?![\w-]))?"
+)
+
+
+def trocar_emails(texto: str, por: str) -> str:
+    """Troca cada e-mail de `texto` por `por`; o resto fica como está."""
+
+    def trocar(casamento: re.Match[str]) -> str:
+        return casamento.group() if casamento["dominio"] is None else por
+
+    return _PADRAO_EMAIL.sub(trocar, texto)
+
 
 # Qualquer esquema (`ftp://`, `intent://`): o `URLExtractor` só procura http e https.
 PADRAO_ESQUEMA = re.compile(r"[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
@@ -62,7 +79,7 @@ def _extrator() -> URLExtractor:
 
 def limpar_texto(texto: str, limite: int | None = None) -> str:
     """Tira e-mail, link, telefone, HTML e caracteres de controle; corta em `limite`."""
-    limpo = PADRAO_EMAIL.sub(EMAIL_REMOVIDO, texto)
+    limpo = trocar_emails(texto, EMAIL_REMOVIDO)
     limpo = PADRAO_ESQUEMA.sub(LINK_REMOVIDO, limpo)
     for _ in range(_VOLTAS_MAXIMAS):
         urls = _extrator().extrair(limpo)
