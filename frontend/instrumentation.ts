@@ -5,7 +5,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 
-import { opcoesDoSentry } from "./app/_lib/sentry";
+import { integracoesDoServidor, OPCOES_DO_HTTP_NO_SERVIDOR, opcoesDoSentry } from "./app/_lib/sentry";
 
 export function register() {
   const opcoes = opcoesDoSentry(
@@ -19,11 +19,14 @@ export function register() {
     Sentry.init({
       ...opcoes,
       // O servidor do Next repassa /api/* ao backend, e o corpo desses pedidos é a mensagem ou o
-      // print da pessoa. Por padrão o SDK guarda um pedaço do corpo para anexar a um erro.
-      integrations: [Sentry.httpIntegration({ maxRequestBodySize: "none" })],
+      // print da pessoa: a Http não guarda corpo. Sem contagem de sessões, nem por processo nem
+      // por requisição (ADR-0026, revisão).
+      integrations: (padrao) =>
+        integracoesDoServidor(padrao, Sentry.httpIntegration(OPCOES_DO_HTTP_NO_SERVIDOR)),
     });
   } else {
-    // O runtime "edge" não tem a integração de HTTP do Node, nem lê o corpo dos pedidos.
+    // O runtime "edge" não tem a integração de HTTP do Node, não lê o corpo dos pedidos e não
+    // conta sessões.
     Sentry.init(opcoes);
   }
 }
