@@ -19,7 +19,14 @@ export default defineConfig({
       exclude: ["app/**/*.test.{ts,tsx}", "**/*.d.ts"],
       // `skipFull: false`: a tabela do terminal lista também os arquivos com 100%, que o Vitest
       // esconde por padrão. É ela que vai na prova de autoria.
-      reporter: [["text", { skipFull: false }], "html", "json-summary"],
+      // O `lcov` é o que o SonarQube Cloud lê (ADR-0027). `projectRoot: ".."` escreve os caminhos
+      // a partir da raiz do repositório (`frontend/app/...`), que é de onde o Sonar os procura.
+      reporter: [
+        ["text", { skipFull: false }],
+        "html",
+        "json-summary",
+        ["lcov", { projectRoot: ".." }],
+      ],
       reportsDirectory: "coverage",
       // A meta da disciplina. Abaixo dela o `npm test` sai com erro, e o CI reprova.
       thresholds: { lines: 25 },

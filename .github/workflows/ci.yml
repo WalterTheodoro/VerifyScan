@@ -45,32 +45,35 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v5
+        # Action de terceiro: presa pelo commit, não pela tag, que pode ser movida (ADR-0027).
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
 
       - name: Instalar dependências
-        # --frozen falha se o uv.lock estiver desatualizado em relação ao pyproject.toml,
-        # em vez de resolver de novo e testar algo diferente do que roda na máquina.
-        run: uv sync --frozen
+        # --locked falha se o uv.lock estiver desatualizado em relação ao pyproject.toml, em vez
+        # de resolver de novo e testar algo diferente do que roda na máquina. (O --frozen, usado
+        # antes, não confere isso: só usa o lock como está.) Os `uv run` abaixo levam o mesmo
+        # --locked, porque sem ele cada um poderia resolver de novo.
+        run: uv sync --locked
 
       - name: ruff format
-        run: uv run ruff format --check .
+        run: uv run --locked ruff format --check .
 
       - name: ruff check
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
 
       - name: mypy
-        run: uv run mypy app
+        run: uv run --locked mypy app
 
       - name: alembic upgrade head
-        run: uv run alembic upgrade head
+        run: uv run --locked alembic upgrade head
 
       - name: alembic check
         # Falha se os modelos e as migrações divergirem: é o que garante "esquema só por
         # Alembic". Limite conhecido: o autogenerate não compara CHECK constraint.
-        run: uv run alembic check
+        run: uv run --locked alembic check
 
       - name: pytest
         # Os testes unitários não tocam em Postgres nem em Redis: as dependências entram por
@@ -80,7 +83,16 @@ jobs:
         #
         # Com cobertura de `app/` (ADR-0025): reprova abaixo do `fail_under` do pyproject.toml
         # (75%, a meta da disciplina). Aqui os de integração rodam, então contam na medida.
-        run: uv run pytest -q -rs --cov=app --cov-report=term-missing
+        #
+        # O `coverage.xml` é o que o SonarQube Cloud lê (ADR-0027).
+        run: uv run --locked pytest -q -rs --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Guardar o relatório de cobertura
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobertura-backend
+          path: backend/coverage.xml
+          if-no-files-found: error
 
   frontend:
     name: frontend — eslint, tsc, testes e cobertura
@@ -98,7 +110,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Instalar dependências
-        run: npm ci
+        # Sem os scripts de instalação dos pacotes: lint, tsc, testes e build passam sem eles
+        # (conferido em 25/11/2026), e código de pacote não roda na instalação.
+        run: npm ci --ignore-scripts
 
       - name: eslint
         run: npm run lint
@@ -106,19 +120,64 @@ jobs:
       - name: tipos das rotas
         # O `tsc` precisa dos tipos que o Next gera (`LayoutProps`, em `.next/types`): num checkout
         # limpo eles não existem. O `typegen` lê o `next.config.ts`, que em produção exige estas
-        # duas variáveis. Valores do CI, públicos de propósito: não protegem nada fora deste runner.
+        # duas variáveis. O --no-install garante que o `npx` só usa o que o `npm ci` instalou, sem
+        # baixar nada. Valores do CI, públicos de propósito: não protegem nada fora deste runner.
         env:
           API_URL_INTERNA: http://localhost:8000
           PROXY_SEGREDO: segredo-publico-do-ci-nao-e-segredo-9876543210
-        run: npx next typegen
+        run: npx --no-install next typegen
 
       - name: tsc
         # Além dos erros de tipo, é a trava das opções do Sentry (ADR-0026): elas passam por
         # `satisfies`, e uma opção que o SDK não conhece reprova aqui.
-        run: npx tsc --noEmit
+        run: npx --no-install tsc --noEmit
 
       - name: testes e cobertura
         # Mesmo comando da máquina e da prova de autoria (ADR-0025): Vitest com cobertura de
         # `app/**` inteiro. Reprova se as linhas cobertas ficarem abaixo do threshold do
-        # vitest.config.ts (25%, a meta da disciplina).
+        # vitest.config.ts (25%, a meta da disciplina). Gera também o `coverage/lcov.info`, que o
+        # SonarQube Cloud lê (ADR-0027).
         run: npm test
+
+      - name: Guardar o relatório de cobertura
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobertura-frontend
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
+
+  sonar:
+    name: sonar — análise estática
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    # PR vindo de fork não recebe o SONAR_TOKEN: o job é pulado em vez de falhar.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Histórico inteiro: o Sonar usa o `git blame` para saber o que é código novo.
+          fetch-depth: 0
+
+      - name: Baixar a cobertura do backend
+        uses: actions/download-artifact@v8
+        with:
+          name: cobertura-backend
+          path: backend
+
+      - name: Baixar a cobertura do frontend
+        uses: actions/download-artifact@v8
+        with:
+          name: cobertura-frontend
+          path: frontend/coverage
+
+      - name: Apontar o coverage.xml para este checkout
+        # O relatório guarda o caminho absoluto de `backend/app` no runner que rodou os testes.
+        # Reescrito aqui para o Sonar achar os arquivos mesmo se o caminho do runner mudar.
+        run: sed -i "s#<source>.*</source>#<source>${GITHUB_WORKSPACE}/backend/app</source>#" backend/coverage.xml
+
+      - name: Análise no SonarQube Cloud
+        # Action de terceiro: presa pelo commit. v8.4.1, publicada em 03/11/2026 (ADR-0022).
+        # Sem `sonar.qualitygate.wait`: o Quality Gate ainda não bloqueia o merge (ADR-0027).
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

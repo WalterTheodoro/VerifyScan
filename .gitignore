@@ -26,3 +26,4 @@ corpus/prints-gerados/
 
 # Cobertura medida localmente (coverage.py): resultado de máquina, nunca versionado.
 .coverage
+coverage.xml
