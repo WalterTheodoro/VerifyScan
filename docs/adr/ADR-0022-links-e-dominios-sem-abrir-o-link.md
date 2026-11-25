@@ -261,3 +261,17 @@ opção em cada comando.
 - **Backend:** `exclude-newer = "14 days"` em `[tool.uv]`, no `pyproject.toml`. Exige uv 0.9.17
   ou mais novo (a máquina está no 0.13.7).
 - Os dois requisitos de versão precisam ser conferidos na documentação quando a fatia for feita.
+
+**Revisão (2026-11-25): a regra continua manual nos dois lados.** O pendente acima foi conferido
+nas versões que estão em uso, e nenhum dos dois caminhos fecha sem efeito colateral.
+
+- **Frontend: o npm não tem a opção.** A máquina e o CI (Node 22) estão no npm 10.9.9, cuja lista
+  de configurações tem só o `before`, que pede uma data fixa. Data fixa no `.npmrc` envelhece e
+  passa a barrar tudo o que vier depois dela, por isso não foi usada. Segue valendo o
+  `--before=AAAA-MM-DD` em cada `npm install` e `npm update`.
+- **Backend: o uv aceita, mas muda o `uv.lock`.** Com `exclude-newer = "14 days"` em `[tool.uv]`,
+  o uv 0.13.7 calcula a data de corte (hoje menos 14 dias), resolve de novo e quer atualizar o
+  `uv.lock` (`uv lock --check` falhou: "needs to be updated"). A regra da fatia era não mexer no
+  lock por causa disso, então a configuração foi desfeita e nenhum arquivo mudou. Falta conferir
+  se o lock mudaria de novo a cada dia (o que quebraria o `uv sync --frozen` do CI) antes de
+  adotar. Até lá, a data de cada pacote novo do backend segue conferida à mão.
