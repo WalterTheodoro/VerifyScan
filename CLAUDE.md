@@ -15,7 +15,8 @@ ela lê a mensagem, sugere um nível e escreve a explicação, e uma regra fixa 
 no maior dos dois — ela pode subir, nunca baixar (ADR-0020).
 
 Especificação completa: `docs/RFC-VerifyScan-v1.1.pdf`. Plano de execução: `docs/plano-de-execucao.md`.
-Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`.
+Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`. Análise estática:
+SonarQube Cloud, pelo CI (ADR-0027).
 
 ## 2. Stack (fixa — não trocar sem ADR)
 
@@ -90,6 +91,8 @@ npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25%
 verifyscan/
 ├─ CLAUDE.md
 ├─ docker-compose.yml
+├─ sonar-project.properties   # análise estática (ADR-0027): escopo, cobertura importada e
+│                            #   cada questão aceita, com o motivo; roda só no job `sonar` do CI
 ├─ docs/
 │  ├─ RFC-VerifyScan-v1.1.pdf
 │  ├─ plano-de-execucao.md

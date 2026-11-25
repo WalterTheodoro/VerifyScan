@@ -1,5 +1,8 @@
 # VerifyScan
 
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=WalterTheodoro_VerifyScan&metric=alert_status)](https://sonarcloud.io/summary/overall?id=WalterTheodoro_VerifyScan)
+[![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=WalterTheodoro_VerifyScan&metric=coverage)](https://sonarcloud.io/summary/overall?id=WalterTheodoro_VerifyScan)
+
 Plataforma web que recebe uma mensagem suspeita — texto, link, print ou e-mail — e devolve
 **nível de risco (BAIXO / MÉDIO / ALTO), os fatores identificados e uma recomendação**, em
 português acessível a quem tem pouco letramento digital.
@@ -223,6 +226,19 @@ npm test
 - **A cobertura do backend não liga sozinha:** o `uv run pytest -q` do dia a dia segue sem ela, que
   deixa a suíte uns 28% mais lenta. Só o CI e o comando acima a usam.
 - **Frontend:** `npm test` sempre mede. A pasta `frontend/coverage/` é ignorada pelo git.
+
+### Análise estática
+
+O SonarQube Cloud analisa o backend, o frontend e os workflows do CI (ADR-0027). Não há comando
+local: quem roda é o job `sonar` do CI, depois dos testes, com a cobertura que os outros dois jobs
+geraram (`backend/coverage.xml` e `frontend/coverage/lcov.info`).
+
+- **Painel:** <https://sonarcloud.io/project/overview?id=WalterTheodoro_VerifyScan>
+- **O que entra, o que é teste e o que foi aceito:** `sonar-project.properties`, na raiz. Cada
+  questão ignorada está lá com o motivo; a triagem inteira está no ADR-0027.
+- **O Quality Gate ainda não bloqueia o merge.** O selo acima mostra o estado, mas o CI não
+  reprova por ele.
+- **PR de fork:** o job é pulado, porque o fork não recebe o `SONAR_TOKEN`.
 
 ### Banco de teste (testes de integração)
 

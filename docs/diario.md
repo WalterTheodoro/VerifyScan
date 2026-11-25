@@ -2939,3 +2939,33 @@ Revisão do Walter sobre a entrada anterior, antes de commitar a `fix/next-segur
 - **Decisão do uv (item 5):** fica manual, como no ADR-0022; o `uv.lock` não foi tocado.
 - **Números:** frontend **193** testes, **56,53%** de linhas; backend **1059** testes, **96,32%**.
   `ruff`, `mypy`, lint, `tsc` e o build sem variável do Sentry passam.
+
+## 2026-11-25 — Análise estática com SonarQube Cloud (fatia 13)
+
+Requisito do Portfolio Playbook. Decisão e triagem completas no ADR-0027.
+
+- **O que entrou:** `sonar-project.properties` na raiz; os jobs de backend e frontend geram
+  `coverage.xml` e `lcov.info` e os guardam como artifact; job novo `sonar`, depois dos dois, com
+  a action oficial presa pelo commit (v8.4.1, de 03/11; a v8.5.0 tinha 12 dias). PR de fork pula o
+  job. O Quality Gate não bloqueia o merge ainda.
+- **Triagem:** a análise automática tinha aberto 32 questões (26 de segurança). Classifiquei cada
+  uma lendo o código: 4 grupos reais, o resto aceitável ou falso positivo, ignorado por regra e
+  arquivo no `sonar-project.properties`, com o motivo.
+- **Corrigido:** `setup-uv` presa pelo commit; `--locked` no `uv sync` e em todo `uv run` do CI;
+  `npx --no-install`; `npm ci --ignore-scripts` (testado antes: lint, `tsc`, 193 testes e build
+  passam igual); regex de e-mail da limpeza.
+- **O que estava errado e ninguém tinha visto:** o comentário do CI dizia que o `uv sync --frozen`
+  reprovava um `uv.lock` desatualizado. Não reprova: ele usa o lock como está. Quem confere é o
+  `--locked`. O CI nunca teve essa trava que o comentário prometia.
+- **Regex de e-mail:** tempo quadrático em `a%a%a%…` (0,19 s com 16 mil caracteres), porque a busca
+  recomeçava depois de cada `%`. Na triagem eu disse que a entrada era só a saída da IA; ao
+  corrigir vi que o padrão também roda na transcrição do print (`para_exibir`), que vem do que o
+  golpista escreveu. Teste primeiro (falhou em 0,19 s), depois o `%` no trecho de trás. Os
+  casamentos não mudam; os testes da limpeza passam iguais.
+- **Números locais:** backend **967** testes unitários, **92,92%** (sem Docker, a integração não
+  rodou); frontend **193** testes, **56,53%** de linhas. `ruff`, `mypy`, lint, `tsc` e build passam.
+- **Não verificado:** nada do job `sonar` rodou; só existe depois do push. Não sei ainda se o
+  scanner resolve os dois relatórios de cobertura, se as regras ignoradas somem (em especial as do
+  analisador de segredos) nem se o Sonar aceita a regex nova e o `npx --no-install`.
+- **Pendente:** conferir a primeira análise pelo CI (notas e cobertura por lado); ligar o bloqueio
+  do Quality Gate depois; `backend/tools` e `backend/alembic` ficaram fora do escopo do Sonar.
