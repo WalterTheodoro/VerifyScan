@@ -268,7 +268,7 @@ class OrquestradorAnalise:
                     nivel_motor=resposta.nivel_motor,
                     fatores=tuple(resposta.fatores),
                     links=tuple(resposta.links),
-                    print=dados_do_print,
+                    captura=dados_do_print,
                 ),
                 timeout_s=self._timeout_ia_imagem_s if dados_do_print is not None else None,
             )
