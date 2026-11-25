@@ -24,7 +24,10 @@ LINK_REMOVIDO = "[link removido]"
 EMAIL_REMOVIDO = "[e-mail removido]"
 TELEFONE_REMOVIDO = "[telefone removido]"
 
-PADRAO_EMAIL = re.compile(r"(?<![\w.+-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
+# O `%` no trecho de trás: sem ele a busca recomeçava depois de cada `%` e relia o resto do texto
+# (tempo quadrático em `a%a%a%…`). O que casa não muda: o começo de um e-mail continua sendo o
+# começo da sequência inteira de caracteres do nome.
+PADRAO_EMAIL = re.compile(r"(?<![\w.+%-])[\w.+%-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w-])")
 
 # Qualquer esquema (`ftp://`, `intent://`): o `URLExtractor` só procura http e https.
 PADRAO_ESQUEMA = re.compile(r"[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)

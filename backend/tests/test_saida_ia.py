@@ -5,12 +5,13 @@ dentro do teto. A IA não pode entregar o link do golpe para a pessoa clicar.
 """
 
 import json
+import time
 from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
-from app.formulator.limpeza import afirma_seguranca, fala_do_sistema, limpar_texto
+from app.formulator.limpeza import PADRAO_EMAIL, afirma_seguranca, fala_do_sistema, limpar_texto
 from app.formulator.saida import SCHEMA_SAIDA, SaidaIA, SaidaInutilizavel, explicacao_da_saida
 from app.schemas.analise import ITEM_MAX_CARACTERES, TIPO_MAX_CARACTERES, NivelRisco
 
@@ -352,3 +353,24 @@ def test_tipo_que_fala_dos_fatores_e_inutilizavel() -> None:
 
     with pytest.raises(SaidaInutilizavel):
         explicacao_da_saida(saida)
+
+
+def test_email_com_porcentagem_no_meio_sai_inteiro() -> None:
+    assert limpar_texto("Escreva para joao%silva@exemplo.com.br hoje.") == (
+        "Escreva para [e-mail removido] hoje."
+    )
+
+
+def test_padrao_de_email_nao_demora_com_entrada_patologica() -> None:
+    """`a%a%a%…` sem arroba: o padrão antigo recomeçava depois de cada `%` e relia o resto todo
+    (tempo quadrático; 0,2 s com 16 mil caracteres). Tem de ser uma passada só."""
+    entrada = "a%" * 8000
+
+    tempos = []
+    for _ in range(3):
+        inicio = time.perf_counter()
+        assert PADRAO_EMAIL.sub("", entrada) == entrada
+        tempos.append(time.perf_counter() - inicio)
+
+    # O melhor de três: uma pausa do sistema numa rodada não reprova o teste.
+    assert min(tempos) < 0.05
