@@ -59,6 +59,7 @@ type RespostaAnalise = {
   fatores: Fator[];
   links?: LinkDaMensagem[];
   explicacao_indisponivel: boolean;
+  /** Havia link e alguma base externa de reputação não respondeu (ADR-0028). */
   verificacao_externa_indisponivel: boolean;
   // true só quando o backend gravou a análise ligada à conta (ADR-0015).
   salva_no_historico: boolean;

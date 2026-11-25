@@ -29,7 +29,30 @@ export type LinkDaMensagem = {
   observacoes: string[];
   oficial?: boolean;
   conselho?: string;
+  /** As bases externas que apontaram o domínio (ADR-0028). Só na análise ao vivo: o
+   *  histórico não consulta nada e não manda o campo. */
+  apontado_por?: ("safe_browsing" | "virustotal")[];
 };
+
+/** A página que os termos do Google Safe Browsing mandam ligar ao aviso. */
+export const AVISO_DO_GOOGLE = "https://developers.google.com/safe-browsing/v4/advisory";
+
+/** O fator que veio do Google. No histórico ele chega como `reputacao`, sem a base. */
+const CATEGORIA_DO_GOOGLE = "reputacao_safe_browsing";
+
+/** A atribuição que os termos do Google Safe Browsing exigem, só no que veio do Google
+ *  (ADR-0028): a linha com o link para a página de aviso dele, e que a informação pode não
+ *  ser precisa. É o único link de saída da placa, e é fixo: não vem da mensagem. */
+function AtribuicaoDoGoogle() {
+  return (
+    <span className="block text-base">
+      <a href={AVISO_DO_GOOGLE} target="_blank" rel="noopener noreferrer" className="underline">
+        Aviso fornecido pelo Google
+      </a>
+      . A informação pode não ser precisa.
+    </span>
+  );
+}
 
 /** A frase do fim do bloco antes da fatia 9: só para um backend anterior, que não a manda. */
 const CONSELHO_DOS_LINKS_ANTIGO =
@@ -47,6 +70,8 @@ export type DadosDoResultado = {
   links?: LinkDaMensagem[];
   orientacao?: Orientacao;
   explicacao_ia?: ExplicacaoIA | null;
+  /** Havia link e alguma base externa não respondeu (ADR-0028). O histórico não manda. */
+  verificacao_externa_indisponivel?: boolean;
 };
 
 /** "Você colou:" e a mensagem, como texto: um link dentro dela nunca vira <a>. Quem chama decide
@@ -213,7 +238,10 @@ export function Resultado({
             <ul className="flex list-disc flex-col gap-2 pl-6 text-destaque
               marker:text-[var(--risco-forte)]">
               {resultado.fatores.map((fator) => (
-                <li key={fator.categoria}>{fator.descricao}</li>
+                <li key={fator.categoria}>
+                  {fator.descricao}
+                  {fator.categoria === CATEGORIA_DO_GOOGLE && <AtribuicaoDoGoogle />}
+                </li>
               ))}
             </ul>
           </div>
@@ -241,10 +269,17 @@ export function Resultado({
                       <li key={observacao}>{observacao}</li>
                     ))}
                   </ul>
+                  {link.apontado_por?.includes("safe_browsing") && <AtribuicaoDoGoogle />}
                 </li>
               ))}
             </ul>
             <p>{conselhoDosLinks}</p>
+            {resultado.verificacao_externa_indisponivel && (
+              <p>
+                Não conseguimos consultar agora as bases externas que listam endereços
+                perigosos. Este resultado usa só a nossa análise do endereço.
+              </p>
+            )}
           </div>
         )}
       </div>

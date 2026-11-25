@@ -153,6 +153,10 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
             escreveu sobre ela, 7 dias;
           </li>
           <li>na Anthropic, a mensagem ou o print enviado para a análise, até 30 dias;</li>
+          <li>
+            a resposta das bases externas sobre um domínio, até 24 horas, sem o domínio escrito;
+          </li>
+          <li>no VirusTotal, o domínio consultado: fica na base dele, sem prazo nosso;</li>
           <li>no VerifyScan, a imagem do print: não é guardada;</li>
           <li>a ligação das análises com a sua conta, 7 dias;</li>
           <li>
@@ -235,12 +239,44 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
         </section>
       )}
 
+      <section aria-labelledby="links" className="flex flex-col gap-junto">
+        <Titulo id="links" className={titulo}>A consulta dos links em bases externas</Titulo>
+        <p>
+          Quando a mensagem tem link, perguntamos a duas bases externas se o endereço dele
+          já foi apontado como perigoso: o Google Safe Browsing e o VirusTotal.{" "}
+          <strong>Isso vale com ou sem conta.</strong>
+        </p>
+        <p>
+          Vai só o domínio do link, que é o nome do site (por exemplo,{" "}
+          <span className="font-mono">exemplo.com.br</span>). Não vão o resto do link, a
+          mensagem, o seu nome, o seu e-mail nem nada da sua conta. Consultamos no máximo três
+          domínios por análise, e nunca abrimos o link.
+        </p>
+        <p>
+          <strong>
+            O domínio consultado no VirusTotal passa a constar na base dele, que é visível às
+            pessoas e empresas que a usam, e o VirusTotal pode visitar esse endereço para
+            examiná-lo.
+          </strong>{" "}
+          Ele não fica sabendo quem pediu a análise.
+        </p>
+        <p>
+          As duas empresas ficam nos Estados Unidos. Guardamos a resposta delas por até 24
+          horas, para não repetir a pergunta, sem o domínio escrito: só um código calculado a
+          partir dele.
+        </p>
+        <p>
+          Se as bases não responderem, a análise sai só com as nossas regras, e a tela avisa.
+        </p>
+      </section>
+
       <section aria-labelledby="onde" className="flex flex-col gap-junto">
         <Titulo id="onde" className={titulo}>Onde ficam e com quem</Titulo>
         <p>
           Em servidores nos Estados Unidos, de três empresas: a Render, onde o site roda; a
           Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
-          artificial, como explicado acima.
+          artificial, como explicado acima. O domínio dos links vai também ao Google e ao
+          VirusTotal, nos Estados Unidos, como explicado acima.
           {AVISA_ERROS && (
             <>
               {" "}
