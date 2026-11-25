@@ -134,7 +134,7 @@ jobs:
 
       - name: testes e cobertura
         # Mesmo comando da máquina e da prova de autoria (ADR-0025): Vitest com cobertura de
-        # `app/**` inteiro. Reprova se as linhas cobertas ficarem abaixo do threshold do
+        # `app/**` e do código da raiz (ADR-0027). Reprova se as linhas cobertas ficarem abaixo do threshold do
         # vitest.config.ts (25%, a meta da disciplina). Gera também o `coverage/lcov.info`, que o
         # SonarQube Cloud lê (ADR-0027).
         run: npm test
