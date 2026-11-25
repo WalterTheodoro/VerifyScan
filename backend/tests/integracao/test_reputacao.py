@@ -6,12 +6,14 @@ limpeza ao gravar e os CHECKs.
 """
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.models import ReputacaoCache, ReputacaoUso
 from app.reputation.tipos import ItemDeCache
@@ -75,14 +77,36 @@ async def test_pedido_maior_que_o_limite_e_negado_sem_gravar(
     assert await _consultas(fabrica_de_sessoes) == {}
 
 
+@pytest.fixture
+async def fabrica_com_commit(
+    url_banco_de_teste: str,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Conexões separadas, com commit de verdade, como em `test_uso.py`: é o único jeito de N
+    pedidos disputarem a mesma linha. A `fabrica_de_sessoes` põe tudo numa conexão só. As linhas
+    são apagadas no fim."""
+    engine = create_async_engine(url_banco_de_teste, poolclass=NullPool)
+    fabrica = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield fabrica
+    finally:
+        async with fabrica() as sessao, sessao.begin():
+            await sessao.execute(delete(ReputacaoUso))
+        await engine.dispose()
+
+
 async def test_reservas_simultaneas_nao_passam_do_limite(
-    repositorio: RepositorioReputacaoPostgres,
+    fabrica_com_commit: async_sessionmaker[AsyncSession],
 ) -> None:
+    """20 reservas ao mesmo tempo, limite de 4 por minuto: exatamente 4 passam, e o banco fica
+    com 4 no minuto e 4 no dia (nenhuma soma de reserva negada sobrou)."""
+    repositorio = RepositorioReputacaoPostgres(fabrica_com_commit)
+
     reservas = await asyncio.gather(
-        *(repositorio.reservar("virustotal", AGORA, 1, 4, 500) for _ in range(10))
+        *(repositorio.reservar("virustotal", AGORA, 1, 4, 500) for _ in range(20))
     )
 
     assert sum(reservas) == 4
+    assert await _consultas(fabrica_com_commit) == {"minuto": 4, "dia": 4}
 
 
 async def test_cache_devolve_so_o_que_nao_venceu(repositorio: RepositorioReputacaoPostgres) -> None:
@@ -90,7 +114,8 @@ async def test_cache_devolve_so_o_que_nao_venceu(repositorio: RepositorioReputac
         [
             ItemDeCache("virustotal", CHAVE, "malicioso", AGORA + timedelta(hours=24)),
             ItemDeCache("safe_browsing", CHAVE, "malicioso", AGORA + timedelta(seconds=300)),
-        ]
+        ],
+        AGORA,
     )
 
     dentro = await repositorio.buscar("safe_browsing", [CHAVE], AGORA + timedelta(seconds=299))
@@ -105,29 +130,29 @@ async def test_cache_devolve_so_o_que_nao_venceu(repositorio: RepositorioReputac
 async def test_guardar_de_novo_substitui_o_veredito_e_o_prazo(
     repositorio: RepositorioReputacaoPostgres,
 ) -> None:
-    futuro = datetime.now(UTC) + timedelta(hours=1)
-    await repositorio.guardar([ItemDeCache("virustotal", CHAVE, "malicioso", futuro)])
+    prazo = AGORA + timedelta(hours=1)
+    await repositorio.guardar([ItemDeCache("virustotal", CHAVE, "malicioso", prazo)], AGORA)
 
     await repositorio.guardar(
-        [ItemDeCache("virustotal", CHAVE, "limpo", futuro + timedelta(hours=1))]
+        [ItemDeCache("virustotal", CHAVE, "limpo", prazo + timedelta(hours=1))], AGORA
     )
 
-    assert await repositorio.buscar("virustotal", [CHAVE], futuro) == {CHAVE: "limpo"}
+    assert await repositorio.buscar("virustotal", [CHAVE], prazo) == {CHAVE: "limpo"}
 
 
 async def test_guardar_apaga_o_que_ja_venceu(
     repositorio: RepositorioReputacaoPostgres,
     fabrica_de_sessoes: async_sessionmaker[AsyncSession],
 ) -> None:
-    """A limpeza usa a hora de verdade: o vencido é de ontem, o válido é de amanhã."""
-    agora = datetime.now(UTC)
+    """Cada gravação apaga o cache vencido e o contador de mais de dois dias atrás."""
     await repositorio.guardar(
-        [ItemDeCache("virustotal", "b" * 64, "limpo", agora - timedelta(days=1))]
+        [ItemDeCache("virustotal", "b" * 64, "limpo", AGORA + timedelta(hours=1))], AGORA
     )
-    await repositorio.reservar("virustotal", agora - timedelta(days=3), 1, 4, 500)
+    await repositorio.reservar("virustotal", AGORA, 1, 4, 500)
+    depois = AGORA + timedelta(days=3)
 
     await repositorio.guardar(
-        [ItemDeCache("virustotal", CHAVE, "limpo", agora + timedelta(days=1))]
+        [ItemDeCache("virustotal", CHAVE, "limpo", depois + timedelta(days=1))], depois
     )
 
     async with fabrica_de_sessoes() as sessao:
