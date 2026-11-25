@@ -461,3 +461,44 @@ dominios:
       nomes: [instagram]
       semelhanca: true
       oficiais: [instagram.com]
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Reputação externa (ADR-0028; RF06 e RF08 do RFC, §5.4.4)
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# O que duas bases externas dizem do DOMÍNIO de cada link. Só o domínio é consultado, nunca o
+# caminho nem a query; o sistema continua sem abrir o link (ADR-0022). Só soma: o que as bases
+# apontam sobe o nível, e o silêncio delas não baixa nada.
+#
+# As frases dizem "possivelmente": os termos do Google Safe Browsing proíbem afirmar que um
+# endereço é perigoso com certeza. Nenhuma leva o domínio (o fator vai para o banco também em
+# análise anônima).
+reputacao:
+  # Quantos domínios de uma mensagem são consultados, na ordem em que aparecem.
+  maximo_de_dominios: 3
+
+  sinais:
+    # RFC §5.4.4: "URL flagrada no Google Safe Browsing" +40.
+    - id: reputacao_safe_browsing
+      peso: 40
+      descricao: 'O Google Safe Browsing aponta um link desta mensagem como possivelmente perigoso.'
+      no_link: 'apontado pelo Google Safe Browsing como possivelmente perigoso'
+    # RFC §5.4.4: "3+ detecções" +40. Aqui, 2 ou mais (ver `virustotal`, abaixo).
+    - id: reputacao_virustotal_malicioso
+      peso: 40
+      descricao: 'Mais de um serviço de segurança reunido pelo VirusTotal aponta um endereço desta mensagem como possivelmente perigoso.'
+      no_link: 'apontado por mais de um serviço de segurança (VirusTotal) como possivelmente perigoso'
+    # RFC §5.4.4: "1–2 detecções" +20: pode ser falso positivo, mas pede atenção.
+    - id: reputacao_virustotal_suspeito
+      peso: 20
+      descricao: 'Um serviço de segurança reunido pelo VirusTotal levanta suspeita sobre um endereço desta mensagem.'
+      no_link: 'há suspeita de um serviço de segurança (VirusTotal) sobre este endereço'
+
+  # No histórico o fator aparece assim, qualquer que tenha sido a base: é o registro do que a
+  # NOSSA análise viu naquele dia, não um aviso sobre o estado de hoje.
+  no_historico: 'Na data desta análise, uma base de reputação externa apontava este domínio como possivelmente perigoso.'
+
+  # `last_analysis_stats` do domínio no VirusTotal. Limiares escolhidos por nós (ADR-0028).
+  virustotal:
+    malicioso_a_partir_de: 2      # `malicious` >= 2  → +40
+    suspeito_com_maliciosos: 1    # `malicious` == 1  → +20
+    suspeito_com_suspeitos: 2     # `suspicious` >= 2 → +20

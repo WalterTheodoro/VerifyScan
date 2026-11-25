@@ -32,8 +32,15 @@ CATEGORIAS_DE_LINK: tuple[CategoriaFator, ...] = tuple(
 )
 """Os sinais léxicos do DomainAnalyzer (ADR-0022): pesos na seção `dominios` do `regras.yaml`."""
 
+CATEGORIAS_DE_REPUTACAO: tuple[CategoriaFator, ...] = tuple(
+    categoria for categoria in get_args(CategoriaFator) if categoria.startswith("reputacao_")
+)
+"""O que as bases externas apontaram (ADR-0028): pesos na seção `reputacao` do `regras.yaml`."""
+
 CATEGORIAS_DE_TEXTO: tuple[CategoriaFator, ...] = tuple(
-    categoria for categoria in get_args(CategoriaFator) if categoria not in CATEGORIAS_DE_LINK
+    categoria
+    for categoria in get_args(CategoriaFator)
+    if categoria not in CATEGORIAS_DE_LINK and categoria not in CATEGORIAS_DE_REPUTACAO
 )
 """As seis da §5.4.1 mais `instrucao_ao_analisador` (ADR-0020): pesos e padrões na seção
 `categorias` do `regras.yaml`."""
@@ -257,6 +264,53 @@ class ConfiguracaoDominios(BaseModel):
         return next(sinal for sinal in self.sinais if sinal.id == categoria)
 
 
+class LimiaresVirusTotal(BaseModel):
+    """Quantos serviços de segurança precisam apontar o domínio. Escolha nossa (ADR-0028): o
+    RFC fala em detecções de URL; aqui a consulta é do domínio."""
+
+    model_config = ConfigDict(frozen=True)
+
+    malicioso_a_partir_de: int = Field(ge=1)
+    suspeito_com_maliciosos: int = Field(ge=1)
+    suspeito_com_suspeitos: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _suspeito_abaixo_do_malicioso(self) -> Self:
+        if self.suspeito_com_maliciosos >= self.malicioso_a_partir_de:
+            raise ValueError("suspeito_com_maliciosos tem de ser menor que malicioso_a_partir_de")
+        return self
+
+
+class ConfiguracaoReputacao(BaseModel):
+    """Seção `reputacao` do `regras.yaml`: quanto pesa o que cada base externa aponta.
+
+    As consultas levam só o domínio, nunca o link, e o sistema continua sem abrir o link
+    (ADR-0022, ADR-0028).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Teto de privacidade e de cota: o `le=3` impede subir por engano.
+    maximo_de_dominios: int = Field(ge=1, le=3)
+    sinais: tuple[SinalLink, ...]
+    # A frase do histórico: registro datado da nossa análise, sem citar a base (ADR-0028).
+    no_historico: str = Field(min_length=1, pattern=r"^[^{}]+$")
+    virustotal: LimiaresVirusTotal
+
+    @model_validator(mode="after")
+    def _sinais_completos_sem_repetir(self) -> Self:
+        presentes = sorted(sinal.id for sinal in self.sinais)
+        if presentes != sorted(CATEGORIAS_DE_REPUTACAO):
+            raise ValueError(
+                f"a seção reputacao precisa de exatamente {sorted(CATEGORIAS_DE_REPUTACAO)}, "
+                f"e tem {presentes}"
+            )
+        return self
+
+    def sinal(self, categoria: CategoriaFator) -> SinalLink:
+        return next(sinal for sinal in self.sinais if sinal.id == categoria)
+
+
 class Regras(BaseModel):
     """O `regras.yaml` inteiro, validado."""
 
@@ -268,6 +322,7 @@ class Regras(BaseModel):
     urls: ConfiguracaoURLs
     categorias: tuple[CategoriaTexto, ...]
     dominios: ConfiguracaoDominios
+    reputacao: ConfiguracaoReputacao
 
     @model_validator(mode="after")
     def _categorias_completas_sem_repetir(self) -> Self:

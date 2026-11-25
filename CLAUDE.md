@@ -112,14 +112,17 @@ verifyscan/
 │     │                    #   cota da IA e teto de gasto (cota.py), senhas erradas em memória
 │     │                    #   (tentativas.py), uso diário no banco (repositorio_uso.py; ADR-0024)
 │     ├─ analyzers/        # TextAnalyzer, URLExtractor, DomainAnalyzer (léxico, PSL embutida,
-│     │                    #   ADR-0022), EmailAnalyzer
+│     │                    #   ADR-0022). Não há EmailAnalyzer: saiu do escopo (errata, item 8)
 │     ├─ ocr/              # o print: imagem.py (bytes iniciais, Pillow, sem metadados) e
 │     │                    #   leitura.py (LeitorDePrint: Claude com visão, conjunto fechado; ADR-0023)
-│     ├─ reputation/       # URLChecker + provedores (VirusTotal, SafeBrowsing, Fake)
+│     ├─ reputation/       # reputação de links, só pelo domínio (ADR-0028): verificador.py (o
+│     │                    #   URLChecker: cache, cota do VirusTotal, teto de 3 s),
+│     │                    #   safe_browsing.py, virustotal.py, fatores.py; nos testes, o
+│     │                    #   transporte HTTP é falso (httpx.MockTransport)
 │     ├─ scoring/          # ScoringEngine, regras.yaml, respostas.yaml (plano B), combinar()
 │     ├─ formulator/       # análise com IA: cliente, prompt, saída e limpeza (ADR-0020)
 │     ├─ models/           # SQLAlchemy: Analise, IndicadorRisco, Usuario, SessaoUsuario,
-│     │                    #   UsoDiario, GastoDiarioIA
+│     │                    #   UsoDiario, GastoDiarioIA, ReputacaoCache, ReputacaoUso
 │     ├─ schemas/          # Pydantic (contrato da API)
 │     └─ core/             # config, segurança (hash Argon2id com semáforo), cache, logs, timeouts,
 │                          #   IP do visitante e HMAC (ip.py), dia de São Paulo (relogio.py);
@@ -129,7 +132,8 @@ verifyscan/
 │  ├─ alembic/versions/    # migrações (0001 análise, 0002 usuários e sessões, 0003 vínculo
 │  │                       #   análise→conta, 0004 texto só com dono, 0005 níveis do motor e da
 │  │                       #   IA + explicação só com dono, 0006 tipo imagem + contexto do print só
-│  │                       #   com dono, 0007 uso diário e gasto da IA); esquema só por aqui
+│  │                       #   com dono, 0007 uso diário e gasto da IA, 0008 cache e contador
+│  │                       #   da reputação de links); esquema só por aqui
 │  ├─ tools/               # avaliar_corpus + linha_de_base_motor.json (gate do CI, só calibração),
 │  │                       #   sortear_divisao, pii, testar_ia + amostras_ia.yaml, gerar_prints +
 │  │                       #   avaliar_prints + prints_sinteticos.yaml (só ids e variações)
@@ -210,7 +214,12 @@ quebrar uma delas, **pare e pergunte**.
    Timeout curto, falha silenciosa, flag `verificacao_externa_indisponivel: true`. E **o sistema
    nunca abre o link da mensagem**: nem GET, nem HEAD, nem DNS, nem seguir redirecionamento
    (aviso ao golpista, conteúdo malicioso, SSRF). O DomainAnalyzer é só léxico (ADR-0022). A tela
-   nunca mostra o link inteiro: só o domínio registrável, como texto.
+   nunca mostra o link inteiro: só o domínio registrável, como texto. **Às bases de reputação
+   vai só o domínio** (o host ao Google, o domínio registrável ao VirusTotal), de no máximo 3
+   links: nunca caminho, query nem fragmento. O que elas apontam só soma ao score; não apontar
+   não baixa nada nem vira frase de segurança. O limite do VirusTotal (4/min, 500/dia) é contado
+   no banco e nunca contornado. A chave do Google vai na query: nunca em log, exceção nem Sentry.
+   O aviso do Google leva "possivelmente" e a atribuição, só ao vivo (ADR-0028).
 5. **Pesos e padrões vivem em `scoring/regras.yaml`**, versionado — nunca espalhados como números
    mágicos no código. Mudar peso não pode exigir mudar código. As respostas do plano B, uma por
    nível, vivem em `scoring/respostas.yaml`; o sistema nunca diz "não é golpe".
@@ -221,14 +230,15 @@ quebrar uma delas, **pare e pergunte**.
 7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
 8. **Orçamento de tempo** (KPI < 30s): janela da cota ≤ 1,5 s **em série** antes de qualquer
    chamada à IA (sessão + reserva; no texto, depois do motor; ADR-0024) · leitura do print ≤ 10 s
-   **em série** (a transcrição é a entrada das heurísticas; ocupa o lugar do OCR) · depois, em
-   paralelo: heurísticas locais ≤ 300ms · RDAP ≤ 3s · reputação externa ≤ 5s · por fim LLM, uma
+   **em série** (a transcrição é a entrada das heurísticas; ocupa o lugar do OCR) · heurísticas
+   locais ≤ 300ms · reputação externa ≤ 3 s, ao mesmo tempo que a janela da cota (no print, em
+   série depois da leitura; ADR-0028) · por fim LLM, uma
    chamada, sem nova tentativa: ≤ 15 s no texto e ≤ 10 s no print (ADR-0020, ADR-0023) · registro
    ≤ 2 s, em série, por último, com o gasto da IA em paralelo no mesmo teto (ADR-0012, ADR-0024).
-   Pior caso: texto ≈ 18,8 s hoje; print ≈ 24 s hoje e ≈ 28,7 s no desenho completo. O proxy do
+   Pior caso: texto ≈ 20,3 s; print ≈ 27 s. O proxy do
    Next corta em 90 s (ADR-0014). Os tetos só podem baixar (o `Settings` recusa valor maior), com
-   uma exceção: `TIMEOUT_COTA_S` aceita até 5 s, mas acima de ~2,8 s o desenho completo do print
-   passa dos 30 s — a fatia da reputação refaz essa conta (ADR-0024). Todo I/O externo tem timeout
+   uma exceção: `TIMEOUT_COTA_S` aceita até 5 s; no texto, acima de 3 s é ela que passa a mandar
+   na etapa que divide com a reputação (ADR-0024, ADR-0028). Todo I/O externo tem timeout
    explícito (ADR-0002).
 
 ## 6. Convenções de código

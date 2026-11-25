@@ -22,6 +22,7 @@ from app.api.deps import (
     obter_leitor_de_print,
     obter_repositorio_analises,
     obter_repositorio_historico,
+    obter_repositorio_reputacao,
     obter_repositorio_sessoes,
     obter_repositorio_uso,
     obter_repositorio_usuarios,
@@ -32,6 +33,7 @@ from app.main import criar_app
 from app.ocr.leitura import LeitorDePrint
 from app.services.repositorio_analises import RepositorioAnalisesPostgres
 from app.services.repositorio_historico import RepositorioHistoricoPostgres
+from app.services.repositorio_reputacao import RepositorioReputacaoPostgres
 from app.services.repositorio_sessoes import RepositorioSessoesPostgres
 from app.services.repositorio_uso import RepositorioUsoPostgres
 from app.services.repositorio_usuarios import RepositorioUsuariosPostgres
@@ -175,6 +177,10 @@ def app(fabrica_de_sessoes: async_sessionmaker[AsyncSession]) -> FastAPI:
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_uso] = lambda: RepositorioUsoPostgres(
+        fabrica_de_sessoes
+    )
+    # O verificador de reputação pede o repositório mesmo sem chave nenhuma (ADR-0028).
+    app.dependency_overrides[obter_repositorio_reputacao] = lambda: RepositorioReputacaoPostgres(
         fabrica_de_sessoes
     )
     app.dependency_overrides[obter_repositorio_historico] = lambda: RepositorioHistoricoPostgres(

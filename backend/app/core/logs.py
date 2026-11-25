@@ -108,3 +108,8 @@ def configurar_logs(nivel: str, formato: FormatoDeLog = "json") -> None:
     servidor.handlers[:] = [saida]
     servidor.propagate = False
     logging.getLogger("uvicorn.access").disabled = True
+    # O httpx registra em INFO a URL de cada chamada, e a do Safe Browsing leva a chave na
+    # query (ADR-0028). Desligados de vez: mesmo que alguém baixe o nível do log raiz, a URL
+    # não sai.
+    for nome in ("httpx", "httpcore"):
+        logging.getLogger(nome).disabled = True

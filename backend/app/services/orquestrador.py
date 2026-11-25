@@ -1,4 +1,4 @@
-"""Orquestração async da análise: motor → cota → IA → regra fixa → registrar.
+"""Orquestração async da análise: motor → cota e reputação → IA → regra fixa → registrar.
 
 O `ServicoAnalise` continua síncrono e puro — é ele que o `avaliar_corpus` chama, sem banco e sem
 IA. O I/O fica aqui, numa camada fina por cima, e a rota chama um método só.
@@ -11,6 +11,10 @@ A cota da IA (fatia 10, ADR-0024) abre uma janela antes da IA: resolve quem é a
 as unidades, num teto só (`timeout_cota_s`). Isso muda a ordem do ADR-0015 — o dono só era
 conhecido no registro —, mas a análise continua sem depender da conta: sem a janela, o texto sai
 só com o motor, nunca com erro.
+
+A reputação dos links (ADR-0028) é consultada ao mesmo tempo que a janela da cota, antes da IA:
+o que as bases apontam vira fator do motor, e por isso só pode subir o nível. Sem resposta
+delas, a análise segue igual, com `verificacao_externa_indisponivel`.
 """
 
 import asyncio
@@ -36,6 +40,8 @@ from app.ocr.leitura import (
     texto_do_print,
     transcricao_marcada,
 )
+from app.reputation.tipos import ResultadoReputacao
+from app.reputation.verificador import VerificadorDeReputacao
 from app.schemas.analise import (
     ContextoDoPrint,
     LeituraDoPrint,
@@ -117,9 +123,11 @@ class OrquestradorAnalise:
         cota: ServicoCota | None = None,
         consumo: ConsumoDaIA | None = None,
         timeout_cota_s: float = 1.5,
+        reputacao: VerificadorDeReputacao | None = None,
     ) -> None:
         """`cota=None`: sem limite de uso (os testes que não tratam de cota). `consumo` é o mesmo
-        objeto que o analisador e o leitor desta requisição preenchem com o usage (ADR-0024)."""
+        objeto que o analisador e o leitor desta requisição preenchem com o usage (ADR-0024).
+        `reputacao=None`: nenhuma base externa é consultada (os testes que não tratam disso)."""
         self._servico = servico
         self._analisador_ia = analisador_ia
         self._respostas = respostas
@@ -133,6 +141,7 @@ class OrquestradorAnalise:
         self._cota = cota
         self._consumo = consumo
         self._timeout_cota_s = timeout_cota_s
+        self._reputacao = reputacao
 
     async def analisar(
         self, texto: str, token_de_sessao: str | None = None, chave_ip: str | None = None
@@ -258,8 +267,21 @@ class OrquestradorAnalise:
         `EntradaInvalida` e não gastou unidade. No print, ela chega pronta.
         """
         resposta = self._servico.analisar(texto)
+        # A reputação e a janela da cota ao mesmo tempo: as duas são espera de rede ou de
+        # banco, e nenhuma depende da outra. A etapa dura o que durar a mais lenta.
         if dados_do_print is None:
-            janela = await self._abrir_janela(token_de_sessao, chave_ip, UNIDADES_TEXTO)
+            janela, reputacao = await asyncio.gather(
+                self._abrir_janela(token_de_sessao, chave_ip, UNIDADES_TEXTO),
+                self._verificar_reputacao(texto),
+            )
+        else:
+            reputacao = await self._verificar_reputacao(texto)
+        if reputacao.apontamentos:
+            # O motor pontua de novo, agora com o que as bases apontaram. É puro e leva
+            # milissegundos; o nível do motor só pode ter subido.
+            resposta = self._servico.analisar(texto, reputacao.apontamentos)
+        if reputacao.indisponivel:
+            resposta = resposta.model_copy(update={"verificacao_externa_indisponivel": True})
         resultado_ia: ResultadoIA | None = None
         if janela is None or (janela.situacao is not None and janela.situacao.concedida):
             resultado_ia = await self._analisador_ia.avaliar(
@@ -281,7 +303,7 @@ class OrquestradorAnalise:
                 _registrar_cota_excedida(janela)
         # O gasto vai em paralelo com o registro, cada um no próprio teto: a invariante 8 não
         # ganha etapa nova no fim da análise.
-        registro, _ = await asyncio.gather(
+        registro, _, _ = await asyncio.gather(
             self._registrar(
                 RegistroAnalise.da_resposta(
                     resposta,
@@ -295,6 +317,7 @@ class OrquestradorAnalise:
                 janela,
             ),
             self._registrar_gasto(janela.dia if janela is not None else None),
+            self._guardar_reputacao(reputacao),
         )
         return resposta.model_copy(
             update={
@@ -302,6 +325,21 @@ class OrquestradorAnalise:
                 "texto_salvo": registro is not None and registro.texto_input is not None,
             }
         )
+
+    async def _verificar_reputacao(self, texto: str) -> ResultadoReputacao:
+        """O que as bases externas dizem dos domínios da mensagem. Nunca levanta: o
+        verificador devolve "indisponível", e o `except` aqui é a última rede."""
+        if self._reputacao is None:
+            return ResultadoReputacao()
+        try:
+            return await self._reputacao.verificar(self._servico.alvos_de_reputacao(texto))
+        except Exception as exc:
+            logger.warning("Reputação não consultada: %s", type(exc).__name__)
+            return ResultadoReputacao(indisponivel=True)
+
+    async def _guardar_reputacao(self, reputacao: ResultadoReputacao) -> None:
+        if self._reputacao is not None:
+            await self._reputacao.guardar(reputacao.a_guardar, self._timeout_s)
 
     async def _abrir_janela(
         self, token: str | None, chave_ip: str | None, unidades: int

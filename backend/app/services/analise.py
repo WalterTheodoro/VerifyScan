@@ -2,14 +2,15 @@
 
 A regra de negócio mora aqui, não na rota (CLAUDE.md §6). O pipeline é curto e síncrono: extrai
 links, aplica as heurísticas de texto e as de link (que nunca abrem o link, ADR-0022), agrega.
-Nada disso faz I/O, então não há o que aguardar — o `await` real chega na Fase 4, com RDAP e
-reputação em paralelo.
+Nada disso faz I/O, então não há o que aguardar. A reputação dos links, que é rede, fica no
+orquestrador (ADR-0028), e chega aqui já pronta, como `apontamentos`.
 
 O que este serviço devolve é a resposta **sem IA**: o nível do motor com a orientação fixa do
 nível (o plano B do ADR-0020). A IA entra depois, no orquestrador, e só pode subir o nível.
 """
 
 import re
+from collections.abc import Sequence
 
 from app.analyzers.dominios import DomainAnalyzer
 from app.analyzers.normalizacao import normalizar
@@ -17,8 +18,11 @@ from app.analyzers.texto import TextAnalyzer
 from app.analyzers.urls import URLExtractor, URLExtraida
 from app.formulator.limpeza import PADRAO_ESQUEMA, PADRAO_TELEFONE, trocar_emails
 from app.ocr.leitura import textos_recebidos, trocar_nas_mensagens
+from app.reputation.fatores import fatores_de_reputacao, fontes_do_dominio, frases_do_dominio
+from app.reputation.tipos import Alvo, Apontamento
 from app.schemas.analise import LinkDaMensagem, RespostaAnalise, TipoInput
 from app.scoring.motor import ScoringEngine
+from app.scoring.regras import ConfiguracaoReputacao
 from app.scoring.respostas import RespostasPadrao
 
 # Lugar provisório de cada link enquanto o texto é trocado: sem ponto, para o extrator não o achar
@@ -48,7 +52,9 @@ class ServicoAnalise:
         motor: ScoringEngine,
         respostas: RespostasPadrao,
         maximo_de_caracteres: int,
+        reputacao: ConfiguracaoReputacao,
     ) -> None:
+        self._reputacao = reputacao
         self._analisador = analisador
         self._extrator = extrator
         self._dominios = dominios
@@ -56,20 +62,59 @@ class ServicoAnalise:
         self._respostas = respostas
         self._maximo_de_caracteres = maximo_de_caracteres
 
-    def analisar(self, texto: str) -> RespostaAnalise:
+    def analisar(self, texto: str, apontamentos: Sequence[Apontamento] = ()) -> RespostaAnalise:
+        """`apontamentos` é o que as bases externas disseram dos domínios (ADR-0028). Quem os
+        busca é o orquestrador; aqui eles só somam, como qualquer fator. Sem eles — o caso
+        do `avaliar_corpus`, que roda sem rede — a análise é só a do motor.
+        """
         self._validar(texto)
         urls = self._extrator.extrair(texto)
-        fatores = self._analisador.analisar(texto) + self._dominios.analisar(urls)
+        fatores = (
+            self._analisador.analisar(texto)
+            + self._dominios.analisar(urls)
+            + fatores_de_reputacao(self._reputacao, apontamentos)
+        )
         resultado = self._motor.pontuar(fatores)
         return RespostaAnalise(
             score=resultado.score,
             nivel_risco=resultado.nivel_risco,
             fatores=resultado.fatores,
-            links=self._dominios.descrever(urls),
+            links=self._links(urls, apontamentos),
             nivel_motor=resultado.nivel_risco,
             orientacao=self._respostas.para(resultado.nivel_risco),
             explicacao_indisponivel=True,
         )
+
+    def alvos_de_reputacao(self, texto: str) -> list[Alvo]:
+        """Os domínios desta mensagem que podem ser perguntados às bases externas: só host e
+        domínio registrável, até o teto do `regras.yaml`, sem os oficiais (ADR-0028)."""
+        return self._dominios.alvos_de_reputacao(
+            self._extrator.extrair(texto), self._reputacao.maximo_de_dominios
+        )
+
+    def _links(
+        self, urls: list[URLExtraida], apontamentos: Sequence[Apontamento]
+    ) -> list[LinkDaMensagem]:
+        """O bloco de links, com o que as bases apontaram de cada domínio. A frase "nada
+        estranho no endereço" sai quando uma base apontou: as duas juntas se contradizem."""
+        links = self._dominios.descrever(urls)
+        if not apontamentos:
+            return links
+        com_reputacao = []
+        for link in links:
+            frases = frases_do_dominio(self._reputacao, apontamentos, link.dominio)
+            if frases:
+                proprias = [
+                    frase for frase in link.observacoes if frase != self._dominios.frase_sem_sinal
+                ]
+                link = link.model_copy(
+                    update={
+                        "observacoes": proprias + frases,
+                        "apontado_por": fontes_do_dominio(apontamentos, link.dominio),
+                    }
+                )
+            com_reputacao.append(link)
+        return com_reputacao
 
     def links_do_texto(
         self, texto: str | None, tipo_input: TipoInput = "texto"

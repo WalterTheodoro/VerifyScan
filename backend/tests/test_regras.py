@@ -12,7 +12,13 @@ from pydantic import ValidationError
 
 from app.schemas.analise import CategoriaFator
 from app.scoring.descricoes import PLACEHOLDERS_PERMITIDOS, ModeloDescricao
-from app.scoring.regras import CATEGORIAS_DE_LINK, CATEGORIAS_DE_TEXTO, Regras, carregar_regras
+from app.scoring.regras import (
+    CATEGORIAS_DE_LINK,
+    CATEGORIAS_DE_REPUTACAO,
+    CATEGORIAS_DE_TEXTO,
+    Regras,
+    carregar_regras,
+)
 
 # §5.4.1 do RFC, tabela "Categoria / Exemplos de padrões detectados / Peso".
 PESOS_DO_RFC = {
@@ -72,9 +78,11 @@ def test_sinais_de_link_existem_com_os_pesos_propostos() -> None:
 
 
 def test_categorias_de_texto_e_de_link_cobrem_o_contrato_sem_sobrepor() -> None:
-    """Toda categoria do contrato é de texto ou de link, nunca das duas."""
-    assert set(CATEGORIAS_DE_TEXTO) | set(CATEGORIAS_DE_LINK) == set(get_args(CategoriaFator))
-    assert not set(CATEGORIAS_DE_TEXTO) & set(CATEGORIAS_DE_LINK)
+    """Toda categoria do contrato é de texto, de link ou de reputação, e de uma só."""
+    grupos = [set(CATEGORIAS_DE_TEXTO), set(CATEGORIAS_DE_LINK), set(CATEGORIAS_DE_REPUTACAO)]
+
+    assert set().union(*grupos) == set(get_args(CategoriaFator))
+    assert sum(len(grupo) for grupo in grupos) == len(get_args(CategoriaFator))
 
 
 def test_marca_fora_do_oficial_e_imitacao_sozinhas_saem_de_baixo() -> None:
@@ -193,6 +201,7 @@ def _regras_validas() -> dict[str, object]:
         "urls": {"maximo_por_analise": 20, "tlds_conhecidos": ["com", "br", "top"]},
         "categorias": categorias,
         "dominios": _dominios_validos(),
+        "reputacao": carregar_regras().reputacao.model_dump(),
     }
 
 

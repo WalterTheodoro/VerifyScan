@@ -45,13 +45,17 @@ dependencies = [
     # Rastreamento de erros (ADR-0026), ligado só com SENTRY_DSN. Versão fixa, de 05/11/2026: a
     # 2.75.0 tinha 11 dias na adoção, e a 3.0 ainda é candidata a versão.
     "sentry-sdk[fastapi]==2.74.0",
+    # Cliente HTTP assíncrono para as bases de reputação (ADR-0028): teto por chamada e, nos
+    # testes, um transporte falso no lugar da rede. A stdlib (`urllib`) não é assíncrona. Já estava
+    # no lock, pelo grupo de desenvolvimento (é o cliente dos testes da API); o SDK da Anthropic
+    # não o traz, usa o `httpx2`. A 0.28.1 é de 06/12/2024 (regra dos 14 dias do ADR-0022).
+    "httpx==0.28.1",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
-    "httpx>=0.28",
     "ruff>=0.9",
     "mypy>=1.14",
     "types-pyyaml>=6.0.12.20260815",
@@ -103,6 +107,8 @@ select = [
 "app/formulator/*.py" = ["N818"]
 # E os motivos da recusa do print e da leitura (`ImagemInvalida`, `LeituraFalhou`, ADR-0023).
 "app/ocr/*.py" = ["N818"]
+# E a base de reputação que não respondeu (`FonteIndisponivel`, ADR-0028).
+"app/reputation/*.py" = ["N818"]
 # E o Argon2 sem vaga no semáforo (`HasherOcupado`, ADR-0024).
 "app/core/seguranca.py" = ["N818"]
 

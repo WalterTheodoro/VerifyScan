@@ -9,6 +9,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -51,8 +52,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     infraestrutura responde deve chamar /health.
 
     Sem REDIS_URL o cliente não é criado e `app.state.redis` fica `None`: é o Redis desativado,
-    estado de produção até a Fase 4. Com a IA desligada, `app.state.cliente_ia` também fica
-    `None`, e toda análise sai com o plano B (ADR-0020).
+    estado de produção (nada o usa hoje: ADR-0028). Com a IA desligada, `app.state.cliente_ia`
+    também fica `None`, e toda análise sai com o plano B (ADR-0020).
 
     A única I/O da subida é a faxina do que venceu — análises do histórico, sessões e o uso
     diário da IA (ADR-0015, ADR-0019, ADR-0024): oportunista, com o teto do registro, e nunca
@@ -66,6 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = redis
     cliente_ia = criar_cliente_ia(settings)
     app.state.cliente_ia = cliente_ia
+    # Um cliente HTTP só para as bases de reputação (ADR-0028), sem seguir redirecionamento.
+    # O teto de cada chamada é passado na própria chamada.
+    http_reputacao = httpx.AsyncClient(follow_redirects=False)
+    app.state.http_reputacao = http_reputacao
     if cliente_ia is None:
         # Uma vez por processo, e não a cada análise: IA desligada é configuração, não falha.
         logger.info("IA desligada: as análises saem só do motor", extra=evento("ia_desligada"))
@@ -84,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await redis.aclose()
         if cliente_ia is not None:
             await cliente_ia.sdk.close()
+        await http_reputacao.aclose()
         await engine.dispose()
 
 
