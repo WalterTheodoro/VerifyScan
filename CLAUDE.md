@@ -82,7 +82,7 @@ npm install
 npm install <pacote> --before=AAAA-MM-DD   # instalar ou atualizar: sempre com a data de 14 dias atrás (ADR-0022)
 npm run dev        # http://localhost:3000
 npm run lint
-npm test           # Vitest + cobertura de app/** inteiro; reprova abaixo de 25% (ADR-0025)
+npm test           # Vitest + cobertura de app/** e do código da raiz; reprova abaixo de 25% (ADR-0025)
 ```
 
 ## 4. Estrutura
@@ -141,7 +141,8 @@ verifyscan/
    │                       #   X-Request-ID (ADR-0026)
    ├─ instrumentation.ts   # Sentry no servidor do Next e, em instrumentation-client.ts, no
    │                       #   navegador: só com NEXT_PUBLIC_SENTRY_DSN, sem Replay (ADR-0026)
-   ├─ vitest.config.ts     # testes e cobertura: include app/**, threshold 25% (ADR-0025)
+   ├─ vitest.config.ts     # testes e cobertura: app/** + proxy.ts e instrumentation*.ts, threshold
+   │                       #   25% (ADR-0025); a mesma lista vale no Sonar (ADR-0027)
    └─ app/
       ├─ page.tsx          # análise e resultado na mesma página (ADR-0010); texto ou print
       │                    #   (botão, Ctrl+V, soltar; ADR-0023)

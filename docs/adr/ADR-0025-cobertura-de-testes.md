@@ -117,3 +117,10 @@ comando documentado: o relatório não era reproduzível na prova de autoria.
   de integração não são pulados; cada um espera a conexão falhar, e a execução demora e termina em
   erro. Na prova de autoria: subir o `docker compose` antes, ou medir com `-m "not integracao"`.
   Está no README.
+
+## Adendo de 2026-11-25 — o que o frontend mede
+
+A medida do frontend passou a incluir os três arquivos de código da raiz (`proxy.ts`,
+`instrumentation.ts`, `instrumentation-client.ts`), além de `app/**`. Motivo e números no
+ADR-0027: o SonarQube Cloud os conta, e a escolha foi medi-los aqui em vez de tirá-los de lá.
+Com eles: 55,90% de linhas (492/880), contra 56,53% (489/865) só com `app/**`.
