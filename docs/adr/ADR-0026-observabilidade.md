@@ -243,3 +243,68 @@ como configuração do frontend, estava errada nesse ponto.
   `next typegen` (num checkout limpo faltam os tipos que o Next gera, como o `LayoutProps`).
   A trava do compilador vale então para todo push, e não só na máquina. Conferido numa cópia
   limpa, sem `.next`: o passo passa, e reprova com o `sendDefaultPii` de volta.
+
+## Revisão (2026-11-25): sem contagem de sessões em lugar nenhum, sem idioma e fuso no navegador; o aviso diz tudo o que vai
+
+**Contexto.** Com os DSNs ligados em produção, uma bateria sem conta (30 páginas abertas, 5
+análises) registrou 41 chamadas ao túnel `/monitoramento`, quando a amostra de 10% faria esperar
+3 ou 4. Para saber o que eram, o corpo de 15 chamadas foi lido (só tipos e nomes de campo, sem
+copiar valores): **14 itens `session`** (um por página aberta) e **1 `transaction`**. Nenhum
+levava `ip_address`, `user`, `request.data`, cookie, URL com query string ou texto digitado; uma
+marca na query string e outra digitada no campo, sem enviar, não apareceram em nenhum corpo.
+
+O problema era o aviso de privacidade, que dizia que algo só ia para a Sentry "se alguma coisa
+quebrar". Duas coisas iam sem erro nenhum:
+
+- **`session`**, a contagem de sessões do Sentry (Release Health), em toda página aberta, com o
+  navegador (`attrs.user_agent`), o ambiente e a versão;
+- **`transaction`**, em ~10% das páginas, com o endereço sem query, o navegador, medições de
+  desempenho e `contexts.culture` (idioma, fuso e calendário).
+
+**Opções.** (1) Manter tudo e reescrever o aviso. (2) Desligar as sessões, que nada no projeto
+usa, e o `contexts.culture`, que não ajuda a achar defeito; manter o desempenho e contá-lo no
+aviso. (3) Desligar também o desempenho.
+
+**Decisão: a 2.**
+
+- No `@sentry/nextjs` 11.11.0 não há opção para nenhuma das duas: são integrações padrão do
+  navegador, `BrowserSession` e `CultureContext`. O `Sentry.init` do navegador recebe agora
+  `integrations` como função, que tira as duas da lista padrão (`opcoesDoNavegador` e
+  `INTEGRACOES_DESLIGADAS`, em `app/_lib/sentry.ts`). Tirar a integração resolve o
+  `contexts.culture` antes de qualquer `beforeSend`, então não depende do ciclo de vida das
+  transações (`traceLifecycle: "static"` segue igual). Um teste carrega as integrações padrão do
+  próprio SDK, confere que os dois nomes existem nela e que o filtro os tira e deixa o resto.
+- **O servidor também contava sessões, e deixou de contar.** Conferido no código dos SDKs:
+  - **backend** (`sentry-sdk` 2.74.0): com o padrão `auto_session_tracking=True`, a integração
+    ASGI põe cada requisição numa contagem agregada, que sai como item `sessions`. Agora
+    `auto_session_tracking=False` no `sentry_sdk.init`. A opção não está obsoleta nessa versão:
+    o teste que liga o SDK de verdade com `DeprecationWarning` virando erro continua passando. Um
+    teste de ponta a ponta faz três requisições com o SDK de verdade e o envio em memória: antes
+    saía `sessions` junto com o erro e a transação (o teste falhou assim); agora, só os dois;
+  - **servidor do Next, runtime Node**: a integração padrão `ProcessSession` abre uma sessão por
+    processo e a manda na primeira requisição, e a `Http` conta cada requisição (`sessions`, ligado
+    por padrão). Saem as duas coisas: `integrations` virou função que tira a `ProcessSession` e
+    troca a `Http` pela nossa, com `maxRequestBodySize: "none"` e `sessions: false`
+    (`integracoesDoServidor` e `OPCOES_DO_HTTP_NO_SERVIDOR`). O teste carrega as integrações
+    padrão do próprio SDK do Node;
+  - **runtime edge**: as integrações padrão dele não têm sessão, e o SDK não chama
+    `startSession`. Nada a mudar.
+- A amostra (0,1) e o túnel não mudam; erros e desempenho seguem iguais.
+- O aviso ganhou a seção "Avisos de erro e de desempenho": erros do site e do servidor, medidas
+  de desempenho em cerca de 1 a cada 10 visitas, o que nunca vai, e **Estados Unidos** no lugar de
+  "fora do Brasil", com a menção à transferência internacional (LGPD, art. 33). A organização no
+  Sentry foi criada na região US.
+
+**Consequências.**
+
+- Menos envios: cada página aberta deixa de gerar uma chamada ao túnel.
+- Sem as sessões, o painel do Sentry não mostra "sessões sem erro" nem a taxa de falha por
+  versão. Não era usado.
+- Se uma versão nova do SDK renomear as integrações, o filtro deixa de tirar alguma coisa sem
+  avisar; o teste que lê a lista do SDK é o que falha nesse caso.
+- Medido no build local, com um DSN falso e o túnel interceptado (nada saiu da máquina): 31
+  páginas abertas, **nenhum item `session`** e uma `transaction`, sem `contexts.culture`. Em
+  produção, a leitura dos envelopes vale ser repetida depois do deploy.
+- O desligamento no servidor do Next foi conferido pelo código do SDK e pelo teste do filtro, não
+  por um envio de verdade: o servidor fala com o Sentry direto, sem passar pelo túnel, e não há
+  como interceptar sem mudar o código.
