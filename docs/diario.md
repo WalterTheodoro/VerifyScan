@@ -3075,3 +3075,30 @@ errata, itens 15 a 17.
 - **Pendente:** cadastrar as duas chaves no Render e conferir a primeira análise de verdade;
   o `uv.lock` mudou só na lista de dependências (o `httpx` 0.28.1 saiu do grupo de desenvolvimento
   para as de execução); o Redis segue sem uso (o `cache.py` só cria o cliente).
+
+## 2026-11-25 — Reputação de links: o CI reprovou, e o que a integração mostrou
+
+O PR #33 falhou no job do backend: 25 testes de integração, todos com
+`'State' object has no attribute 'fabrica_de_sessoes'`.
+
+- **Causa, erro meu:** o orquestrador passou a depender do verificador de reputação, que pede o
+  repositório do cache. Troquei essa dependência na app de teste dos unitários (`conftest.py`), mas
+  cinco arquivos de integração montam a própria app, e neles ela caía no repositório de verdade,
+  que precisa do `lifespan`. Eu tinha entregado sem rodar a integração (Docker desligado), e disse
+  isso; o erro estava justamente no que não rodei.
+- **Correção:** a troca do repositório nas cinco apps de integração.
+- **Com o Docker ligado apareceram mais dois erros, nos meus testes novos do repositório:**
+  - `guardar` apagava o vencido pela hora de verdade (`datetime.now`), enquanto a leitura usava a
+    hora de quem chama. O teste gravava um item com prazo "de hoje às 15h35" e ele sumia na hora.
+    Não era só o teste: dois relógios no mesmo cache é defeito de desenho. Agora `guardar` recebe a
+    hora, como `buscar`.
+  - o teste de reservas simultâneas usava a conexão única da fixture, onde as transações se
+    atropelam. Passou a usar conexões separadas com commit, como o `test_uso.py`: 20 reservas ao
+    mesmo tempo, exatamente 4 passam, e o banco fica com 4 no minuto e 4 no dia (a soma do minuto
+    das reservas negadas foi desfeita).
+- **Rodado local, com Postgres do docker compose:** `alembic upgrade head`, `alembic check` (sem
+  diferença entre modelos e a 0008) e a ida e volta 0008 ↔ 0007; suíte completa, **1141** testes,
+  **96,17%**; nenhuma linha deixada no banco de teste. `ruff` e `mypy` limpos.
+- **Segue não verificado:** chamada real ao Google e ao VirusTotal (sem chave aqui).
+- **Lição:** dependência nova no orquestrador pede rodar a integração antes de entregar, não
+  depois. Ligar o Docker custa dois minutos.
