@@ -148,6 +148,10 @@ def iniciar_sentry(settings: Settings) -> bool:
         # Variável local de uma função da análise é o texto da mensagem.
         include_local_variables=False,
         max_breadcrumbs=0,
+        # Por padrão, toda requisição entra numa contagem agregada de sessões (Release Health),
+        # enviada mesmo sem erro. Não é usada, e o aviso de privacidade fala só de erros e
+        # desempenho (ADR-0026, revisão).
+        auto_session_tracking=False,
         auto_enabling_integrations=False,
         integrations=[
             StarletteIntegration(),

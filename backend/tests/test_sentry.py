@@ -74,6 +74,8 @@ def test_com_dsn_liga_com_a_configuracao_obrigatoria(init_espiado: list[dict[str
     # A integração da Anthropic liga sozinha e captura as exceções da chamada: fica de fora.
     assert opcoes["auto_enabling_integrations"] is False
     assert opcoes["max_breadcrumbs"] == 0
+    # Sem a contagem de sessões por requisição (Release Health): só erros e desempenho.
+    assert opcoes["auto_session_tracking"] is False
 
 
 def test_nenhuma_categoria_de_coleta_fica_ligada() -> None:
@@ -424,6 +426,22 @@ async def test_erro_na_analise_de_texto_chega_ao_sentry_sem_o_conteudo(
     assert "RuntimeError" in saiu
     assert MARCA not in saiu
     assert "203.0.113.9" not in saiu
+
+
+async def test_requisicoes_nao_geram_contagem_de_sessoes(
+    sentry_em_memoria: list[Envelope], cliente_que_nao_levanta: AsyncClient
+) -> None:
+    """Com o padrão do SDK, cada requisição entra numa contagem agregada que sai como item
+    `sessions` no `flush`. Desligada, só saem o erro e a transação."""
+    async with cliente_que_nao_levanta as cliente:
+        for _ in range(3):
+            await cliente.post("/api/analises", json={"texto": "mensagem qualquer"})
+    sentry_sdk.flush()
+
+    tipos = _tipos(sentry_em_memoria)
+    assert {"event", "transaction"} <= tipos
+    assert "session" not in tipos
+    assert "sessions" not in tipos
 
 
 async def test_erro_na_analise_de_print_chega_ao_sentry_sem_a_imagem(
