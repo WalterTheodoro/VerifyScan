@@ -244,7 +244,9 @@ resource vmLeSegredos 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(cofre.id, vm.id, papelLerSegredos)
   scope: cofre
   properties: {
-    description: 'A VM lê os segredos na hora do deploy.'
+    // Sem acento nas descrições que vão para o Azure: a saída do `az` no Windows os mostra
+    // quebrados, e não dá para saber de fora como ficaram gravados.
+    description: 'Leitura dos segredos pela VM, na hora do deploy.'
     roleDefinitionId: papelLerSegredos
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
@@ -337,7 +339,7 @@ resource vmGravaBackups 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerDeBackups.id, vm.id, papelGravarBlobs)
   scope: containerDeBackups
   properties: {
-    description: 'A VM grava e lê o pg_dump diário, só neste container.'
+    description: 'A VM grava e recupera o pg_dump de cada dia, apenas neste container.'
     roleDefinitionId: papelGravarBlobs
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
@@ -397,7 +399,7 @@ resource githubExecutaNaVm 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   name: guid(vm.id, identidadeDeDeploy.id, papelDeDeploy.id)
   scope: vm
   properties: {
-    description: 'O GitHub Actions executa o script de deploy na VM, e só nela.'
+    description: 'O GitHub Actions executa o script de deploy na VM, e em nenhum outro recurso.'
     roleDefinitionId: papelDeDeploy.id
     principalId: identidadeDeDeploy.properties.principalId
     principalType: 'ServicePrincipal'
