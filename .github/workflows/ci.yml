@@ -205,6 +205,25 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  bicep:
+    name: infra — o Bicep compila
+    runs-on: ubuntu-latest
+    # Só compila: não fala com o Azure nem precisa de login. Pega erro de sintaxe, tipo de
+    # recurso que não existe e parâmetro faltando antes de alguém tentar aplicar (ADR-0029).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: main.bicep e orcamento.bicep
+        run: |
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep build --file infra/orcamento.bicep --stdout > /dev/null
+
+      - name: producao.bicepparam
+        # O arquivo lê o id do operador do ambiente; aqui vai um valor de mentira, só para compilar.
+        env:
+          ID_DO_OPERADOR: 00000000-0000-0000-0000-000000000000
+        run: az bicep build-params --file infra/producao.bicepparam --stdout > /dev/null
+
   sonar:
     name: sonar — análise estática
     needs: [backend, frontend]
