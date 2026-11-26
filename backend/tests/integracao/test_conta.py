@@ -240,7 +240,7 @@ async def test_excluir_apaga_tudo_da_conta_e_nada_da_outra(
 
     assert resposta.status_code == 204
     cookie = resposta.headers["set-cookie"]
-    assert cookie.startswith("vs_sessao=") and "Max-Age=0" in cookie
+    assert cookie.startswith("__Host-vs_sessao=") and "Max-Age=0" in cookie
     assert await _contagens(fabrica_de_sessoes, "Maria") == {
         "usuarios": 0,
         "sessoes": 0,
@@ -316,7 +316,7 @@ async def test_faxina_apaga_as_sessoes_vencidas_e_deixa_as_validas(
         )
         await sessao.execute(
             text("UPDATE sessoes SET expira_em = now() WHERE token_hash = :hash"),
-            {"hash": hash_do_token(maria_no_celular.cookies["vs_sessao"])},
+            {"hash": hash_do_token(maria_no_celular.cookies["__Host-vs_sessao"])},
         )
     assert await _total(fabrica_de_sessoes, "sessoes") == 3
 

@@ -160,7 +160,7 @@ async def test_conta_e_login_nao_vazam(
                 "/api/auth/login", json={"email": "maria@exemplo.com", "senha": MARCA}
             )
             await cliente.post("/api/analises", json={"texto": MENSAGEM})
-        sessao = criada.cookies.get("vs_sessao")
+        sessao = criada.cookies.get("__Host-vs_sessao")
         metricas = await _metricas(cliente)
 
     assert criada.status_code == 201

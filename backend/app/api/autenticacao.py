@@ -1,13 +1,15 @@
 """Rotas de conta: cadastro, login, logout e /eu. Finas: a regra está no ServicoAutenticacao.
 
-O que é desta camada é o HTTP: status, mensagem em `detail` e o cookie `vs_sessao` (ADR-0013).
+O que é desta camada é o HTTP: status, mensagem em `detail` e o cookie de sessão (ADR-0013;
+`__Host-vs_sessao` em HTTPS, ADR-0029).
 """
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.deps import (
-    NOME_DO_COOKIE,
+    ler_token_de_sessao,
+    nome_do_cookie,
     obter_chave_ip,
     obter_servico_autenticacao,
     obter_usuario_atual,
@@ -46,12 +48,12 @@ def _http(erro: Exception) -> HTTPException:
 def _gravar_cookie(response: Response, token: str, settings: Settings) -> None:
     """HttpOnly, SameSite=Lax, Path=/ e SEM Domain (ADR-0013).
 
-    Sem Domain, o cookie fica preso ao host que respondeu. Em produção esse host é o frontend,
-    que repassa /api/* ao backend (fatia 3): onrender.com está na Public Suffix List, e um cookie
-    do backend seria de terceiro para o frontend — o Safari bloqueia.
+    Sem Domain, o cookie fica preso ao host que respondeu. Em produção esse host é o do site,
+    que repassa /api/* ao backend (ADR-0014): o cookie é sempre first-party. Em HTTPS o nome leva
+    o prefixo `__Host-`, que faz o navegador exigir exatamente estes atributos (ADR-0029).
     """
     response.set_cookie(
-        NOME_DO_COOKIE,
+        nome_do_cookie(settings),
         token,
         max_age=settings.sessao_dias * 24 * 60 * 60,
         path="/",
@@ -65,7 +67,7 @@ def apagar_cookie(response: Response, settings: Settings) -> None:
     # Mesmos atributos da gravação: o navegador só apaga o cookie que bate com eles. Público
     # porque a exclusão da conta (api/gestao_conta.py) também limpa o cookie.
     response.delete_cookie(
-        NOME_DO_COOKIE,
+        nome_do_cookie(settings),
         path="/",
         secure=settings.cookie_secure,
         httponly=True,
@@ -137,7 +139,7 @@ async def entrar(
 async def sair(
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
     settings: Settings = Depends(get_settings),
-    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
+    token: str | None = Depends(ler_token_de_sessao),
 ) -> Response:
     """Apaga a sessão, se houver, e limpa o cookie SEMPRE — inclusive quando o banco não
     responde: o 503 é honesto sobre a sessão no servidor, e o navegador sai de qualquer jeito.

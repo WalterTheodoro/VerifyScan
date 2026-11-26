@@ -77,7 +77,7 @@ async def test_banco_guarda_hashes_e_nao_os_segredos(
     navegador: AsyncClient, fabrica_de_sessoes: async_sessionmaker[AsyncSession]
 ) -> None:
     await navegador.post("/api/auth/cadastro", json=CADASTRO)
-    token = navegador.cookies["vs_sessao"]
+    token = navegador.cookies["__Host-vs_sessao"]
 
     async with fabrica_de_sessoes() as sessao:
         usuario = await sessao.scalar(select(Usuario))
