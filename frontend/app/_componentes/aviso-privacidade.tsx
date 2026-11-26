@@ -6,6 +6,10 @@ const CONTATO = process.env.NEXT_PUBLIC_CONTATO_PRIVACIDADE?.trim() ?? "";
 // A mesma variável que liga o Sentry (ADR-0026): sem ela, nenhum aviso de erro sai do site, e a
 // seção sobre isso não aparece. Também lida no build.
 const AVISA_ERROS = Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim());
+// Onde o site roda (ADR-0029). Só o build da imagem (frontend/Dockerfile) define "azure". Enquanto
+// o Render e a VM da Azure estão no ar ao mesmo tempo, cada um mostra o aviso verdadeiro para si;
+// depois do corte, o ramo do Render e esta variável saem.
+const NA_AZURE = process.env.NEXT_PUBLIC_HOSPEDAGEM?.trim() === "azure";
 
 const LINK = "font-bold text-anil underline underline-offset-4 break-all";
 
@@ -15,7 +19,9 @@ const LINK = "font-bold text-anil underline underline-offset-4 break-all";
  *  O mesmo componente em /privacidade e em /conta/privacidade. O que está aqui precisa bater com
  *  o banco: models/, ADR-0006 e ADR-0015 (anônima sem texto, vínculo de 7 dias), ADR-0018 (a
  *  mensagem de quem tem conta, pelos mesmos 7 dias), ADR-0013 e ADR-0019 (conta, sessão e
- *  exclusão), ADR-0011 (Neon), ADR-0020 (a mensagem vai à Anthropic; o que a IA escreveu segue a
+ *  exclusão), ADR-0011 (Neon, no Render) e ADR-0029 (na Azure: a VM no Chile, sem registro de
+ *  acesso com IP, e a cópia de segurança diária por 7 dias), ADR-0020 (a mensagem vai à
+ *  Anthropic; o que a IA escreveu segue a
  *  regra da mensagem), ADR-0023 (o print vai à Anthropic só para ser lido e nunca é guardado; do
  *  print, fica o texto lido e o contexto, com a regra da mensagem), ADR-0024 (a contagem diária
  *  da IA e dos cadastros, pelo HMAC do IP ou pela conta, 2 dias; senhas erradas só em memória),
@@ -163,7 +169,16 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
             a contagem diária das análises com inteligência artificial e das contas criadas, 2
             dias;
           </li>
-          <li>a contagem de senhas erradas, 15 minutos, só na memória do servidor.</li>
+          <li>
+            a contagem de senhas erradas, 15 minutos, só na memória do servidor
+            {NA_AZURE ? ";" : "."}
+          </li>
+          {NA_AZURE && (
+            <li>
+              as cópias de segurança do banco de dados, 7 dias: o que você apagar some delas em
+              até 7 dias.
+            </li>
+          )}
         </ul>
       </section>
 
@@ -198,10 +213,18 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
 
       <section aria-labelledby="acessos" className="flex flex-col gap-junto">
         <Titulo id="acessos" className={titulo}>Registros de acesso</Titulo>
-        <p>
-          A Render, empresa onde o site roda, guarda por um tempo limitado registros com o
-          endereço IP e o horário de cada acesso. Eles servem para o site funcionar.
-        </p>
+        {NA_AZURE ? (
+          <p>
+            O VerifyScan não guarda registros com o endereço IP de quem acessa o site. A
+            Microsoft, dona do servidor onde o site roda, pode registrar dados técnicos da conexão
+            para manter a rede dela funcionando.
+          </p>
+        ) : (
+          <p>
+            A Render, empresa onde o site roda, guarda por um tempo limitado registros com o
+            endereço IP e o horário de cada acesso. Eles servem para o site funcionar.
+          </p>
+        )}
       </section>
 
       {AVISA_ERROS && (
@@ -272,11 +295,30 @@ export function AvisoPrivacidade({ nivel }: { nivel: "h2" | "h3" }) {
 
       <section aria-labelledby="onde" className="flex flex-col gap-junto">
         <Titulo id="onde" className={titulo}>Onde ficam e com quem</Titulo>
+        {NA_AZURE && (
+          <p>
+            O site e o banco de dados ficam em um servidor da Microsoft Azure, no Chile. É lá que
+            ficam a sua conta e o seu histórico. Como o servidor fica no Chile, guardar esses
+            dados lá é uma transferência internacional de dados (Lei Geral de Proteção de Dados,
+            art. 33). Todo dia é feita uma cópia de segurança do banco de dados, que fica no mesmo
+            lugar por 7 dias.
+          </p>
+        )}
         <p>
-          Em servidores nos Estados Unidos, de três empresas: a Render, onde o site roda; a
-          Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
-          artificial, como explicado acima. O domínio dos links vai também ao Google e ao
-          VirusTotal, nos Estados Unidos, como explicado acima.
+          {NA_AZURE ? (
+            <>
+              A análise com inteligência artificial é feita pela Anthropic, nos Estados Unidos,
+              como explicado acima.
+            </>
+          ) : (
+            <>
+              Em servidores nos Estados Unidos, de três empresas: a Render, onde o site roda; a
+              Neon, onde fica o banco de dados; e a Anthropic, que faz a análise com inteligência
+              artificial, como explicado acima.
+            </>
+          )}{" "}
+          O domínio dos links vai também ao Google e ao VirusTotal, nos Estados Unidos, como
+          explicado acima.
           {AVISA_ERROS && (
             <>
               {" "}

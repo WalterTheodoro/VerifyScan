@@ -39,8 +39,11 @@ ARG SENTRY_ORG=
 ARG SENTRY_PROJECT=
 
 # SAIDA_STANDALONE liga o `output: "standalone"` do next.config.ts, só aqui.
+# NEXT_PUBLIC_HOSPEDAGEM faz o aviso de privacidade dizer onde ESTA imagem roda: na VM da Azure,
+# no Chile. Fixa aqui, e não uma variável do CI: a imagem só existe para a VM.
 ENV NEXT_TELEMETRY_DISABLED=1 \
-    SAIDA_STANDALONE=1
+    SAIDA_STANDALONE=1 \
+    NEXT_PUBLIC_HOSPEDAGEM=azure
 
 # Dois cuidados nesta linha:
 # - o token do Sentry, se houver, entra como segredo de build: existe só durante este comando e
