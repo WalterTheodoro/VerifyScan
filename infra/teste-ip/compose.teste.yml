@@ -14,6 +14,10 @@
 #   docker compose @c exec -T cliente-b python /teste/cadeia_de_ip.py outro-ip
 #   docker compose @c down -v
 #
+# O CI tem um passo a mais, o do log do Caddy (invariante 2): para o frontend, roda
+# `cadeia_de_ip.py provocar-erro` e confere que `docker compose logs caddy` tem a linha do 502
+# sem o IP do cliente e sem as marcas do pedido.
+#
 # O `-p` dá a este teste um projeto próprio: os contêineres e volumes dele não se misturam com os
 # do docker-compose.yml de desenvolvimento, e o `down -v` apaga só o que é do teste.
 # Os caminhos relativos contam a partir da pasta do primeiro arquivo (infra/).

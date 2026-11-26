@@ -1,17 +1,36 @@
 # O Caddy é o único serviço exposto da VM (ADR-0029): recebe 80 e 443, cuida do HTTPS sozinho
 # (pede e renova o certificado, e redireciona HTTP para HTTPS) e repassa tudo ao frontend.
 #
-# As duas variáveis vêm do compose: {$ENDERECO} é o nome público da VM e {$EMAIL_ACME} é o
-# contato da conta no emissor do certificado (Let's Encrypt; se ele falhar, ZeroSSL).
-#
-# Não há diretiva `log` de propósito: sem ela o Caddy não grava log de acesso, e o IP do
-# visitante não vai para log nenhum (invariante 2).
+# As duas variáveis vêm do compose, que as recebe do ambiente (nunca de arquivo versionado):
+# {$ENDERECO} é o nome público da VM e {$EMAIL_ACME} é o contato da conta no emissor do
+# certificado.
 
 {
+	# Sem e-mail, o Caddy usa só o Let's Encrypt. Desde a versão 2.8.0 ele só acrescenta o
+	# ZeroSSL como segunda opção quando esta linha existe (notas da versão 2.8.0, "ZeroSSL").
 	email {$EMAIL_ACME}
+
+	# O log do Caddy nunca leva dado do pedido (invariante 2). Não há diretiva `log` no site,
+	# então não existe log de acesso. Mas quando o repasse falha (um 502, por exemplo), o Caddy
+	# grava uma linha de erro com o campo `request`: IP do visitante, URL com a query e
+	# cabeçalhos. O filtro abaixo apaga esse campo de toda linha de log; ficam a mensagem, o
+	# status e a duração. Coberto por infra/teste-ip/, que roda no CI.
+	log {
+		format filter {
+			wrap json
+			fields {
+				request delete
+			}
+		}
+	}
 }
 
 {$ENDERECO} {
+	# HSTS: depois da primeira visita, o navegador só fala HTTPS com este endereço, por um ano,
+	# mesmo que alguém digite http://. Sem includeSubDomains (não há subdomínio nosso) e sem
+	# preload (o domínio é da Azure, não nosso).
+	header Strict-Transport-Security "max-age=31536000"
+
 	reverse_proxy frontend:3000 {
 		# A cadeia de IP da cota (ADR-0024) começa aqui. O `proxy.ts` confia na entrada mais à
 		# direita do X-Forwarded-For; esta linha troca o cabeçalho inteiro pelo IP de quem abriu

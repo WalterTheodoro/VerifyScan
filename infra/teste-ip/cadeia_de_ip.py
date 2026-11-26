@@ -11,10 +11,17 @@ frontend (proxy.ts) → backend → Postgres. O que ele prova:
    cadastrar depois de o primeiro esgotar o limite. Se todo mundo caísse numa chave só (o IP do
    Caddy ou do frontend), este cadastro seria recusado.
 
-A ordem importa: `forjar` no primeiro cliente, depois `outro-ip` no segundo. Só biblioteca padrão.
+3. `provocar-erro`: a parte do log (invariante 2). Com o frontend parado, faz um pedido que o
+   Caddy responde com 502, levando marcas na query, no cookie e num IP forjado. Quem confere é
+   o CI, de fora: o log do Caddy tem de ter a linha do 502 e não pode ter o IP deste cliente,
+   nem nenhuma das marcas.
+
+A ordem importa: `forjar` no primeiro cliente, depois `outro-ip` no segundo; `provocar-erro` por
+último, porque para o frontend. Só biblioteca padrão.
 
     python cadeia_de_ip.py forjar
     python cadeia_de_ip.py outro-ip
+    python cadeia_de_ip.py provocar-erro
 """
 
 import json
@@ -31,6 +38,10 @@ ALVO = os.environ.get("ALVO", "http://caddy")
 LIMITE_DE_CADASTROS = 5
 CRIADO = 201
 RECUSADO_PELO_LIMITE = 429
+SEM_FRONTEND = 502
+# O que o CI procura no log do Caddy depois do `provocar-erro`. Nenhuma das duas pode aparecer.
+MARCA_NO_PEDIDO = "MARCA-DO-TESTE-DE-LOG"
+IP_FORJADO_NO_ERRO = "198.51.100.200"
 
 
 def cabecalhos_forjados(n: int) -> dict[str, str]:
@@ -92,7 +103,23 @@ def outro_ip() -> None:
     conferir("cadastro de um segundo cliente, com outro IP real", cadastrar({}), CRIADO)
 
 
-PARTES = {"forjar": forjar, "outro-ip": outro_ip}
+def provocar_erro() -> None:
+    pedido = urllib.request.Request(
+        f"{ALVO}/api/auth/eu?q={MARCA_NO_PEDIDO}",
+        headers={
+            "Cookie": f"vs_sessao={MARCA_NO_PEDIDO}",
+            "X-Forwarded-For": IP_FORJADO_NO_ERRO,
+        },
+    )
+    try:
+        with urllib.request.urlopen(pedido, timeout=30) as resposta:
+            recebido = int(resposta.status)
+    except urllib.error.HTTPError as erro:
+        recebido = erro.code
+    conferir("pedido com o frontend parado é respondido pelo Caddy", recebido, SEM_FRONTEND)
+
+
+PARTES = {"forjar": forjar, "outro-ip": outro_ip, "provocar-erro": provocar_erro}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in PARTES:

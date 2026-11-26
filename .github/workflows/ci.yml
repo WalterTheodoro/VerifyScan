@@ -181,6 +181,22 @@ jobs:
         # Depois do passo acima, nesta ordem: o primeiro cliente já esgotou o limite do IP dele.
         run: docker compose exec -T cliente-b python /teste/cadeia_de_ip.py outro-ip
 
+      - name: O log do Caddy não leva IP, query nem cabeçalho do pedido
+        # Invariante 2. Sem o frontend, o Caddy responde 502 e grava uma linha de erro: ela tem
+        # de existir (senão o teste não viu o caso) e não pode trazer o IP do cliente nem as
+        # marcas que o pedido levou na query, no cookie e no X-Forwarded-For. Por último, porque
+        # para o frontend.
+        run: |
+          docker compose stop frontend
+          docker compose exec -T cliente-a python /teste/cadeia_de_ip.py provocar-erro
+          ip_do_cliente="$(docker compose exec -T cliente-a hostname -i | tr -d '[:space:]')"
+          docker compose logs --no-color caddy > caddy.log
+          grep -q '"status":502' caddy.log
+          if grep -F -e "$ip_do_cliente" -e MARCA-DO-TESTE-DE-LOG -e 198.51.100.200 caddy.log; then
+            echo "FALHOU: o log do Caddy tem dado do pedido."
+            exit 1
+          fi
+
       - name: Logs, se falhou
         if: failure()
         run: docker compose logs --no-color --tail 100
