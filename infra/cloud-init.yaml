@@ -1,0 +1,49 @@
+#cloud-config
+#
+# Preparo da VM na primeira subida (ADR-0029). O Azure entrega este arquivo à VM na criação e o
+# cloud-init o executa UMA vez; mudar depois não tem efeito numa VM que já existe. Por isso aqui
+# fica só o que não muda: o que evolui (compose, Caddyfile, scripts, agendamento do backup) chega
+# pelo deploy.
+
+package_update: true
+
+# Os pacotes do próprio Ubuntu, e não o repositório da Docker: assim as atualizações automáticas
+# de segurança do sistema cobrem o Docker também.
+packages:
+  - docker.io
+  - docker-compose-v2
+  - jq
+
+write_files:
+  # Rotação de log para TODO contêiner, inclusive os avulsos do deploy (`docker compose run`),
+  # que não passam pelo bloco de log do compose.yml.
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "5" }
+      }
+
+  # Atualizações de segurança automáticas, todo dia. Quando uma delas pede reinício (kernel, por
+  # exemplo), a VM reinicia sozinha às 07:30 UTC, 04:30 em São Paulo; os contêineres voltam
+  # sozinhos (restart: unless-stopped).
+  - path: /etc/apt/apt.conf.d/52verifyscan-atualizacoes
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "07:30";
+
+# 2 GB de swap no disco. Com 4 GB de RAM quase não é usado; é a folga para quando a VM baixar
+# para o tamanho de 1 GB, depois do Demo Day.
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+runcmd:
+  # A pasta do deploy: compose, Caddyfile e o arquivo de ambiente com os segredos. Só o root lê.
+  - install -d -m 700 /opt/verifyscan
+  - systemctl enable --now docker
