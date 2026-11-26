@@ -1,0 +1,53 @@
+# Teste da cadeia de IP da cota (ADR-0029). Não é um compose sozinho: entra POR CIMA do de
+# produção, para o teste rodar com o compose.yml e o Caddyfile de verdade. Só troca o que não
+# existe fora da VM: as imagens (construídas aqui, do código do checkout), o HTTPS (sem
+# certificado público no CI) e a IA (desligada). E acrescenta dois clientes, cada um com seu IP.
+#
+# No PowerShell, a partir da raiz do repositório (o CI faz o mesmo, no job `cadeia-de-ip`):
+#
+#   $c = "-p", "verifyscan-teste-ip", "-f", "infra/compose.yml", "-f", "infra/teste-ip/compose.teste.yml", "--env-file", "infra/teste-ip/teste.env"
+#   docker compose @c build
+#   docker compose @c up -d --wait postgres
+#   docker compose @c run --rm backend alembic upgrade head
+#   docker compose @c up -d --wait
+#   docker compose @c exec -T cliente-a python /teste/cadeia_de_ip.py forjar
+#   docker compose @c exec -T cliente-b python /teste/cadeia_de_ip.py outro-ip
+#   docker compose @c down -v
+#
+# O `-p` dá a este teste um projeto próprio: os contêineres e volumes dele não se misturam com os
+# do docker-compose.yml de desenvolvimento, e o `down -v` apaga só o que é do teste.
+# Os caminhos relativos contam a partir da pasta do primeiro arquivo (infra/).
+
+services:
+  caddy:
+    environment:
+      # Só HTTP, em qualquer nome: os clientes chamam http://caddy.
+      ENDERECO: ":80"
+    # `!reset` apaga a lista herdada: o teste não publica porta na máquina.
+    ports: !reset []
+
+  frontend:
+    image: verifyscan-frontend:teste-ip
+    build: ../frontend
+    pull_policy: build
+
+  backend:
+    image: verifyscan-backend:teste-ip
+    build: ../backend
+    pull_policy: build
+    environment:
+      IA_ATIVADA: "false"
+
+  # Os dois ficam de pé ao mesmo tempo, então têm IPs diferentes na rede do compose. O teste
+  # entra neles com `docker compose exec`.
+  cliente-a: &cliente
+    image: python:3.12-slim
+    command: ["sleep", "infinity"]
+    # Com o init do Docker como processo 1, o `sleep` morre no SIGTERM e o `down` não espera 10 s.
+    init: true
+    volumes:
+      - ./teste-ip/cadeia_de_ip.py:/teste/cadeia_de_ip.py:ro
+    depends_on:
+      - caddy
+
+  cliente-b: *cliente

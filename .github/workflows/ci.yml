@@ -146,6 +146,49 @@ jobs:
           path: frontend/coverage/lcov.info
           if-no-files-found: error
 
+  cadeia-de-ip:
+    name: infra — cadeia de IP da cota
+    runs-on: ubuntu-latest
+    # Sobe a pilha de produção inteira (Caddy, frontend, backend e Postgres) com o compose.yml e
+    # o Caddyfile de verdade, e confere de fora que um X-Forwarded-For forjado não muda a chave
+    # da cota e que o IP real chega ao backend (ADR-0029). O que muda em relação à VM está em
+    # infra/teste-ip/compose.teste.yml: imagens construídas aqui, só HTTP e IA desligada.
+    env:
+      # Os mesmos arquivos em todos os passos, sem repetir -p, -f e --env-file em cada comando.
+      COMPOSE_PROJECT_NAME: verifyscan-teste-ip
+      COMPOSE_FILE: infra/compose.yml:infra/teste-ip/compose.teste.yml
+      COMPOSE_ENV_FILES: infra/teste-ip/teste.env
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir as imagens
+        run: docker compose build
+
+      - name: Subir o banco e rodar a migração
+        # A mesma ordem do deploy: a migração roda com a imagem do backend, antes de ele subir.
+        run: |
+          docker compose up -d --wait postgres
+          docker compose run --rm backend alembic upgrade head
+
+      - name: Subir a pilha
+        # --wait só volta com backend e frontend saudáveis (o /health pela cadeia inteira).
+        run: docker compose up -d --wait
+
+      - name: IP forjado não muda a chave da cota
+        run: docker compose exec -T cliente-a python /teste/cadeia_de_ip.py forjar
+
+      - name: Outro IP real tem outra chave
+        # Depois do passo acima, nesta ordem: o primeiro cliente já esgotou o limite do IP dele.
+        run: docker compose exec -T cliente-b python /teste/cadeia_de_ip.py outro-ip
+
+      - name: Logs, se falhou
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+
+      - name: Derrubar
+        if: always()
+        run: docker compose down -v
+
   sonar:
     name: sonar — análise estática
     needs: [backend, frontend]
