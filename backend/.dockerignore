@@ -1,0 +1,20 @@
+# O que nunca entra na imagem do backend. O `.env` fica na raiz do repositório, fora deste
+# contexto de build; as linhas abaixo cobrem o caso de alguém criar um aqui dentro.
+.env
+.env.*
+
+.venv
+**/__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+
+# Testes e ferramentas de avaliação não rodam em produção.
+tests
+tools
+
+Dockerfile
+.dockerignore
