@@ -1,0 +1,15 @@
+# O que nunca entra na imagem do frontend.
+#
+# O `.env.local` tem o PROXY_SEGREDO de desenvolvimento, e o Next lê arquivos `.env*` no build:
+# sem esta linha, um build feito na máquina gravaria o segredo local na imagem.
+.env*
+
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+Dockerfile
+.dockerignore
