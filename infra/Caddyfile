@@ -1,0 +1,23 @@
+# O Caddy é o único serviço exposto da VM (ADR-0029): recebe 80 e 443, cuida do HTTPS sozinho
+# (pede e renova o certificado, e redireciona HTTP para HTTPS) e repassa tudo ao frontend.
+#
+# As duas variáveis vêm do compose: {$ENDERECO} é o nome público da VM e {$EMAIL_ACME} é o
+# contato da conta no emissor do certificado (Let's Encrypt; se ele falhar, ZeroSSL).
+#
+# Não há diretiva `log` de propósito: sem ela o Caddy não grava log de acesso, e o IP do
+# visitante não vai para log nenhum (invariante 2).
+
+{
+	email {$EMAIL_ACME}
+}
+
+{$ENDERECO} {
+	reverse_proxy frontend:3000 {
+		# A cadeia de IP da cota (ADR-0024) começa aqui. O `proxy.ts` confia na entrada mais à
+		# direita do X-Forwarded-For; esta linha troca o cabeçalho inteiro pelo IP de quem abriu
+		# a conexão com o Caddy, e o que o visitante tiver mandado nele some. É explícita de
+		# propósito: a cota não depende do comportamento padrão do Caddy.
+		# Coberto por infra/teste-ip/, que roda no CI.
+		header_up X-Forwarded-For {remote_host}
+	}
+}
