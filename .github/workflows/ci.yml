@@ -224,6 +224,43 @@ jobs:
           ID_DO_OPERADOR: 00000000-0000-0000-0000-000000000000
         run: az bicep build-params --file infra/producao.bicepparam --stdout > /dev/null
 
+  scripts-da-vm:
+    name: infra — scripts da VM
+    runs-on: ubuntu-latest
+    # O que roda dentro da VM (infra/vm/): deploy com volta automática, leitura do cofre. Os
+    # testes trocam o Docker e o Azure por falsos, então rodam aqui sem VM nenhuma (ADR-0029).
+    # As ferramentas (ruff, mypy, pytest) são as do backend: o código da VM só usa a biblioteca
+    # padrão e não tem dependências próprias.
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Instalar dependências
+        run: uv sync --locked
+
+      - name: ruff
+        run: |
+          uv run --locked ruff format --check ../infra
+          uv run --locked ruff check ../infra
+
+      - name: mypy
+        # --platform linux: o código roda na VM, e a trava do deploy usa um módulo só do Linux.
+        run: uv run --locked mypy --strict --platform linux --explicit-package-bases ../infra/vm
+
+      - name: pytest
+        run: uv run --locked pytest ../infra -q -p no:cacheprovider
+
+      - name: sintaxe do entrar.sh
+        run: bash -n ../infra/vm/entrar.sh
+
   sonar:
     name: sonar — análise estática
     needs: [backend, frontend]
