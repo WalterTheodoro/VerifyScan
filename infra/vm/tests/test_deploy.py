@@ -57,7 +57,7 @@ class Maquina:
         if comando[0] == "curl":
             return "saude"
         if comando[0] == "systemctl":
-            return "ssh"
+            return "ssh" if "mask" in comando else "agendar"
         if "pull" in comando:
             return "baixar"
         if "alembic" in comando:
@@ -77,9 +77,13 @@ class Maquina:
 
 def _pasta(tmp_path: Path, *versoes: str, no_ar: str | None = None) -> Path:
     """A pasta do deploy como o `entrar.sh` a deixa: os arquivos de cada versão já baixados."""
+    (tmp_path / "systemd").mkdir()
     for sha in versoes:
-        (tmp_path / "versoes" / sha).mkdir(parents=True)
+        unidades = tmp_path / "versoes" / sha / "vm" / "systemd"
+        unidades.mkdir(parents=True)
         (tmp_path / "versoes" / sha / "compose.yml").write_text("services: {}\n")
+        for unidade in deploy.UNIDADES_DO_BACKUP:
+            (unidades / unidade).write_text(f"# {unidade} de {sha}\n")
     if no_ar is not None:
         (tmp_path / "tag-atual").write_text(no_ar + "\n")
     return tmp_path
@@ -87,7 +91,12 @@ def _pasta(tmp_path: Path, *versoes: str, no_ar: str | None = None) -> Path:
 
 def _implantar(sha: str, pasta: Path, maquina: Maquina, segredos: Mapping[str, str]) -> int:
     return deploy.implantar(
-        sha, rodar=maquina, cofre=CofreFalso(segredos), pasta=pasta, dormir=lambda _: None
+        sha,
+        rodar=maquina,
+        cofre=CofreFalso(segredos),
+        pasta=pasta,
+        systemd=pasta / "systemd",
+        dormir=lambda _: None,
     )
 
 
@@ -108,9 +117,49 @@ def test_deploy_segue_a_ordem_e_marca_a_versao(tmp_path: Path) -> None:
         ("migrar", SHA_A),
         ("subir", SHA_A),
         ("saude", None),
+        ("agendar", None),  # systemctl daemon-reload
+        ("agendar", None),  # systemctl enable --now do agendamento do backup
         ("outro", None),  # a limpeza das imagens antigas
     ]
     assert (pasta / "tag-atual").read_text().strip() == SHA_A
+
+
+def test_deploy_agenda_o_backup_com_os_arquivos_da_versao(tmp_path: Path) -> None:
+    pasta = _pasta(tmp_path, SHA_A)
+    maquina = Maquina()
+
+    _implantar(SHA_A, pasta, maquina, SEGREDOS)
+
+    for unidade in deploy.UNIDADES_DO_BACKUP:
+        assert (pasta / "systemd" / unidade).read_text() == f"# {unidade} de {SHA_A}\n"
+    comandos = [c for c, _ in maquina.comandos]
+    assert ["systemctl", "enable", "--now", "verifyscan-backup.timer"] in comandos
+
+
+def test_site_no_ar_sem_backup_agendado_nao_passa_por_sucesso(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """O site subiu, então a marca aponta para a versão nova; mas ficar sem backup em silêncio
+    seria pior do que um deploy vermelho."""
+    pasta = _pasta(tmp_path, SHA_A)
+    maquina = Maquina(quebra=("agendar", SHA_A))
+
+    codigo = _implantar(SHA_A, pasta, maquina, SEGREDOS)
+
+    assert codigo != 0
+    assert (pasta / "tag-atual").read_text().strip() == SHA_A
+    saida = capsys.readouterr().out
+    assert "DEPLOY_INCOMPLETO" in saida and "DEPLOY_OK" not in saida
+
+
+def test_deploy_que_falha_nao_mexe_no_agendamento(tmp_path: Path) -> None:
+    pasta = _pasta(tmp_path, SHA_A)
+    maquina = Maquina(quebra=("saude", SHA_A))
+
+    _implantar(SHA_A, pasta, maquina, SEGREDOS)
+
+    assert list((pasta / "systemd").iterdir()) == []
+    assert ("agendar", None) not in maquina.passos()
 
 
 def test_compose_usa_os_arquivos_da_versao_e_o_ambiente_do_cofre(tmp_path: Path) -> None:

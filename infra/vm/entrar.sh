@@ -24,9 +24,9 @@ if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
   exit 2
 fi
 
-# Só as ações que existem. Cada uma é um módulo de infra/vm/.
+# Só as ações que existem. Cada uma é um módulo de infra/vm/, com o mesmo nome.
 case "$acao" in
-  deploy) ;;
+  deploy | backup | restaurar | migrar_neon) ;;
   *)
     echo "RECUSADO: ação desconhecida."
     exit 2
@@ -48,4 +48,5 @@ if [[ ! -f "$destino/compose.yml" ]]; then
 fi
 
 cd "$destino"
-exec python3 -m "vm.$acao" "$sha"
+# O que vier depois da ação segue para o módulo (hoje, só o nome do backup a restaurar).
+exec python3 -m "vm.$acao" "$sha" "${@:3}"

@@ -40,6 +40,8 @@ _SHA = re.compile(r"[0-9a-f]{40}")
 # No primeiro deploy o Caddy ainda pede o certificado: 30 tentativas a cada 5 s, até 2,5 min.
 TENTATIVAS_DE_SAUDE = 30
 ESPERA_ENTRE_TENTATIVAS_S = 5
+# O agendamento do backup diário (infra/vm/systemd/), instalado a cada deploy.
+UNIDADES_DO_BACKUP = ("verifyscan-backup.service", "verifyscan-backup.timer")
 
 
 class LeitorDeSegredos(Protocol):
@@ -171,6 +173,15 @@ def _ler_marca(caminho: Path) -> str | None:
     return valor if _SHA.fullmatch(valor) else None
 
 
+def _agendar_backup(rodar: Rodar, pasta: Path, sha: str, systemd: Path) -> None:
+    """Copia os dois arquivos do agendamento para o systemd e liga o temporizador. A cada
+    deploy, e não só no cloud-init: assim uma mudança no horário chega à VM como qualquer outra."""
+    for unidade in UNIDADES_DO_BACKUP:
+        shutil.copyfile(pasta / "versoes" / sha / "vm" / "systemd" / unidade, systemd / unidade)
+    rodar(["systemctl", "daemon-reload"], {})
+    rodar(["systemctl", "enable", "--now", "verifyscan-backup.timer"], {})
+
+
 def _limpar(rodar: Rodar, pasta: Path, manter: set[str]) -> None:
     """Fora a versão no ar e a anterior, apaga os arquivos das outras e as imagens sem uso há
     mais de uma semana. Falhar aqui não desfaz um deploy que deu certo."""
@@ -192,9 +203,10 @@ def implantar(
     rodar: Rodar,
     cofre: LeitorDeSegredos,
     pasta: Path,
+    systemd: Path = Path("/etc/systemd/system"),
     dormir: Callable[[float], None] = time.sleep,
 ) -> int:
-    """Devolve 0 se a versão pedida ficou no ar; outro número se não ficou."""
+    """Devolve 0 se a versão pedida ficou no ar, com o backup agendado; outro número se não."""
     if not _SHA.fullmatch(sha):
         _dizer("DEPLOY_RECUSADO: a versão tem de ser o SHA inteiro do commit.")
         return 2
@@ -237,6 +249,13 @@ def implantar(
     if anterior is not None and anterior != sha:
         (pasta / "tag-anterior").write_text(anterior + "\n", encoding="utf-8")
     (pasta / "tag-atual").write_text(sha + "\n", encoding="utf-8")
+    try:
+        _agendar_backup(rodar, pasta, sha, systemd)
+    except (OSError, subprocess.CalledProcessError):
+        # O site está no ar, mas sem backup agendado: melhor um deploy vermelho do que ficar
+        # sem cópia em silêncio.
+        _dizer(f"DEPLOY_INCOMPLETO: {sha} está no ar, mas o backup diário NÃO ficou agendado.")
+        return 4
     _limpar(rodar, pasta, {sha, anterior or sha})
     _dizer(f"DEPLOY_OK: {sha} está no ar.")
     return 0

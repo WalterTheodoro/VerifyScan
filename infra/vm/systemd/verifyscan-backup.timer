@@ -1,0 +1,14 @@
+# Todo dia as 06:00 UTC, 03:00 em Sao Paulo (ADR-0029). Longe do reinicio das atualizacoes
+# automaticas, que e as 07:30 UTC.
+# Sem acentos de proposito: arquivo de unidade do systemd.
+
+[Unit]
+Description=Backup diario do banco do VerifyScan
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+# Se a VM estava desligada na hora, roda assim que ela voltar.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
