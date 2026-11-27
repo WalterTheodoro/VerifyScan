@@ -26,7 +26,7 @@ fi
 
 # Só as ações que existem. Cada uma é um módulo de infra/vm/, com o mesmo nome.
 case "$acao" in
-  deploy | backup | restaurar | migrar_neon | alerta) ;;
+  deploy | backup | restaurar | migrar_neon | alerta | logs) ;;
   *)
     echo "RECUSADO: ação desconhecida."
     exit 2
@@ -48,5 +48,5 @@ if [[ ! -f "$destino/compose.yml" ]]; then
 fi
 
 cd "$destino"
-# O que vier depois da ação segue para o módulo (hoje, só o nome do backup a restaurar).
+# O que vier depois da ação segue para o módulo (o backup a restaurar; o alvo e o filtro dos logs).
 exec python3 -m "vm.$acao" "$sha" "${@:3}"
