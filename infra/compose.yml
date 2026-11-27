@@ -49,6 +49,12 @@ services:
       # O mesmo valor do backend, da mesma variável (ADR-0024). Lido em execução pelo proxy.ts.
       # A imagem não confere isto na subida; quem garante que existe é o `:?` daqui.
       PROXY_SEGREDO: ${PROXY_SEGREDO:?defina PROXY_SEGREDO}
+      # Desliga UM tipo de aviso do Node, o que supõe vazamento quando algo tem mais de 10
+      # ouvintes do mesmo evento. Em cada pedido repassado ao backend a resposta tem 11, todos
+      # legítimos e descartados com ela: 9 do Next (rota, proxy.ts e repasse) e 2 do Sentry.
+      # Era uma linha de aviso por pedido, inclusive a cada verificação de saúde abaixo, e o log
+      # do frontend ficava só com isso. Os outros avisos continuam saindo (diário, 27/11/2026).
+      NODE_OPTIONS: --disable-warning=MaxListenersExceededWarning
     depends_on:
       backend:
         condition: service_healthy
