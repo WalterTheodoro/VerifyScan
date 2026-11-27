@@ -3172,3 +3172,29 @@ esta fatia terminar.
 - **Lição:** afirmar que um log "não tem" um dado pede provocar o caso e ler o log; e o que só o
   ambiente de verdade revela (o status do run-command, as aspas) justifica testar cedo na VM,
   antes de o deploy depender disso.
+
+## 2026-11-26 — Hospedagem na Azure: o Quality Gate reprovou o PR
+
+O PR #34 passou nos 12 checks do CI e reprovou no SonarQube Cloud: nota E de segurança no código
+novo, 9 questões. A triagem completa está no ADR-0027.
+
+- **Por que só apareceu agora:** a fatia trouxe quatro tipos de arquivo que o projeto não tinha
+  (Bicep, shell, Dockerfile, workflow de deploy), cada um com regras próprias. Em todos os passos
+  eu rodei `ruff`, `mypy` e os testes; nenhum deles olha esses arquivos. Eu tinha anotado que o
+  Sonar poderia apontar os arquivos novos, e deixei para ver depois da primeira análise.
+- **Duas eram reais, as duas de endurecimento:** a imagem do backend instalava dependências
+  podendo construir pacotes (agora só aceita pacote pronto), e o `curl` que baixa na VM o código
+  de cada versão seguia redirecionamentos sem exigir HTTPS. Corrigidas, a segunda com teste.
+- **Sete foram ignoradas, com motivo, regra e arquivo:** a senha do banco que não está na URL
+  porque vai por variável; o endereço do serviço de metadados da Azure; o checkout do workflow de
+  deploy, protegido por quatro conferências; e quatro de criptografia e identidade no Bicep, em
+  que a Azure já cifra em repouso com chave da plataforma.
+- **Decisão do Walter:** não ligar o `encryptionAtHost`; o motivo ficou registrado no ADR-0027.
+- **A mesma regra, duas respostas:** `--no-build` foi aceito no CI (o backend é instalado lá e
+  precisa ser construído) e corrigido no Dockerfile (lá ele entra por cópia). Classificar pela
+  regra, e não pelo lugar, teria ignorado uma correção que custava uma palavra.
+- **Não deu para ler o texto das regras:** a API pública não o devolve sem login. A classificação
+  saiu da mensagem de cada questão.
+- **Rodado:** scripts da VM, **86** testes, `ruff` e `mypy --strict` limpos; a imagem do backend
+  construída com o `--no-build`; o `curl` com as opções novas baixou o pacote do repositório.
+- **Pendente:** conferir o Quality Gate depois do push.

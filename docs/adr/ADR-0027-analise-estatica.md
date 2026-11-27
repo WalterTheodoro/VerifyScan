@@ -185,6 +185,41 @@ repositório para isso):
 
 O Sonar olha o código que escrevemos; essas três olham segredos e dependências.
 
+## Triagem do PR #34: a hospedagem na Azure (26/11/2026)
+
+O PR da fatia 15 (ADR-0029) passou nos 12 checks do CI e reprovou no Quality Gate: nota **E** de
+segurança no código novo, por 9 questões em arquivos que o projeto não tinha antes (Bicep, shell,
+Dockerfile, workflow de deploy). Nenhum *security hotspot*; cobertura e duplicação passaram. A
+nota E vem da única questão bloqueante (item 1), mas o gate exige nota A: as nove tinham de sair.
+
+| # | Regra | Onde | O que é | Classificação e justificativa | O que foi feito |
+|---|---|---|---|---|---|
+| 1 | `python:S2115` (bloqueante) | `infra/vm/migrar_neon.py` | URL do banco de destino sem senha | **Falso positivo.** A senha existe e vem do cofre; vai na variável `PGPASSWORD`, fora da URL de propósito, para não aparecer na linha de comando. Há teste que confere. | Ignorada nesse arquivo. |
+| 2 | `docker:S8541` | `backend/Dockerfile` | `uv sync` sem `--no-build` | **Real (endurecimento).** No `ci.yml` a mesma regra foi aceita porque lá o backend é instalado e precisa ser construído (item 3 da primeira triagem). Na imagem ele entra por cópia (`--no-install-project`). Testado: com `--no-build` a instalação passa, porque todas as dependências têm pacote pronto. | `--no-build` no `uv sync`. Quem testa é o job que constrói a imagem e sobe a pilha. |
+| 3 | `shell:S6506` | `infra/vm/entrar.sh` | `curl` segue redirecionamento sem exigir HTTPS | **Real (endurecimento).** O que esse `curl` baixa roda como root na VM. | `--proto '=https' --proto-redir '=https'`, com teste que lê o script e reprova um `curl` sem as duas opções. |
+| 4 | `githubactions:S7631` | `.github/workflows/deploy.yml` | Checkout do commit que disparou o workflow, num job com acesso à Azure | **Falso positivo.** O job só roda se o CI veio de um push (não de um PR), neste repositório, na `master`, e depois de um passo conferir que o commit pertence à `master`. Um PR de fork não passa por nenhuma das quatro. | Ignorada nesse arquivo. |
+| 5 | `python:S1313` | `infra/vm/azure.py` | Endereço IP fixo `169.254.169.254` | **Falso positivo.** É o serviço de metadados da Azure, igual em toda VM e sem nome DNS: é por ele que a VM obtém o token da própria identidade. | Ignorada nesse arquivo. |
+| 6 | `azureresourcemanager:S6388` | `infra/main.bicep` (disco da VM) | Disco sem chave de criptografia própria | **Aceitável.** O disco gerenciado já é cifrado em repouso pela Azure, com chave da plataforma. A regra pede chave gerenciada por nós, o que exigiria outro cofre, com proteção contra exclusão, e mais uma identidade, para proteger contra um risco (a Microsoft ler o disco) que não está no modelo de ameaças de um TCC. | Ignorada nesse arquivo. |
+| 7 | `azureresourcemanager:S6388` | `infra/main.bicep` (VM) | VM sem `encryptionAtHost` | **Aceitável.** Ver "Por que não ligamos o `encryptionAtHost`", abaixo. | Ignorada nesse arquivo (a mesma linha do item 6). |
+| 8 | `azureresourcemanager:S6388` | `infra/main.bicep` (conta de armazenamento) | Conta sem bloco `encryption` | **Aceitável.** O armazenamento da Azure é sempre cifrado em repouso com chave da plataforma, e isso não se desliga. | Ignorada nesse arquivo (a mesma linha do item 6). |
+| 9 | `azureresourcemanager:S6378` | `infra/main.bicep` (conta de armazenamento) | Conta sem identidade gerenciada | **Falso positivo.** A conta não se autentica em nada. Quem a acessa é a VM, com identidade gerenciada e papel só no container dos backups; a chave de conta está desligada. | Ignorada nesse arquivo. |
+
+**Por que não ligamos o `encryptionAtHost`.** O disco da VM, onde mora o banco, já é cifrado em
+repouso pela Azure com chave da plataforma: é o padrão dos discos gerenciados. O
+`encryptionAtHost` acrescenta a cifragem, no servidor físico, do cache do disco e do disco
+temporário. Não foi ligado por três motivos: este tamanho de VM não tem disco temporário; ligar
+exige registrar o recurso na assinatura e desligar a VM uma vez, e não se sabe se a assinatura de
+estudante permite; e o ganho cobre quem tem acesso físico ao servidor da Azure. Fica como opção:
+é uma linha no Bicep.
+
+**O que não deu para ler.** A API pública do SonarQube Cloud não devolve o texto das regras sem
+login, e as páginas públicas delas mudaram de endereço. A classificação saiu da mensagem de cada
+questão e do que a Azure faz por padrão, não do texto da regra.
+
+**Uma regra, três questões.** A linha que ignora a `S6388` no `main.bicep` cobre os itens 6, 7 e
+8, e cobriria um quarto recurso de armazenamento que entrasse nesse arquivo sem criptografia. É o
+limite já descrito em "Consequências": o menor escopo é a regra no arquivo.
+
 ## Consequências
 
 - **O "ignorada nesse arquivo" vale para a regra no arquivo inteiro**, não só para a linha da

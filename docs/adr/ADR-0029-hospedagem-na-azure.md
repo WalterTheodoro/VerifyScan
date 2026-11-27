@@ -170,6 +170,9 @@ custos recusa a consulta). Por isso o saldo é conferido à mão no portal: em 0
   comportamento sob uso só se conhece depois da troca de tamanho.
 - **Para reaplicar o Bicep** é preciso passar a mesma chave SSH pública, e o preparo da VM não
   roda de novo numa VM que já existe.
+- **Criptografia em repouso é a padrão da Azure.** O disco da VM e a conta dos backups são
+  cifrados com chave da plataforma. Não há chave gerenciada por nós nem `encryptionAtHost`; a
+  análise estática apontou os dois, e o porquê de aceitar está na triagem do PR #34, no ADR-0027.
 - **Depois do corte, sai:** o texto do Render no aviso de privacidade e a variável
   `NEXT_PUBLIC_HOSPEDAGEM`, o `RENDER_GIT_COMMIT`, o `NEXT_PUBLIC_URL_DESPERTAR` e os passos do
   Render no README.
