@@ -40,7 +40,10 @@ if [[ ! -f "$destino/compose.yml" ]]; then
   # de uma versão.
   provisoria="$(mktemp -d "$pasta/baixando.XXXXXX")"
   trap 'rm -rf "$provisoria"' EXIT
+  # Só HTTPS, no pedido e em qualquer redirecionamento (--location os segue): o que chega aqui é
+  # código que a VM vai rodar.
   curl --fail --silent --show-error --location --retry 3 \
+    --proto '=https' --proto-redir '=https' \
     "https://codeload.github.com/$repositorio/tar.gz/$sha" \
     | tar --extract --gzip --directory "$provisoria" --strip-components=2 "VerifyScan-$sha/infra"
   mv "$provisoria" "$destino"
