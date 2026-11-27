@@ -913,8 +913,10 @@ function OQueEleProcura() {
         </ul>
         <p className="max-w-[42rem]">
           Os links também são conferidos, só pelo endereço e sem abri-los: nome de empresa fora
-          do site oficial, letras trocadas, link encurtado. Listas de sites perigosos ainda não
-          são consultadas.
+          do site oficial, letras trocadas, link encurtado. O nome do site também é procurado em
+          duas listas de sites perigosos, a do Google Safe Browsing e a do VirusTotal. Quando
+          essa consulta não pode ser feita, o resultado avisa. E um site que não está nessas
+          listas não é, só por isso, seguro.
         </p>
       </div>
     </section>
