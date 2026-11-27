@@ -15,11 +15,15 @@
 	# grava uma linha de erro com o campo `request`: IP do visitante, URL com a query e
 	# cabeçalhos. O filtro abaixo apaga esse campo de toda linha de log; ficam a mensagem, o
 	# status e a duração. Coberto por infra/teste-ip/, que roda no CI.
+	#
+	# `remote` é o IP e a porta de quem conectou, nas linhas da validação do certificado. Lá é o
+	# emissor, e não um visitante, mas endereço de quem conecta não tem por que ficar no log.
 	log {
 		format filter {
 			wrap json
 			fields {
 				request delete
+				remote delete
 			}
 		}
 	}

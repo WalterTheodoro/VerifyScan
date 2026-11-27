@@ -9,8 +9,9 @@ requisição, pelo `X-Request-ID` dela (docs/observabilidade.md).
 O run-command devolve só os últimos 4 KB da saída. Por isso saem as linhas mais recentes que
 cabem nesse espaço, inteiras; para ver mais para trás, filtre.
 
-Os logs levam só metadado (CLAUDE.md §5, invariante 2), e o do Caddy sai sem o pedido
-(`infra/Caddyfile`): não há IP, mensagem nem segredo para aparecer aqui.
+Os logs levam só metadado (CLAUDE.md §5, invariante 2). O do Caddy não tem log de acesso e sai
+sem o pedido e sem o endereço de quem conectou (`infra/Caddyfile`): não há IP de visitante,
+mensagem nem segredo para aparecer aqui.
 """
 
 import sys

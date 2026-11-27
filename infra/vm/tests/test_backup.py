@@ -11,6 +11,7 @@ from vm.sistema import ComandoFalhou
 
 AGORA = datetime(2026, 12, 10, 6, 0, 0, tzinfo=UTC)
 DUMP = b"PGDMP-conteudo-do-banco"
+CONTAGEM = b"alembic|0008\nanalises|300\nindicadores_risco|242\nusuarios|7\n"
 
 
 class Armazenamento:
@@ -44,9 +45,25 @@ class Docker:
         self, comando: list[str], ambiente: Mapping[str, str], entrada: bytes | None
     ) -> bytes:
         self.comandos.append((comando, entrada))
-        if self.quebra is not None and self.quebra in comando:
+        # O psql da contagem vai dentro de um `sh -c`: por isso a busca é em cada pedaço.
+        if self.quebra is not None and any(self.quebra in parte for parte in comando):
             raise ComandoFalhou(1, "erro do Postgres com MARCA-DE-DADO")
+        if "psql" in comando[-1]:
+            return CONTAGEM
         return self.dump if "pg_dump" in comando else b""
+
+    def passos(self) -> list[str]:
+        nomes = []
+        for comando, _ in self.comandos:
+            if comando[1] in ("stop", "start"):
+                nomes.append(comando[1])
+            elif "pg_restore" in comando:
+                nomes.append("restaurar")
+            elif "psql" in comando[-1]:
+                nomes.append("contar")
+            else:
+                nomes.append("outro")
+        return nomes
 
 
 def _antigo(dias: float) -> tuple[datetime, bytes]:
@@ -197,8 +214,48 @@ def test_restaurar_para_o_site_antes_e_o_religa_depois() -> None:
 
     _restaurar("verifyscan-x.dump", docker, armazenamento)
 
-    passos = [c[1] if c[1] in ("stop", "start") else "restore" for c, _ in docker.comandos]
-    assert passos == ["stop", "restore", "start"]
+    # A contagem é feita com o site ainda parado: é o retrato exato do que veio da cópia.
+    assert docker.passos() == ["stop", "restaurar", "contar", "start"]
+
+
+def test_restaurar_mostra_as_contagens_e_a_versao_do_alembic(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
+    docker = Docker()
+
+    codigo = _restaurar(None, docker, armazenamento)
+
+    assert codigo == 0
+    linhas = capsys.readouterr().out.splitlines()
+    assert [linha.split() for linha in linhas if linha.startswith(("analises", "usuarios"))] == [
+        ["analises", "300"],
+        ["usuarios", "7"],
+    ]
+    assert linhas[-1].startswith("RESTAURACAO_OK") and "alembic em 0008" in linhas[-1]
+    # A contagem roda no próprio contêiner do banco, com a consulta pela entrada padrão.
+    comando, entrada = next((c, e) for c, e in docker.comandos if "psql" in c[-1])
+    assert comando[:4] == ["docker", "exec", "-i", "verifyscan-producao-postgres-1"]
+    assert entrada is not None and b"alembic_version" in entrada
+
+
+def test_contagem_que_falha_nao_vira_falha_da_restauracao(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """O banco já foi restaurado, numa transação só: não saber contar não desfaz isso."""
+    armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
+    docker = Docker(quebra="psql")
+    avisos = Avisos()
+
+    codigo = _restaurar(None, docker, armazenamento, avisos)
+
+    assert codigo == 0
+    saida = capsys.readouterr().out
+    assert "RESTAURACAO_OK" in saida and "não deu para contar" in saida
+    # O que o Postgres escreveu no erro não é mostrado.
+    assert "MARCA-DE-DADO" not in saida
+    assert docker.comandos[-1][0][:2] == ["docker", "start"]
+    assert avisos.motivos == []
 
 
 def test_restauracao_que_falha_religa_o_site_mesmo_assim() -> None:

@@ -12,7 +12,6 @@ Uma linha JSON por log, na saída do processo.
 
 - **Em produção, na VM da Azure:** pelo run-command, sem SSH: `Na-VM logs backend`, ou com o id
   da requisição como filtro. O passo a passo está em [`deploy.md`](deploy.md#ver-os-logs).
-- **No Render, até o corte:** painel do Render → serviço do backend → **Logs**.
 - **Localmente:** o terminal do `uvicorn`. Com `LOG_FORMAT=texto` no `.env`, saem legíveis.
 
 ```json
@@ -51,13 +50,8 @@ todas as linhas daquela requisição: na VM, `Na-VM logs backend <id>`.
 
 `GET /metrics` no backend, no formato do Prometheus. Precisa do token.
 
-```powershell
-curl.exe -H "Authorization: Bearer $env:METRICS_TOKEN" https://SEU-BACKEND.onrender.com/metrics
-```
-
-**Na VM da Azure o `/metrics` não é alcançável de fora:** o backend não é público, e o Caddy só
-repassa o que o frontend atende. Consultar as métricas lá está pendente (ADR-0029). O comando
-acima vale para o Render, até o corte.
+**Em produção, na VM da Azure, o `/metrics` não é alcançável de fora:** o backend não é público, e
+o Caddy só repassa o que o frontend atende. Consultar as métricas lá está pendente (ADR-0029).
 
 Localmente, com o backend de pé e o `METRICS_TOKEN` do `.env` carregado na variável:
 
@@ -85,10 +79,9 @@ O domínio consultado nunca é rótulo nem campo de evento. A chave do Google Sa
 query da chamada; por isso o log do cliente HTTP (`httpx`, `httpcore`) fica desligado, e a limpeza
 do evento do Sentry corta no `?` o nome do trecho de uma chamada HTTP (ADR-0028).
 
-**Limitações:** os contadores ficam na memória do processo. Zeram quando o backend reinicia (no
-Render gratuito, a cada sono por ociosidade; na VM, a cada deploy), e com mais de um worker cada
-um conta o seu. O
-medidor do gasto só é atualizado quando há análise com IA; o valor certo está sempre no banco
+**Limitações:** os contadores ficam na memória do processo. Zeram quando o backend reinicia (na
+VM, a cada deploy, restauração ou reinício da máquina), e com mais de um worker cada um conta o
+seu. O medidor do gasto só é atualizado quando há análise com IA; o valor certo está sempre no banco
 (`gasto_diario_ia`). Ainda não há painel: fica para depois da decisão de hospedagem.
 
 ## Erros (Sentry)

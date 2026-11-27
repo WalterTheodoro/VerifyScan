@@ -3198,3 +3198,149 @@ novo, 9 questões. A triagem completa está no ADR-0027.
 - **Rodado:** scripts da VM, **86** testes, `ruff` e `mypy --strict` limpos; a imagem do backend
   construída com o `--no-build`; o `curl` com as opções novas baixou o pacote do repositório.
 - **Pendente:** conferir o Quality Gate depois do push.
+
+## 2026-11-27 — Hospedagem na Azure: primeiro deploy, migração de validação e teste de restauração
+
+O PR #34 entrou na `master` e o site novo está no ar em
+`https://verifyscan.chilecentral.cloudapp.azure.com`. O Render continua no ar: ainda não é o corte.
+Os horários abaixo são UTC.
+
+- **Primeiro deploy:** o workflow rodou uma vez só e passou (02:33 a 02:36). O `docs/deploy.md`
+  dizia que ele falharia na primeira vez, por causa dos pacotes de imagem privados; não falhou, e
+  eu não investiguei por quê. O certificado saiu pela Let's Encrypt de primeira.
+- **Conferência pelos logs:** Postgres, backend e Caddy subiram sem erro. De fora, o `/health`
+  responde 200 com o banco ok, e o HTTP redireciona para HTTPS.
+- **O que a ação de logs não mostra:** nem o estado de saúde dos contêineres nem o do
+  temporizador. A saúde veio do `/health`; o temporizador, só depois que o backup rodou.
+- **Migração de validação** (03:44 a 03:45): `MIGRACAO_OK`, 8 tabelas iguais (300 análises, 242
+  indicadores, 7 contas, 3 dias de gasto da IA; o resto vazio) e Alembic em `0008` dos dois
+  lados. A origem não mudou durante a cópia. O comando inteiro levou 66 s; a parada do site não
+  foi medida de fora nessa rodada.
+- **Backup automático:** rodou às 06:00:28, `BACKUP_OK`, 40 397 bytes, e o arquivo apareceu no
+  armazenamento, lido com a identidade da VM.
+- **Teste de restauração** (10:41), com esse backup: `RESTAURACAO_OK`. As contagens de antes e de
+  depois bateram com as da migração. Como ninguém tinha gravado desde o backup, contagem igual
+  não provava nada sozinha: anotei também o identificador interno da tabela `analises`, que mudou
+  (16509 → 16627), sinal de que ela foi apagada e recriada a partir da cópia.
+- **Tempo fora na restauração:** o `/health`, perguntado de fora a cada 0,8 s, deixou de responder
+  200 entre 10:41:13,4 e 10:41:18,5: cerca de 5 s (duas leituras 502 e três 500). O comando
+  inteiro levou 34 s.
+- **Fora da porta única:** a ação de restaurar não mostra contagens, então elas foram lidas por um
+  roteiro avulso, só de leitura, mandado direto pelo run-command, sem passar pelo `entrar.sh`.
+  Funcionou, mas é exatamente o atalho que a porta única existe para evitar.
+- **Três achados dessa conferência:** (1) o log do Caddy tem IP, o dos servidores da Let's
+  Encrypt que validaram o domínio; não é de visitante, mas o `logs.py` e o `docs/deploy.md`
+  diziam que não havia IP ali. (2) O log do frontend repete um aviso do Node,
+  `MaxListenersExceededWarning`. (3) A frase do `docs/deploy.md` sobre o primeiro deploy falhar.
+  As correções estão na entrada seguinte.
+- **Lição:** teste de restauração sobre um banco igual ao backup passa mesmo se nada acontecer;
+  é preciso uma marca que só a restauração muda.
+
+## 2026-11-27 — Hospedagem na Azure: as correções do que o primeiro deploy mostrou
+
+Quatro itens, pedidos pelo Walter para o PR do corte, feitos um por vez.
+
+- **A restauração mostra as contagens no fim**, com a mesma consulta da migração, que saiu do
+  `migrar_neon.py` para o `vm/contagem.py` (o comando da migração não mudou). A contagem é feita
+  com o site ainda parado. Se ela falhar, a restauração continua `RESTAURACAO_OK`, com um aviso:
+  o banco já voltou. Conferido de verdade num Postgres descartável, com os nomes de contêiner da
+  produção: 10 análises antes, as 3 do backup depois, e a tabela na saída.
+- **O log do Caddy:** o filtro que já apagava o campo `request` passou a apagar também o `remote`.
+  Para ver, um segundo Caddy fez de emissor de certificado e validou o nosso, rodando com o
+  `Caddyfile` de verdade: antes, a linha "served key authentication" trazia `remote`; depois,
+  não. Em casa a validação foi pela porta 80; na VM tinha sido pela 443. O campo tem o mesmo nome
+  nas duas, mas a da 443 não foi provocada de novo. Os textos passaram a dizer "sem dado de
+  visitante", e não "sem IP nenhum": é só isso que foi conferido.
+- **O primeiro deploy não falhou** porque os pacotes das imagens nasceram públicos. Sem login, o
+  registro do GitHub entrega as duas imagens. A página "Publishing and installing a package with
+  GitHub Actions" diz que o pacote criado pelo workflow herda a visibilidade do repositório;
+  outra página da mesma documentação diz que a visibilidade não é herdada. O que aconteceu
+  confere com a primeira. O guia foi corrigido, e o passo de tornar o pacote público virou a
+  resposta de "o deploy falha em Baixando as imagens".
+- **O aviso do frontend:** sai um por pedido repassado ao backend (`/health` e `/api/*`), nunca
+  nas páginas. Como a verificação de saúde do contêiner chama `/health` a cada 10 s, eram umas
+  8 600 linhas por dia. Instrumentando a resposta na imagem de produção: são 11 ouvintes do
+  evento `close`, 9 do Next (1 da rota, 2 de cancelamento, um deles por causa do `proxy.ts`, e
+  6 do repasse) e 2 do Sentry. Pela conta, sem o Sentry seriam 9, abaixo do limite de 10; isso
+  não foi medido. Nenhum vaza: a resposta é descartada no fim do pedido. A correção é uma variável no `compose.yml` que desliga
+  só esse tipo de aviso; com ela, zero avisos em casa, a verificação de saúde passa e outro tipo
+  de aviso continua saindo. O custo: um vazamento de ouvintes de verdade no frontend deixaria de
+  avisar. A alternativa, subir o limite só das respostas HTTP, dependia de um detalhe interno do
+  Node.
+- **Sem teste automático no item do aviso:** o job do CI que sobe a pilha constrói o frontend
+  sem o Sentry; pela conta acima o aviso nem apareceria lá, e um teste ali passaria sem ver o
+  caso. Ficou a medição em casa, com a imagem de produção.
+- **Achado novo, sem correção:** na subida, o frontend escreve "[Sentry] Failed to register
+  diagnostics-channel injection hooks", porque falta um arquivo do Sentry na imagem enxuta. A
+  mensagem diz que algumas integrações deixam de registrar medidas de desempenho. Não conferi se
+  muda mais alguma coisa; os erros continuam sendo o que importa aqui.
+- **Rodado:** scripts da VM, **89** testes, `ruff` e `mypy --strict` limpos; o `Caddyfile`
+  validado pelo próprio Caddy; o `compose.yml` com o arquivo de teste resolve.
+- **Não verificado:** nada disto rodou na VM ainda. O Caddy novo e a variável do frontend entram
+  no próximo deploy, e o job da cadeia de IP do CI sobe a pilha com os dois.
+- **Pendente:** o teste do site novo pelo Walter, a rodada do corte e o que vem depois dela
+  (lista no ADR-0029).
+- **Lição:** a de ontem valeu de novo, e agora do lado certo: a frase "o log não tem IP" só foi
+  corrigida depois de provocar a linha e ler o log, antes e depois do filtro.
+
+## 2026-11-27 — Hospedagem na Azure: o corte
+
+A produção passou a ser a VM às 15:23 (12:23 de Brasília), quando terminou a cópia feita com o
+Render já suspenso. Os horários são UTC.
+
+- **Teste do site novo, pelo Walter** (11:01 a 11:05, navegador automatizado, só observação):
+  página inicial com HTTPS, `/health`, página inexistente, aviso de privacidade falando da
+  Azure, texto e print sem conta, entrar, histórico, texto com conta e sair. Tudo passou.
+- **O que o relatório do teste não traz:** conta antiga entrando (usou conta nova), a cota de
+  dois IPs diferentes, o nome do cookie e apagar uma análise. Estavam na lista do corte.
+- **Primeira rodada final da migração** (14:51:35 a 14:52:16, 41 s o comando inteiro), depois de
+  o Walter avisar que tinha suspendido os dois serviços do Render: `MIGRACAO_OK`, 8 tabelas
+  iguais (300 análises, 242 indicadores, 7 contas, 3 dias de gasto da IA; o resto vazio),
+  Alembic em `0008`. As contagens da origem eram as mesmas das 03:44.
+- **A rodada apagou o que o teste gravou na VM** (a conta nova e as análises dele). É o esperado:
+  ela substitui o banco.
+- **O Render ainda respondia depois dessa rodada.** Fui conferir de fora só depois, às 14:59: os
+  dois endereços antigos devolveram 200, e o `/health` do backend antigo, `postgres: ok`. A
+  primeira tentativa passou de 40 s sem resposta, que é o comportamento de serviço dormindo, e
+  não de serviço suspenso. Avisei o Walter na hora: a migração tinha passado, mas o Neon ainda
+  podia receber escrita. Os meus três pedidos foram ao `/health`, que só lê.
+- **A suspensão de verdade e a rodada que vale.** O Walter suspendeu de novo. Às 15:22:40 os
+  três pedidos (`/health` do backend, página inicial e `/health` pelo frontend) devolveram 503,
+  "Service Suspended", com o cabeçalho `x-render-routing: suspend-by-user`. Só então rodei a
+  migração outra vez (15:22:49 a 15:23:55, 66 s o comando inteiro): `MIGRACAO_OK`, as mesmas 8
+  tabelas e os mesmos números, Alembic em `0008`. Depois dela, `/health` 200 e a página inicial
+  no ar no endereço novo.
+- **O que essa segunda rodada garante:** a cópia foi feita com a origem parada, então o que
+  estava no Neon está na VM, tenha ou não mudado entre as duas rodadas. As contagens iguais
+  dizem a mais que nada novo entrou naquela meia hora: uma análise, uma entrada ou um uso da IA
+  teriam criado linha.
+- **A reputação de links não está funcionando na VM.** O relatório diz que as três análises
+  avisaram que as bases externas não foram consultadas. O log do backend (últimas 5 000 linhas)
+  não tem nenhuma linha `reputacao_indisponivel`, e chave ausente não gera linha, só métrica.
+  Tudo aponta para as duas chaves fora do cofre; não li os valores para confirmar.
+- **O texto da página inicial** dizia que as listas de sites perigosos "ainda não são
+  consultadas", o que deixou de ser verdade na fatia da reputação e ninguém corrigiu. Agora diz
+  que o nome do site é procurado nas duas listas, que o resultado avisa quando a consulta não
+  pode ser feita, e que não estar nas listas não torna um site seguro. A página é gerada no
+  build e não sabe se as chaves existem: por isso a frase vale nos dois casos, com o aviso do
+  resultado cobrindo o caso sem chave. Sem teste: a página inicial não tem arquivo de teste, e
+  não criei um só para uma frase.
+- **Documentos:** o README perdeu os dez passos do Render e ganhou uma seção curta de
+  configuração (onde se muda uma cota na VM, que era o que os passos tinham de útil); o
+  `docs/deploy.md` registra o corte e o que falta; o `docs/observabilidade.md` e o
+  `.env.example` deixaram de citar o Render como ambiente. Os ADRs antigos ficam como estão:
+  são história. O ADR-0029 ganhou o adendo.
+- **Um risco que só apareceu ao escrever o guia:** enquanto o segredo temporário do Neon existir
+  no cofre, a ação de migrar troca o banco de produção pelos dados antigos. Apagar o segredo
+  deixou de ser limpeza e virou trava.
+- **Rodado:** no frontend, `npm run lint` limpo e `npm test` com **200** testes passando (nenhum
+  deles lê a frase trocada). O backend e os scripts da VM não mudaram nesta rodada.
+- **Não verificado:** as correções da entrada anterior continuam sem rodar na VM; entram no
+  deploy deste PR.
+- **Pendente:** o Walter entrar com uma conta antiga, apagar o segredo do Neon e, se quiser a
+  reputação, preencher as duas chaves no cofre. Depois: a limpeza do código que era só do Render
+  (aviso de privacidade, as três variáveis, a espera pelo backend e o próprio `migrar_neon.py`),
+  a troca de tamanho da VM depois do Demo Day e a mensagem do Sentry na subida do frontend.
+- **Lição:** "suspendi" é uma frase sobre um painel; "não responde" é uma medida. A rodada final
+  devia ter começado por um pedido aos dois endereços antigos, e não terminado com ele. Custou
+  uma rodada a mais e meia hora em que a origem ainda aceitava escrita.

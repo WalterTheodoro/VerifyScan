@@ -9,19 +9,40 @@ backup: tudo o que foi gravado depois dele se perde.
 O site é parado durante a restauração (ninguém grava no meio) e religado no fim, mesmo se ela
 falhar. A restauração roda numa transação só: se falhar no meio, o banco fica como estava.
 
+No fim, mostra quantas linhas ficaram em cada tabela e a versão do alembic, com a mesma consulta
+da migração (`vm/contagem.py`): é o que se confere contra o que se esperava da cópia.
+
 Se falhar, avisa pelo Sentry (`vm/alerta.py`). Backup que não existe não é falha: é recusa, e a
 resposta já sai na hora para quem pediu.
 """
 
 import sys
 
-from vm import config
+from vm import config, contagem
 from vm.alerta import Avisar, com_aviso
 from vm.azure import Azure, ErroDoAzure
 from vm.backup import PREFIXO, Armazenamento
 from vm.sistema import POSTGRES, SITE, ComandoFalhou, Executar, dizer, executar_de_verdade
 
 O_QUE = "A restauração do banco falhou"
+
+
+def _contar(executar: Executar) -> dict[str, str] | None:
+    """As contagens do banco, pelo psql do próprio contêiner. Sem conseguir contar, devolve
+    None: a restauração já terminou, e isso não a desfaz."""
+    comando = [
+        "docker",
+        "exec",
+        "-i",
+        POSTGRES,
+        "sh",
+        "-c",
+        f"{contagem.PSQL} --username=verifyscan --dbname=verifyscan",
+    ]
+    try:
+        return contagem.ler(executar(comando, {}, contagem.CONSULTA.encode()))
+    except ComandoFalhou:
+        return None
 
 
 def restaurar(
@@ -64,6 +85,8 @@ def restaurar(
             {},
             dump,
         )
+        # Com o site ainda parado: é o retrato exato do que veio da cópia.
+        contagens = _contar(executar)
     except ComandoFalhou as erro:
         # O erro do Postgres fica no log da VM, para quem pediu; ao aviso vai só o código.
         dizer(f"RESTAURACAO_FALHOU: o banco ficou como estava. {erro.erro.strip()}")
@@ -71,7 +94,17 @@ def restaurar(
         return 1
     finally:
         executar(["docker", "start", *SITE], {}, None)
-    dizer(f"RESTAURACAO_OK: o banco voltou ao estado de {nome}.")
+    if contagens is None:
+        dizer("Aviso: não deu para contar as linhas depois da restauração.")
+        dizer(f"RESTAURACAO_OK: o banco voltou ao estado de {nome}.")
+        return 0
+    dizer(f"{'tabela':<28}{'linhas':>10}")
+    for tabela in sorted(contagens):
+        dizer(f"{tabela:<28}{contagens[tabela]:>10}")
+    dizer(
+        f"RESTAURACAO_OK: o banco voltou ao estado de {nome}; "
+        f"{len(contagens) - 1} tabelas, alembic em {contagens.get('alembic')}."
+    )
     return 0
 
 
