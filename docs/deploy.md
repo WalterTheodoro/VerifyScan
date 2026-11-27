@@ -104,7 +104,9 @@ Saem as linhas mais recentes que cabem em 4 KB (umas 10 a 15 do backend). Para i
 requisição, use o `X-Request-ID` dela como filtro
 ([observabilidade](observabilidade.md#seguir-uma-requisição)).
 
-Os logs levam só metadado. O do Caddy não tem log de acesso, e a linha de erro sai sem o pedido.
+Os logs levam só metadado. O do Caddy não tem log de acesso; a linha de erro sai sem o pedido, e
+as da emissão do certificado, sem o endereço de quem conectou (o emissor). O que foi conferido é
+que não sai dado de visitante, e não que nunca apareça endereço nenhum.
 
 ## Backup
 
@@ -133,6 +135,17 @@ Na-VM restaurar verifyscan-20261210T060000Z.dump   # um específico
 O site fica parado durante a restauração e volta sozinho no fim, mesmo se ela falhar. Ela roda
 numa transação só: se falhar no meio, o banco fica como estava. Termina com `RESTAURACAO_OK`,
 `RESTAURACAO_RECUSADA` (nome que não existe) ou `RESTAURACAO_FALHOU`.
+
+**Quanto tempo o site fica fora.** Medido em 27/11/2026, restaurando o backup do dia (40 KB; 300
+análises, 7 contas): o `/health`, perguntado de fora duas vezes por segundo, deixou de responder
+200 por **cerca de 5 segundos** (502 enquanto os contêineres estavam parados, 500 enquanto o
+backend subia). O comando inteiro levou 34 segundos, quase tudo espera do *run-command*. Com o
+banco maior a parada cresce: o tempo é o do `pg_restore` mais a subida do backend.
+
+No fim, a ação mostra quantas linhas ficaram em cada tabela e a versão do Alembic, com a mesma
+consulta da migração: é o que se confere contra o que se esperava da cópia. Nesse teste a ação
+ainda não mostrava; as contagens foram lidas à parte, antes e depois, e bateram com as da
+migração.
 
 A cópia tem de ser de uma versão do banco igual ou anterior à do código no ar. Se o código voltou
 para antes de uma migração, restaure e faça o deploy da versão certa em seguida.
@@ -215,11 +228,14 @@ az deployment group create --resource-group rg-verifyscan `
 
 1. Cofre preenchido e ambiente `producao` criado no GitHub, com os três `AZURE_*`.
 2. Merge do PR na `master`. O CI roda e o Deploy começa sozinho.
-3. **O Deploy vai falhar na primeira vez:** o GitHub cria os pacotes das imagens como privados, e
-   a VM não consegue baixá-los. No seu perfil → **Packages** → `verifyscan-backend` → **Package
-   settings** → **Change visibility** → **Public**. Repetir para `verifyscan-frontend`.
-4. Na execução que falhou: **Re-run failed jobs**.
-5. Conferir: `DEPLOY_OK`, o endereço abre com o cadeado, e `Na-VM logs backup` no dia seguinte.
+3. Conferir: `DEPLOY_OK`, o endereço abre com o cadeado, e `Na-VM logs backup` no dia seguinte.
+
+Foi feito em 27/11/2026 e passou na primeira execução, em menos de 3 minutos, com o certificado
+emitido de primeira. Este guia previa que ele falharia, porque a VM baixa as imagens sem login e
+o GitHub criaria os pacotes como privados. Não foi assim: criado pelo próprio workflow, o pacote
+herda a visibilidade do repositório, que é público (documentação do GitHub, "Publishing and
+installing a package with GitHub Actions"). Se o repositório virar privado, os pacotes novos
+nascem privados e a VM deixa de conseguir baixá-los.
 
 ## O corte
 
@@ -253,7 +269,9 @@ Confira os três segredos do ambiente `producao` e se o job rodou a partir da `m
 aceita o token desse ambiente.
 
 **O Deploy falha em "Baixando as imagens".**
-Os pacotes do GitHub estão privados (passo 3 do primeiro deploy).
+A VM baixa as imagens sem login: os pacotes têm de estar públicos. No seu perfil → **Packages** →
+`verifyscan-backend` → **Package settings** → **Change visibility** → **Public**; o mesmo para
+`verifyscan-frontend`. Depois, na execução que falhou: **Re-run failed jobs**.
 
 **O site não responde logo depois do primeiro deploy.**
 O Caddy ainda está pedindo o certificado; o deploy espera até 2,5 minutos. Se passar disso,

@@ -72,7 +72,10 @@ com outro IP, passa.
 
 **O log do Caddy não leva dado do pedido (invariante 2).** Não há log de acesso. O log de erro, que
 o Caddy escreve quando o frontend não responde, traz por padrão o IP, a URL com a query e os
-cabeçalhos: um filtro apaga o pedido inteiro dessa linha, e o CI provoca o erro e confere.
+cabeçalhos: um filtro apaga o pedido inteiro dessa linha, e o CI provoca o erro e confere. O
+mesmo filtro apaga o campo `remote`, o endereço de quem conectou, que o Caddy escreve nas linhas
+da validação do certificado. Esse só apareceu no primeiro deploy: era o endereço dos servidores do
+emissor, não o de um visitante.
 
 **Segredos.** Ficam num Key Vault. A VM os lê com a identidade dela, sem senha nem arquivo de
 credencial, a cada deploy, e os escreve num arquivo que só o root lê. Os **nomes** são criados por

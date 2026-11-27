@@ -112,8 +112,9 @@ verifyscan/
 │  └─ vm/                  # o que roda DENTRO da VM, em Python só com a biblioteca padrão:
 │                          #   entrar.sh (a porta do run-command), deploy.py (com volta
 │                          #   automática), backup.py, restaurar.py, migrar_neon.py, alerta.py
-│                          #   (falha do backup → Sentry), logs.py, azure.py (cofre e blobs com
-│                          #   a identidade da VM), systemd/ (backup diário); testes em
+│                          #   (falha do backup → Sentry), logs.py, contagem.py (linhas por
+│                          #   tabela, na migração e na restauração), azure.py (cofre e blobs
+│                          #   com a identidade da VM), systemd/ (backup diário); testes em
 │                          #   vm/tests/, com o Docker e a Azure falsos
 ├─ docs/
 │  ├─ RFC-VerifyScan-v1.1.pdf
