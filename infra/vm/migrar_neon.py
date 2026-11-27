@@ -28,7 +28,7 @@ from collections.abc import Mapping
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
-from vm import config
+from vm import config, contagem
 from vm.azure import Azure, ErroDoAzure
 from vm.sistema import REDE, SITE, ComandoFalhou, Executar, dizer, executar_de_verdade
 
@@ -39,16 +39,6 @@ IMAGEM = "postgres:16-alpine"
 # Sem senha na URL: ela vai na variável PGPASSWORD, só para o comando que fala com o destino.
 DESTINO = "postgresql://verifyscan@postgres:5432/verifyscan"
 
-# Uma linha por tabela, `nome|linhas`, e a versão do alembic. O `\gexec` do psql executa cada
-# SELECT que a consulta de cima monta: é o jeito de contar todas as tabelas sem listá-las aqui.
-_CONTAR = """\
-SELECT 'alembic', version_num FROM alembic_version;
-SELECT format('SELECT %L, count(*) FROM public.%I', tablename, tablename)
-  FROM pg_tables
- WHERE schemaname = 'public' AND tablename <> 'alembic_version'
- ORDER BY tablename \\gexec
-"""
-_PSQL = "psql --no-psqlrc --tuples-only --no-align --field-separator='|' --set ON_ERROR_STOP=1"
 # Só o esquema `public` (as nossas tabelas): extensões e papéis próprios do Neon ficam de fora.
 _COPIAR = (
     "set -o pipefail; "
@@ -80,15 +70,6 @@ def _no_conteiner(roteiro: str, *variaveis: str) -> list[str]:
         "-c",
         roteiro,
     ]
-
-
-def _ler_contagens(saida: bytes) -> dict[str, str]:
-    contagens = {}
-    for linha in saida.decode().splitlines():
-        nome, _, valor = linha.partition("|")
-        if nome:
-            contagens[nome] = valor
-    return contagens
 
 
 def sem_dados_da_origem(texto: str, url: str) -> str:
@@ -131,8 +112,8 @@ def migrar(*, executar: Executar, cofre: LeitorDeSegredos) -> int:
     ambiente = {"ORIGEM": origem, "SENHA_DO_DESTINO": senha, "PGPASSWORD": senha}
 
     def contar_na_origem() -> dict[str, str]:
-        comando = _no_conteiner(f'{_PSQL} "$ORIGEM"', "ORIGEM")
-        return _ler_contagens(executar(comando, ambiente, _CONTAR.encode()))
+        comando = _no_conteiner(f'{contagem.PSQL} "$ORIGEM"', "ORIGEM")
+        return contagem.ler(executar(comando, ambiente, contagem.CONSULTA.encode()))
 
     try:
         antes = contar_na_origem()
@@ -146,8 +127,8 @@ def migrar(*, executar: Executar, cofre: LeitorDeSegredos) -> int:
     try:
         executar(_no_conteiner(_COPIAR, "ORIGEM", "SENHA_DO_DESTINO"), ambiente, None)
         depois = contar_na_origem()
-        comando = _no_conteiner(f'{_PSQL} "{DESTINO}"', "PGPASSWORD")
-        destino = _ler_contagens(executar(comando, ambiente, _CONTAR.encode()))
+        comando = _no_conteiner(f'{contagem.PSQL} "{DESTINO}"', "PGPASSWORD")
+        destino = contagem.ler(executar(comando, ambiente, contagem.CONSULTA.encode()))
     except ComandoFalhou as erro:
         dizer("MIGRACAO_FALHOU: a cópia não terminou. O destino ficou como estava.")
         dizer(sem_dados_da_origem(erro.erro.strip(), origem))
