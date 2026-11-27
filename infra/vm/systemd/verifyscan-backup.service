@@ -1,0 +1,14 @@
+# O backup diario do banco (ADR-0029). Quem dispara e o verifyscan-backup.timer; o deploy copia
+# os dois arquivos para /etc/systemd/system a cada versao.
+# Sem acentos de proposito: arquivo de unidade do systemd.
+
+[Unit]
+Description=Backup do banco do VerifyScan para o armazenamento do Azure
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Roda com os arquivos da versao que esta no ar: a pasta sai do tag-atual na hora da execucao.
+# O "$$" e como o systemd escreve um "$" que deve chegar ao sh.
+ExecStart=/bin/sh -c 'cd "/opt/verifyscan/versoes/$$(cat /opt/verifyscan/tag-atual)" && exec /usr/bin/python3 -m vm.backup'

@@ -184,9 +184,19 @@ npm run lint
 npm test
 ```
 
+Se mexeu em `infra/vm/` (os scripts que rodam na VM de produção), de dentro de `backend`:
+
+```powershell
+uv run ruff format ../infra
+uv run ruff check ../infra
+uv run mypy --strict --platform linux --explicit-package-bases ../infra/vm
+uv run pytest ../infra -q -p no:cacheprovider
+```
+
 O CI roda exatamente isso a cada push (`.github/workflows/ci.yml`), com `ruff format --check` no
 lugar do `ruff format`, mais `alembic upgrade head` e `alembic check` contra um Postgres de teste,
-e com a cobertura ligada nos dois lados (seção seguinte).
+e com a cobertura ligada nos dois lados (seção seguinte). Roda também a pilha de produção inteira
+com um teste da cadeia de IP da cota, e confere que o Bicep compila (ADR-0029).
 
 ### Cobertura de testes
 
@@ -332,7 +342,7 @@ Como ver os logs, consultar as métricas, achar um erro e a lista de eventos e m
 [`docs/observabilidade.md`](docs/observabilidade.md). As decisões estão no
 [ADR-0026](docs/adr/ADR-0026-observabilidade.md).
 
-### Infraestrutura
+### Infraestrutura local
 
 ```powershell
 docker compose up -d      # sobe Postgres e Redis
@@ -365,17 +375,44 @@ VerifyScan/
 │  │                   gerar_prints e avaliar_prints (Fase 5)
 │  └─ tests/          unitários sem rede; integracao/ fala com o Postgres de teste
 ├─ frontend/           Next.js App Router + TypeScript + Tailwind
+├─ infra/              a produção na Azure: Bicep, compose.yml, Caddyfile e os scripts da VM (ADR-0029)
+├─ .github/workflows/  ci.yml (testes e análise) e deploy.yml (publica a master na VM)
 ├─ corpus/             176 casos sintéticos rotulados, divisão fixa calibração/teste (Fase 2)
-├─ docs/               RFC, plano de execução, ADRs, diário de bordo e avaliacoes/ (relatórios)
-└─ docker-compose.yml  Postgres 16 e Redis 7
+├─ docs/               RFC, plano de execução, ADRs, diário de bordo, deploy.md e avaliacoes/ (relatórios)
+└─ docker-compose.yml  Postgres 16 e Redis 7, só para o desenvolvimento
 ```
 
 ---
 
 ## Produção
 
+A produção está de mudança do Render para a Azure
+([ADR-0029](docs/adr/ADR-0029-hospedagem-na-azure.md)). Até o corte, o endereço oficial ainda é o
+do Render; o da Azure já existe e é para onde tudo vai.
+
+### Azure (o destino)
+
+Uma VM no Chile com Docker Compose: Caddy (HTTPS automático), frontend, backend e Postgres 16. Só
+as portas 80 e 443 são abertas; não há SSH.
+
+- **Endereço:** <https://verifyscan.chilecentral.cloudapp.azure.com>
+- **Deploy:** sozinho, depois do CI verde na `master` (`.github/workflows/deploy.yml`). Se a versão
+  nova não responder, a VM volta para a anterior.
+- **Segredos:** num cofre da Azure, lidos pela VM a cada deploy. Não há `.env` em produção.
+- **Backup:** todo dia às 03:00 de Brasília, guardado por 7 dias.
+- **Infraestrutura:** em `infra/`, como código (Bicep).
+
+Como publicar, voltar uma versão, ver os logs, restaurar um backup e migrar os dados:
+[`docs/deploy.md`](docs/deploy.md).
+
+**Toda migração precisa ser aditiva**: a volta de versão não desfaz migração. Remover ou renomear
+coluna leva dois deploys.
+
+### Render (até o corte)
+
 Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos no
-`docs/adr/ADR-0011`). Estes passos são manuais, feitos uma vez, nos painéis:
+`docs/adr/ADR-0011`). Esta parte sai do README quando o Render for desligado. Os passos são
+manuais, feitos uma vez, nos painéis:
 
 1. **Criar o projeto no Neon** na região **AWS us-west-2** (a mesma do Render em Oregon), com
    **Postgres 16** — igual ao `docker compose` e ao CI.
@@ -483,6 +520,8 @@ reiniciar o `npm run dev` — e, no build de produção, rodar o `npm run build`
 ficam gravadas no build.
 
 **Em produção, o primeiro acesso mostra "O servidor está acordando".**
+Só no Render: na VM da Azure o backend não dorme (ADR-0029), e lá essa tela indica que o site
+está fora; veja "Problemas comuns" em [`docs/deploy.md`](docs/deploy.md).
 É o esperado no plano gratuito: o backend do Render dorme depois de 15 min sem uso e leva até
 ~60 s para acordar. A tela tenta de novo sozinha por até 90 s; envios (análise, entrar, cadastro)
 esperam o backend responder e saem uma vez só (ADR-0017). Se passar de 90 s, confira no painel do

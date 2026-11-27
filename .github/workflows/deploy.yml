@@ -1,0 +1,193 @@
+name: Deploy
+
+# Publica a master na VM do Azure (ADR-0029, docs/deploy.md). Dois jeitos de começar:
+#
+# - sozinho, quando o CI termina verde num push na master;
+# - à mão (Actions → Deploy → Run workflow), com o SHA de um commit da master. É como se volta
+#   para uma versão anterior: as imagens dela já estão publicadas, e o job só as manda subir.
+#
+# Sem SSH e sem segredo de longa duração: o GitHub prova quem é ao Azure por um token curto
+# (OIDC), e o Azure só deixa esta identidade rodar comando na VM. Os segredos da aplicação não
+# passam por aqui: a VM os lê do cofre com a identidade dela.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: SHA inteiro (40 caracteres) de um commit da master
+        required: true
+        type: string
+
+# Um deploy por vez. Sem cancelar o que está em andamento: interromper no meio deixaria a VM
+# entre duas versões. Se chegarem vários, o GitHub guarda só o mais novo na fila.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+# Nenhuma permissão por padrão: cada job pede só a que usa.
+permissions: {}
+
+env:
+  # O commit a publicar: o que o CI acabou de aprovar, ou o que foi pedido à mão. É a tag das
+  # imagens e o que a VM baixa do repositório. Só é usado depois de conferido (primeiro passo).
+  SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+  IMAGEM: ghcr.io/waltertheodoro/verifyscan
+
+jobs:
+  imagens:
+    name: imagens — construir e publicar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # O `branches` lá de cima olha só o NOME do branch: um PR vindo de um fork cujo branch se
+    # chame "master" passaria. Por isso as três conferências: o CI terminou verde, rodou por um
+    # push (e não por um PR) e neste repositório.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Conferir o formato do SHA
+        run: |
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::O SHA tem de ser o do commit, inteiro: 40 caracteres hexadecimais."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+          # Histórico inteiro, para a conferência abaixo.
+          fetch-depth: 0
+
+      - name: Conferir que o commit é da master
+        # Só vai para a produção o que passou pela master (PR revisado, CI verde). Vale para o
+        # deploy à mão: impede publicar um commit de outro branch.
+        run: git merge-base --is-ancestor "$SHA" origin/master
+
+      - name: Entrar no registro de imagens
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USUARIO: ${{ github.actor }}
+        run: echo "$TOKEN" | docker login ghcr.io --username "$USUARIO" --password-stdin
+
+      - name: Backend
+        # Se a imagem deste commit já existe (deploy à mão de uma versão antiga), não é refeita:
+        # a tag de um commit nunca passa a apontar para outra coisa.
+        run: |
+          if docker manifest inspect "$IMAGEM-backend:$SHA" > /dev/null 2>&1; then
+            echo "A imagem do backend deste commit já está publicada."
+            exit 0
+          fi
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$SHA" \
+            --tag "$IMAGEM-backend:$SHA" \
+            backend
+          docker push "$IMAGEM-backend:$SHA"
+
+      - name: Frontend
+        # As NEXT_PUBLIC_* e os dois nomes do Sentry são variáveis do repositório, públicas por
+        # definição: o Next as grava no JavaScript do navegador. `--build-arg NOME`, sem valor,
+        # pega o valor do ambiente deste passo.
+        #
+        # O token do Sentry (envio dos source maps) é o único segredo, e é opcional: entra como
+        # segredo de build, que existe só durante o `npm run build` e não fica na imagem.
+        env:
+          NEXT_PUBLIC_CONTATO_PRIVACIDADE: ${{ vars.NEXT_PUBLIC_CONTATO_PRIVACIDADE }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${{ vars.NEXT_PUBLIC_SENTRY_ENVIRONMENT }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          if docker manifest inspect "$IMAGEM-frontend:$SHA" > /dev/null 2>&1; then
+            echo "A imagem do frontend deste commit já está publicada."
+            exit 0
+          fi
+          segredo=()
+          if [[ -n "$SENTRY_AUTH_TOKEN" ]]; then
+            segredo=(--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN)
+          fi
+          docker build \
+            --build-arg NEXT_PUBLIC_CONTATO_PRIVACIDADE \
+            --build-arg NEXT_PUBLIC_SENTRY_DSN \
+            --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT \
+            --build-arg SENTRY_ORG \
+            --build-arg SENTRY_PROJECT \
+            "${segredo[@]}" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$SHA" \
+            --tag "$IMAGEM-frontend:$SHA" \
+            frontend
+          docker push "$IMAGEM-frontend:$SHA"
+
+  deploy:
+    name: deploy — VM do Azure
+    needs: imagens
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # O ambiente `producao` do GitHub: só a master pode usá-lo, e é o nome dele que o Azure
+    # confere antes de aceitar o login (credencial federada, infra/main.bicep).
+    environment: producao
+    permissions:
+      contents: read
+      # Para pedir ao GitHub o token que prova ao Azure que este job é deste repositório.
+      id-token: write
+    env:
+      GRUPO: rg-verifyscan
+      VM: vm-verifyscan
+      # O mesmo endereço de infra/vm/config.py.
+      DOMINIO: verifyscan.chilecentral.cloudapp.azure.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Entrar no Azure
+        # Action de terceiro: presa pelo commit, não pela tag (ADR-0027). v3.1.0, publicada em
+        # 10/09/2026 (ADR-0022). Os três valores são identificadores, e não senhas: a senha não
+        # existe, quem autentica é o token do GitHub.
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy na VM
+        # Manda o entrar.sh deste commit para a VM rodar (run-command, sem SSH). Ele baixa os
+        # arquivos de infra/ do mesmo commit e chama o deploy, que volta sozinho para a versão
+        # anterior se a nova não responder (infra/vm/deploy.py).
+        #
+        # O `az` responde "succeeded" mesmo quando o script sai com erro (conferido em
+        # 26/11/2026): quem decide é a última palavra do deploy. Só passa com DEPLOY_OK.
+        run: |
+          resposta="$(az vm run-command invoke \
+            --resource-group "$GRUPO" \
+            --name "$VM" \
+            --command-id RunShellScript \
+            --scripts @infra/vm/entrar.sh \
+            --parameters "$SHA" deploy \
+            --output json)"
+          saida="$(jq --raw-output '.value[0].message' <<< "$resposta")"
+          echo "$saida"
+          if ! grep --quiet '^DEPLOY_OK' <<< "$saida"; then
+            echo "::error::A VM não confirmou o deploy: a saída não tem DEPLOY_OK."
+            exit 1
+          fi
+
+      - name: O site responde de fora
+        # O deploy confere o /health de dentro da VM. Este passo confere de fora, pela internet:
+        # o endereço resolve, as portas estão abertas e o certificado vale.
+        run: |
+          curl --fail --silent --show-error --output /dev/null \
+            --max-time 10 --retry 5 --retry-delay 5 --retry-all-errors \
+            "https://$DOMINIO/health"

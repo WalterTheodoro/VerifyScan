@@ -37,8 +37,17 @@ async def navegador(app: FastAPI) -> AsyncIterator[AsyncClient]:
         yield cliente
 
 
+# O nome em HTTPS, o default dos testes e o de produção (ADR-0029); e o do HTTP local.
+COOKIE = "__Host-vs_sessao"
+COOKIE_EM_HTTP = "vs_sessao"
+
+
 def _cookie_de_sessao(resposta: Response) -> str:
-    cabecalhos = [c for c in resposta.headers.get_list("set-cookie") if c.startswith("vs_sessao=")]
+    cabecalhos = [
+        c
+        for c in resposta.headers.get_list("set-cookie")
+        if c.split("=", 1)[0] in (COOKIE, COOKIE_EM_HTTP)
+    ]
     assert len(cabecalhos) == 1, resposta.headers.get_list("set-cookie")
     return cabecalhos[0]
 
@@ -83,6 +92,49 @@ async def test_cookie_sem_secure_quando_a_config_desliga(
     assert "secure" not in _atributos(_cookie_de_sessao(resposta))
 
 
+async def test_cookie_em_https_leva_o_prefixo_host(navegador: AsyncClient) -> None:
+    """`__Host-` (ADR-0029): o navegador só aceita o cookie com Secure, Path=/ e sem Domain, e
+    outro site em cloudapp.azure.com não consegue plantar um com este nome no nosso endereço."""
+    resposta = await navegador.post("/api/auth/cadastro", json=CADASTRO)
+
+    cabecalho = _cookie_de_sessao(resposta)
+    assert cabecalho.startswith("__Host-vs_sessao=")
+    atributos = _atributos(cabecalho)
+    assert "secure" in atributos
+    assert atributos["path"] == "/"
+    assert "domain" not in atributos
+
+
+async def test_cookie_sem_prefixo_no_http_local(app: FastAPI, navegador: AsyncClient) -> None:
+    """O navegador recusa `__Host-` sem Secure: no HTTP local o nome fica sem o prefixo."""
+    app.dependency_overrides[get_settings] = lambda: settings_de_teste(cookie_secure=False)
+
+    resposta = await navegador.post("/api/auth/cadastro", json=CADASTRO)
+
+    assert _cookie_de_sessao(resposta).startswith("vs_sessao=")
+
+
+async def test_cookie_sem_prefixo_nao_autentica_em_https(navegador: AsyncClient) -> None:
+    """O `vs_sessao` puro é o que outro site conseguiria plantar: mesmo com um token válido,
+    não vale como sessão."""
+    await navegador.post("/api/auth/cadastro", json=CADASTRO)
+    token = navegador.cookies[COOKIE]
+    navegador.cookies.clear()
+    navegador.cookies.set(COOKIE_EM_HTTP, token)
+
+    assert (await navegador.get("/api/auth/eu")).status_code == 401
+
+
+async def test_logout_apaga_o_cookie_com_prefixo(navegador: AsyncClient) -> None:
+    await navegador.post("/api/auth/cadastro", json=CADASTRO)
+
+    saida = await navegador.post("/api/auth/logout")
+
+    cabecalho = _cookie_de_sessao(saida)
+    assert cabecalho.startswith("__Host-vs_sessao=")
+    assert _atributos(cabecalho)["max-age"] == "0"
+
+
 async def test_max_age_segue_sessao_dias(app: FastAPI, navegador: AsyncClient) -> None:
     app.dependency_overrides[get_settings] = lambda: settings_de_teste(sessao_dias=1)
 
@@ -94,7 +146,7 @@ async def test_max_age_segue_sessao_dias(app: FastAPI, navegador: AsyncClient) -
 async def test_token_nao_aparece_no_corpo(navegador: AsyncClient) -> None:
     resposta = await navegador.post("/api/auth/cadastro", json=CADASTRO)
 
-    token = _cookie_de_sessao(resposta).split(";")[0].removeprefix("vs_sessao=")
+    token = _cookie_de_sessao(resposta).split(";")[0].removeprefix(f"{COOKIE}=")
     assert token
     assert token not in resposta.text
 
@@ -210,12 +262,12 @@ async def test_cookie_antigo_nao_vale_depois_do_logout(
 ) -> None:
     """Logout apaga a sessão no servidor, não só o cookie do navegador."""
     await navegador.post("/api/auth/cadastro", json=CADASTRO)
-    token = navegador.cookies["vs_sessao"]
+    token = navegador.cookies[COOKIE]
 
     await navegador.post("/api/auth/logout")
 
     assert sessoes.sessoes == []
-    navegador.cookies.set("vs_sessao", token)
+    navegador.cookies.set(COOKIE, token)
     assert (await navegador.get("/api/auth/eu")).status_code == 401
 
 
@@ -267,7 +319,7 @@ MENSAGEM_503 = {"detail": "O serviço está iniciando. Tente de novo em alguns s
 
 @pytest.mark.usefixtures("banco_lento")
 async def test_banco_lento_da_503_em_portugues(navegador: AsyncClient) -> None:
-    navegador.cookies.set("vs_sessao", "qualquer")
+    navegador.cookies.set(COOKIE, "qualquer")
 
     resposta = await navegador.get("/api/auth/eu")
 
@@ -277,7 +329,7 @@ async def test_banco_lento_da_503_em_portugues(navegador: AsyncClient) -> None:
 
 @pytest.mark.usefixtures("banco_lento")
 async def test_logout_com_banco_lento_da_503_e_limpa_o_cookie(navegador: AsyncClient) -> None:
-    navegador.cookies.set("vs_sessao", "qualquer")
+    navegador.cookies.set(COOKIE, "qualquer")
 
     resposta = await navegador.post("/api/auth/logout")
 
@@ -294,7 +346,7 @@ async def test_analise_continua_funcionando_sem_cookie(navegador: AsyncClient) -
 
     assert resposta.status_code == 200
     assert resposta.json()["nivel_risco"] == "ALTO"
-    assert "vs_sessao" not in navegador.cookies
+    assert COOKIE not in navegador.cookies
 
 
 # ─── contrato no OpenAPI ──────────────────────────────────────────────────────────────────

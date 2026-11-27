@@ -16,7 +16,8 @@ no maior dos dois — ela pode subir, nunca baixar (ADR-0020).
 
 Especificação completa: `docs/RFC-VerifyScan-v1.1.pdf`. Plano de execução: `docs/plano-de-execucao.md`.
 Decisões: `docs/adr/`. Logs, métricas e erros: `docs/observabilidade.md`. Análise estática:
-SonarQube Cloud, pelo CI (ADR-0027).
+SonarQube Cloud, pelo CI (ADR-0027). Produção, deploy, backup e logs da VM: `docs/deploy.md`
+(ADR-0029).
 
 ## 2. Stack (fixa — não trocar sem ADR)
 
@@ -33,6 +34,7 @@ SonarQube Cloud, pelo CI (ADR-0027).
 | Testes | pytest + pytest-asyncio + httpx.AsyncClient |
 | Lint/format | ruff (lint + format) + mypy no backend |
 | Infra local | Docker Compose (Postgres + Redis) |
+| Produção | Uma VM na Azure (Chile) com Docker Compose: Caddy, frontend, backend e Postgres. Deploy pelo GitHub Actions, sem SSH; infraestrutura em Bicep (ADR-0029) |
 
 Ambiente de desenvolvimento: **Windows**. Não gerar `Makefile`. Comandos devem funcionar em
 PowerShell. Nada de `&&` encadeado em scripts do `package.json` sem alternativa cross-platform.
@@ -76,6 +78,12 @@ uv run python -m tools.gerar_prints                    # calibração (p01…p45
 uv run python -m tools.avaliar_prints                  # leitura + análise, API real, fora do CI
 uv run python -m tools.gerar_prints --divisao teste    # a medida limpa: gerar e medir UMA vez
 
+# scripts da VM (infra/vm/, só biblioteca padrão), de dentro de backend/
+uv run ruff format ../infra
+uv run ruff check ../infra
+uv run mypy --strict --platform linux --explicit-package-bases ../infra/vm
+uv run pytest ../infra -q -p no:cacheprovider
+
 # frontend
 cd frontend
 npm install
@@ -93,10 +101,25 @@ verifyscan/
 ├─ docker-compose.yml
 ├─ sonar-project.properties   # análise estática (ADR-0027): escopo, cobertura importada e
 │                            #   cada questão aceita, com o motivo; roda só no job `sonar` do CI
+├─ .github/workflows/      # ci.yml (testes, cadeia de IP, Bicep, scripts da VM, sonar) e
+│                          #   deploy.yml (depois do CI verde na master: imagens e VM; ADR-0029)
+├─ infra/                  # a produção (ADR-0029, docs/deploy.md)
+│  ├─ main.bicep           # tudo o que existe na Azure, menos o valor dos segredos;
+│  │                       #   producao.bicepparam, cloud-init.yaml, orcamento.bicep
+│  ├─ compose.yml          # a pilha da VM; Caddyfile (HTTPS, HSTS, IP da conexão, log sem o
+│  │                       #   pedido)
+│  ├─ teste-ip/            # o teste do CI: X-Forwarded-For forjado não muda a chave da cota
+│  └─ vm/                  # o que roda DENTRO da VM, em Python só com a biblioteca padrão:
+│                          #   entrar.sh (a porta do run-command), deploy.py (com volta
+│                          #   automática), backup.py, restaurar.py, migrar_neon.py, alerta.py
+│                          #   (falha do backup → Sentry), logs.py, azure.py (cofre e blobs com
+│                          #   a identidade da VM), systemd/ (backup diário); testes em
+│                          #   vm/tests/, com o Docker e a Azure falsos
 ├─ docs/
 │  ├─ RFC-VerifyScan-v1.1.pdf
 │  ├─ plano-de-execucao.md
 │  ├─ diario.md            # log de sessões — vira capítulo da monografia
+│  ├─ deploy.md            # produção: deploy, voltar versão, backup, restauração, logs sem SSH
 │  ├─ avaliacoes/          # relatórios do avaliar_corpus e do avaliar_prints (AAAA-MM-DD-<modo>.md),
 │  │                       #   nunca sobrescritos
 │  └─ adr/                 # ADR-000N-titulo.md
@@ -227,7 +250,10 @@ quebrar uma delas, **pare e pergunte**.
    descrição, peso): nunca análise sem indicador nem conjunto parcial. Sem isso não há auditoria
    nem recalibração. Falha ao registrar não derruba a análise: a transação inteira é descartada,
    vira WARNING sem conteúdo da mensagem e a resposta sai igual (ADR-0012).
-7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado).
+7. **Nada de segredo no repositório.** Chaves só via `.env` (com `.env.example` versionado). Em
+   produção, só no cofre da Azure: a VM as lê com a identidade dela, e nenhuma imagem leva
+   segredo (ADR-0029). O que a VM imprime aparece no log público do deploy: nunca valor de
+   segredo, string de conexão nem a saída de erro do Postgres.
 8. **Orçamento de tempo** (KPI < 30s): janela da cota ≤ 1,5 s **em série** antes de qualquer
    chamada à IA (sessão + reserva; no texto, depois do motor; ADR-0024) · leitura do print ≤ 10 s
    **em série** (a transcrição é a entrada das heurísticas; ocupa o lugar do OCR) · heurísticas
@@ -256,7 +282,7 @@ quebrar uma delas, **pare e pergunte**.
 - Todo acesso a rede fica atrás de uma interface com uma implementação *fake* determinística
   usada nos testes. Teste não faz chamada de rede — nunca. **Única exceção:** testes marcados
   `integracao` (em `tests/integracao/`) falam com um Postgres de teste — o do docker compose ou o
-  serviço do CI, via `TEST_DATABASE_URL` —, **nunca com o Neon**. Esquema só pelo Alembic, nenhuma
+  serviço do CI, via `TEST_DATABASE_URL` —, **nunca com o banco de produção**. Esquema só pelo Alembic, nenhuma
   linha deixada para trás. Motivo: o bug do ADR-0007 só apareceu contra Postgres real.
 - Commits em português, imperativo, escopo curto: `feat(scoring): agrega pesos por categoria`.
   Um commit por unidade lógica. Nada de commit gigante de fim de sessão.
@@ -282,6 +308,9 @@ quebrar uma delas, **pare e pergunte**.
   solução exigir um truque, comente o porquê em uma linha.
 - Ao terminar uma tarefa: rode `ruff`, `mypy`, `pytest`, mostre o resultado e o diff resumido.
 - Se algo no RFC estiver ambíguo ou errado, diga — não invente e não finja que está resolvido.
+- **Na Azure, leitura é livre; o resto, só com ok.** Comando que cria, altera ou apaga recurso:
+  mostre antes e espere, comando a comando. Nunca leia o `.env` nem imprima segredo. Os valores
+  do cofre quem coloca é o Walter. Toda migração é aditiva: a volta de versão não a desfaz.
 
 ## 8. Definition of Done (por tarefa)
 

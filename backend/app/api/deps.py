@@ -7,7 +7,7 @@ Engine, fábrica de sessões e cliente Redis vêm de `app.state`, onde o `lifesp
 from functools import lru_cache
 
 import httpx
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -53,8 +53,21 @@ from app.services.repositorio_usuarios import (
 )
 from app.services.tentativas import LimitadorDeTentativas
 
-# Cookie da sessão opaca (ADR-0013). A rota de logout também o lê.
+# Cookie da sessão opaca (ADR-0013). O nome completo sai de `nome_do_cookie`.
 NOME_DO_COOKIE = "vs_sessao"
+PREFIXO_HOST = "__Host-"
+
+
+def nome_do_cookie(settings: Settings) -> str:
+    """`__Host-vs_sessao` em HTTPS; `vs_sessao` no HTTP local (ADR-0029).
+
+    Um cookie com o prefixo `__Host-` só é aceito pelo navegador com `Secure`, `Path=/` e sem
+    `Domain`: ele fica preso ao host que o gravou. Em produção o endereço é um subdomínio de
+    cloudapp.azure.com, que não está na Public Suffix List; sem o prefixo, outro site hospedado
+    ali poderia plantar um `vs_sessao` no nosso endereço. Como o prefixo exige `Secure`, o HTTP
+    local fica sem ele.
+    """
+    return PREFIXO_HOST + NOME_DO_COOKIE if settings.cookie_secure else NOME_DO_COOKIE
 
 
 def obter_verificador_postgres(request: Request) -> VerificadorSaude:
@@ -240,15 +253,14 @@ def obter_orquestrador(
     )
 
 
-def ler_token_de_sessao(
-    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
-) -> str | None:
-    """Só lê o cookie, sem consultar o banco.
+def ler_token_de_sessao(request: Request, settings: Settings = Depends(get_settings)) -> str | None:
+    """Só lê o cookie, sem consultar o banco. É o único lugar que lê o cookie de sessão: o nome
+    depende da configuração (`nome_do_cookie`), e um cookie com o outro nome é ignorado.
 
     A análise não depende da conta: quem resolve o dono é o orquestrador, depois do resultado e
     dentro do teto do registro (ADR-0015). Por isso não há `obter_usuario_opcional`.
     """
-    return token
+    return request.cookies.get(nome_do_cookie(settings))
 
 
 @lru_cache
@@ -317,7 +329,7 @@ def obter_servico_historico(
 
 async def obter_usuario_atual(
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
-    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
+    token: str | None = Depends(ler_token_de_sessao),
 ) -> UsuarioAutenticado:
     """Quem está logado, ou 401.
 

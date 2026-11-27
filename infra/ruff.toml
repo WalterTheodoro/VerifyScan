@@ -1,0 +1,7 @@
+# O código Python de infra/ segue as mesmas regras do backend (linha de 100, mesmas checagens).
+extend = "../backend/pyproject.toml"
+
+[lint.per-file-ignores]
+# N818 quer sufixo "Error" no nome da exceção. Como no backend, os motivos são nomeados em
+# português: `DeployRecusado`, `SiteNaoRespondeu`, `ErroDoAzure` (CLAUDE.md §6).
+"vm/*.py" = ["N818"]

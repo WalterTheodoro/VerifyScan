@@ -44,6 +44,11 @@ const nextConfig: NextConfig = {
   // aninhado competiria com o arquivo de contexto do projeto, que é o da raiz do monorepo.
   agentRules: false,
 
+  // Só no build da imagem (frontend/Dockerfile, ADR-0029): gera `.next/standalone`, que roda com
+  // `node server.js` sem o node_modules inteiro. Fora dela fica desligado: no Windows a cópia
+  // exige symlink com privilégio, e o `npm start` não serve essa saída.
+  output: process.env.SAIDA_STANDALONE === "1" ? "standalone" : undefined,
+
   // /conta não tem conteúdo próprio: a seção de entrada é o histórico (ADR-0016). Redirecionar
   // aqui, e não com `redirect()` numa página, porque a página seria pré-renderizada estática e
   // deixaria o redirecionamento para o JavaScript do navegador — medido: aberta direto, ficava

@@ -1,0 +1,6 @@
+# Fim de linha LF, sempre, no que roda no Linux da VM ou dentro de contêiner (ADR-0029). No
+# Windows o git converteria para CRLF na cópia de trabalho, e é dela que o `az deployment` lê o
+# cloud-init.yaml para mandar à VM.
+infra/** text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf

@@ -1,0 +1,130 @@
+# Produção, na VM (ADR-0029). Quem roda este arquivo é o script de deploy, nunca alguém à mão:
+#
+#   docker compose --env-file <arquivo escrito pelo deploy> -f compose.yml up -d --wait
+#
+# As variáveis ${...} vêm desse arquivo, que o deploy escreve na VM a partir do cofre e que nunca
+# é versionado. As marcadas com `:?` são obrigatórias: sem uma delas o compose para antes de
+# tocar em qualquer contêiner.
+#
+# O único serviço com porta publicada é o Caddy. Frontend, backend e Postgres só existem na rede
+# interna do compose.
+
+# Nome fixo do projeto: não depende da pasta, e não se confunde com o docker-compose.yml de
+# desenvolvimento (cujo projeto é o nome da pasta do repositório).
+name: verifyscan-producao
+
+# Rotação dos logs do Docker: sem isto o arquivo de log de cada contêiner cresce até encher o
+# disco. No máximo 5 arquivos de 10 MB por contêiner. A âncora (&logs) só evita repetir o bloco.
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # O endereço que o Caddy atende e para o qual pede o certificado.
+      ENDERECO: ${DOMINIO:?defina DOMINIO}
+      EMAIL_ACME: ${EMAIL_ACME:?defina EMAIL_ACME}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificados e chaves do HTTPS. Sem este volume, cada recriação do contêiner pediria um
+      # certificado novo e esbarraria no limite do emissor.
+      - caddy_dados:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    logging: *logs
+
+  frontend:
+    image: ghcr.io/waltertheodoro/verifyscan-frontend:${TAG:?defina TAG}
+    restart: unless-stopped
+    environment:
+      # O mesmo valor do backend, da mesma variável (ADR-0024). Lido em execução pelo proxy.ts.
+      # A imagem não confere isto na subida; quem garante que existe é o `:?` daqui.
+      PROXY_SEGREDO: ${PROXY_SEGREDO:?defina PROXY_SEGREDO}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Pelo /health, que o Next repassa ao backend: saudável aqui é a cadeia inteira de pé.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *logs
+
+  backend:
+    image: ghcr.io/waltertheodoro/verifyscan-backend:${TAG:?defina TAG}
+    restart: unless-stopped
+    environment:
+      APP_ENV: producao
+      SENTRY_ENVIRONMENT: producao
+      # A versão que aparece em cada erro do Sentry: o SHA do commit publicado.
+      APP_VERSION: ${TAG}
+      CORS_ORIGINS: https://${DOMINIO}
+      # A senha é gerada só com letras, números, "-" e "_": cabe na URL sem escape.
+      DATABASE_URL: postgresql://verifyscan:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}@postgres:5432/verifyscan
+      IP_HMAC_SEGREDO: ${IP_HMAC_SEGREDO:?defina IP_HMAC_SEGREDO}
+      PROXY_SEGREDO: ${PROXY_SEGREDO:?defina PROXY_SEGREDO}
+      # Desligar a IA sem publicar código novo: trocar para "false" aqui e fazer o deploy.
+      IA_ATIVADA: "true"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY}
+      # Opcionais: vazias, o recurso fica desligado (reputação de links, /metrics, Sentry).
+      SAFE_BROWSING_API_KEY: ${SAFE_BROWSING_API_KEY:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # O resto fica no default do Settings, que já é o de produção (COOKIE_SECURE, cotas, tetos).
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # O /health faz SELECT 1: saudável aqui inclui o banco respondendo. O urlopen lança erro
+      # em qualquer resposta que não seja 2xx, e o processo sai com código 1.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *logs
+
+  postgres:
+    # A mesma versão do desenvolvimento, do CI e do Neon de onde os dados vêm (ADR-0011).
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: verifyscan
+      # Só vale na primeira subida, quando o volume ainda está vazio.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: verifyscan
+    # Sem `ports`: o banco nunca é exposto, nem na própria VM.
+    volumes:
+      - postgres_dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verifyscan -d verifyscan"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging: *logs
+
+volumes:
+  postgres_dados:
+  caddy_dados:
+  caddy_config:

@@ -6,11 +6,11 @@ nas sessões e no cookie. Finas, como as outras: a regra está no `ServicoAutent
 Senha errada é 400, nunca 401. A sessão continua válida, e o frontend trata 401 como "deslogado".
 """
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.autenticacao import apagar_cookie
 from app.api.deps import (
-    NOME_DO_COOKIE,
+    ler_token_de_sessao,
     obter_chave_ip,
     obter_servico_autenticacao,
     obter_usuario_atual,
@@ -57,7 +57,7 @@ async def trocar_senha(
     usuario: UsuarioAutenticado = Depends(obter_usuario_atual),
     servico: ServicoAutenticacao = Depends(obter_servico_autenticacao),
     chave_ip: str = Depends(obter_chave_ip),
-    token: str | None = Cookie(default=None, alias=NOME_DO_COOKIE),
+    token: str | None = Depends(ler_token_de_sessao),
 ) -> Response:
     # O token identifica a sessão deste aparelho, a única que sobrevive à troca.
     try:

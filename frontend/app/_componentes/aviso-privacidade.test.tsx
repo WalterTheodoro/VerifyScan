@@ -68,6 +68,58 @@ test("com o Sentry, diz o que vai, quando vai e o que nunca vai", async () => {
   assert.ok(screen.getByText(/Os avisos de erro e as medidas de desempenho vão para a Sentry/));
 });
 
+/** O texto de uma seção pelo título, numa linha só. */
+function textoDe(titulo: string): string {
+  const secao = screen.getByRole("heading", { name: titulo }).closest("section");
+  assert.ok(secao);
+  return (secao.textContent ?? "").replace(/\s+/g, " ");
+}
+
+// Onde os dados ficam depende de onde o site roda (ADR-0029). Enquanto o Render e a VM da Azure
+// estão no ar ao mesmo tempo, cada um tem de dizer a verdade sobre si: quem decide é a variável
+// que só o build da imagem define.
+test("na Azure, diz que a conta e o histórico ficam no Chile e o que isso significa", async () => {
+  vi.stubEnv("NEXT_PUBLIC_HOSPEDAGEM", "azure");
+  vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+  const AvisoPrivacidade = await carregar();
+
+  const { container } = render(<AvisoPrivacidade nivel="h2" />);
+
+  const onde = textoDe("Onde ficam e com quem");
+  assert.match(onde, /servidor da Microsoft Azure, no Chile/);
+  assert.match(onde, /a sua conta e o seu histórico/);
+  // O país pelo nome, e que é transferência internacional, com o artigo da lei.
+  assert.match(
+    onde,
+    /transferência internacional de dados \(Lei Geral de Proteção de Dados, art\. 33\)/,
+  );
+  assert.doesNotMatch(onde, /fora do Brasil/);
+  // Quem recebe a mensagem continua dito.
+  assert.match(onde, /Anthropic, nos Estados Unidos/);
+  assert.match(onde, /Google e ao VirusTotal/);
+  // A cópia de segurança guarda por 7 dias o que a pessoa apagou: o aviso tem de dizer.
+  assert.match(onde, /cópia de segurança do banco de dados/);
+  assert.match(textoDe("Por quanto tempo"), /cópias de segurança[^;]*7 dias/);
+  // Na VM não há registro de acesso com IP (invariante 2).
+  assert.match(textoDe("Registros de acesso"), /não guarda registros com o endereço IP/);
+  // E nada do que valia só no Render.
+  assert.doesNotMatch(container.textContent ?? "", /Render|Neon/);
+});
+
+test("fora da Azure, o aviso continua o do Render e da Neon", async () => {
+  vi.stubEnv("NEXT_PUBLIC_HOSPEDAGEM", "");
+  vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+  const AvisoPrivacidade = await carregar();
+
+  const { container } = render(<AvisoPrivacidade nivel="h2" />);
+
+  const onde = textoDe("Onde ficam e com quem");
+  assert.match(onde, /a Render, onde o site roda/);
+  assert.match(onde, /a Neon, onde fica o banco de dados/);
+  assert.match(textoDe("Registros de acesso"), /A Render, empresa onde o site roda/);
+  assert.doesNotMatch(container.textContent ?? "", /Azure|Chile|cópia de segurança/);
+});
+
 test("o nível dos títulos acompanha a página", async () => {
   vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
   const AvisoPrivacidade = await carregar();

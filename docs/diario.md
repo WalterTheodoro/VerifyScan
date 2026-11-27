@@ -3102,3 +3102,99 @@ O PR #33 falhou no job do backend: 25 testes de integração, todos com
 - **Segue não verificado:** chamada real ao Google e ao VirusTotal (sem chave aqui).
 - **Lição:** dependência nova no orquestrador pede rodar a integração antes de entregar, não
   depois. Ligar o Docker custa dois minutos.
+
+## 2026-11-26 — Hospedagem na Azure (fatia 15)
+
+O Portfolio Playbook não aceita o Render como ambiente produtivo e proíbe deploy por SSH. A
+produção vai para uma VM na Azure, paga com o crédito estudantil. Decisão completa no ADR-0029;
+operação em `docs/deploy.md`; o RNF07 na errata, item 18. O fechamento do RFC ficou parado até
+esta fatia terminar.
+
+- **Estado no fim do dia:** a infraestrutura existe e o código está na branch. **Nenhum deploy
+  rodou ainda:** o workflow só passa a existir para o GitHub depois do merge na `master`. O
+  Render segue no ar, e o endereço oficial não mudou.
+- **O que a conferência da assinatura mudou no plano** (só leitura, antes de qualquer código): a
+  região não pôde ser o Brasil e o tamanho de 2 GB não existe a preço viável. Uma política da
+  instituição libera cinco regiões e bloqueia os tamanhos baratos; em `brazilsouth`, a opção mais
+  barata gastaria o crédito em 1,3 mês. Ficou `chilecentral`, com 4 GB até o Demo Day e 1 GB
+  depois. Os US$ 100 são crédito total, não mensal, e a cobrança sai em reais.
+- **Dois achados de segurança no endereço novo.** `cloudapp.azure.com` não está na Public Suffix
+  List, ao contrário de `onrender.com`. Consequência 1: outro site da Azure poderia plantar um
+  cookie de sessão no nosso endereço; o cookie passou a se chamar `__Host-vs_sessao`, e as sessões
+  abertas caem no corte. Consequência 2: o limite do emissor do certificado é contado sobre
+  `azure.com` inteiro; a saída é o segundo emissor do Caddy, que só entra com um e-mail
+  configurado.
+- **O que entrou, em sete passos:** imagens do backend e do frontend; a pilha de produção (Caddy,
+  frontend, backend, Postgres) e um job do CI que a sobe inteira e confere que um
+  `X-Forwarded-For` forjado não muda a chave da cota; cookie, HSTS e aviso de privacidade com a
+  Azure no Chile; a infraestrutura em Bicep (17 recursos) e o orçamento; os scripts que rodam na
+  VM (deploy com volta automática, backup diário com 7 dias, restauração, migração do Neon, aviso
+  de falha pelo Sentry, logs); o workflow de deploy por OIDC; e os documentos.
+- **Erros meus, na ordem em que apareceram:**
+  - Disse que a `master` estava sem proteção. Tinha olhado só a proteção clássica de branch;
+    existia um conjunto de regras, só com a lista de checks vazia. O Walter a preencheu.
+  - Disse que, sem log de acesso, o Caddy não gravava IP. Gravava: quando o frontend não
+    responde, a linha de erro traz o IP, a URL com a query e os cabeçalhos. Apareceu ao ler o log
+    de uma resposta 502, depois de eu já ter afirmado o contrário. Um filtro apaga o pedido dessa
+    linha, e o CI provoca o erro e confere com valores marcados.
+  - Criei o orçamento com o valor 100, supondo dólar. A assinatura cobra em reais: R$ 100 seria
+    um quinto do crédito. O valor virou parâmetro, e o Walter aprovou 538.
+  - O Walter escreveu "SEU_EMAIL" no lugar do e-mail do aviso. Não adivinhei: perguntei.
+  - As descrições dos papéis foram para a Azure com acento e voltaram ilegíveis na saída do
+    `az`. Reescritas sem acento.
+  - A ocultação do erro da migração deixava passar o host do Neon quando ele tinha maiúsculas.
+    Quem pegou foi um teste com valor marcado, antes de o código chegar à VM.
+  - Prometi no plano uma ação para ver logs e não a escrevi no passo dos scripts. Só notei ao
+    redigir o guia de operação, que não teria como cumprir "ver logs sem SSH". Entrou no fim.
+- **O que só a VM de verdade mostrou:** o `az vm run-command invoke` responde "succeeded" mesmo
+  quando o script sai com erro. O workflow decide pela palavra `DEPLOY_OK` na saída, não pelo
+  status. E um script passado em linha pelo PowerShell perde as aspas: os scripts vão como
+  arquivo, com quebra de linha do Linux (por isso o `.gitattributes`).
+- **Números locais:** scripts da VM, **84** testes, `ruff` e `mypy --strict` limpos. Backend
+  **1039** testes unitários (106 de integração fora, por não ter rodado o Postgres de teste
+  nesta rodada). Frontend **57,8%** de linhas. Nenhum dos dois mudou depois do passo do cookie.
+- **Rodou na VM:** o preparo da máquina (Docker, atualizações automáticas, swap), a leitura do
+  cofre com a identidade, o SSH desligado e mascarado, a recusa do deploy com o cofre vazio, o
+  evento de teste do aviso (aceito pelo Sentry) e a listagem do armazenamento dos backups, vazia.
+- **Não verificado:** o primeiro deploy, a emissão do certificado, o login da Azure a partir do
+  Actions, o backup, a restauração e a migração com dados (testados só com falsos), o e-mail do
+  orçamento e a gratuidade do tamanho de 1 GB.
+- **Limitações que ficam:** uma VM só, sem réplica; a disponibilidade não é medida; `/metrics`
+  deixou de ser alcançável de fora; o run-command devolve só 4 KB de saída; falhas repetidas do
+  backup com o mesmo motivo viram uma ocorrência só no Sentry; o teste da cadeia de IP no CI não
+  passa pela publicação de porta do Docker, o que se confere no ar com dois IPs reais.
+- **Fora do escopo, anotado:** o `detalhe` do `/health` mostra o host e a porta do banco quando
+  a conexão falha; o "Estado atual" do README parou na fatia 9.
+- **Pendente:** merge, primeiro deploy (os pacotes das imagens nascem privados: torná-los
+  públicos e rodar de novo), as duas rodadas da migração, o teste do site novo, o corte, a
+  limpeza do que era do Render e a troca para 1 GB depois do Demo Day (16/12). Conferir o saldo
+  do crédito em 03/12, 10/12 e 17/12.
+- **Lição:** afirmar que um log "não tem" um dado pede provocar o caso e ler o log; e o que só o
+  ambiente de verdade revela (o status do run-command, as aspas) justifica testar cedo na VM,
+  antes de o deploy depender disso.
+
+## 2026-11-26 — Hospedagem na Azure: o Quality Gate reprovou o PR
+
+O PR #34 passou nos 12 checks do CI e reprovou no SonarQube Cloud: nota E de segurança no código
+novo, 9 questões. A triagem completa está no ADR-0027.
+
+- **Por que só apareceu agora:** a fatia trouxe quatro tipos de arquivo que o projeto não tinha
+  (Bicep, shell, Dockerfile, workflow de deploy), cada um com regras próprias. Em todos os passos
+  eu rodei `ruff`, `mypy` e os testes; nenhum deles olha esses arquivos. Eu tinha anotado que o
+  Sonar poderia apontar os arquivos novos, e deixei para ver depois da primeira análise.
+- **Duas eram reais, as duas de endurecimento:** a imagem do backend instalava dependências
+  podendo construir pacotes (agora só aceita pacote pronto), e o `curl` que baixa na VM o código
+  de cada versão seguia redirecionamentos sem exigir HTTPS. Corrigidas, a segunda com teste.
+- **Sete foram ignoradas, com motivo, regra e arquivo:** a senha do banco que não está na URL
+  porque vai por variável; o endereço do serviço de metadados da Azure; o checkout do workflow de
+  deploy, protegido por quatro conferências; e quatro de criptografia e identidade no Bicep, em
+  que a Azure já cifra em repouso com chave da plataforma.
+- **Decisão do Walter:** não ligar o `encryptionAtHost`; o motivo ficou registrado no ADR-0027.
+- **A mesma regra, duas respostas:** `--no-build` foi aceito no CI (o backend é instalado lá e
+  precisa ser construído) e corrigido no Dockerfile (lá ele entra por cópia). Classificar pela
+  regra, e não pelo lugar, teria ignorado uma correção que custava uma palavra.
+- **Não deu para ler o texto das regras:** a API pública não o devolve sem login. A classificação
+  saiu da mensagem de cada questão.
+- **Rodado:** scripts da VM, **86** testes, `ruff` e `mypy --strict` limpos; a imagem do backend
+  construída com o `--no-build`; o `curl` com as opções novas baixou o pacote do repositório.
+- **Pendente:** conferir o Quality Gate depois do push.

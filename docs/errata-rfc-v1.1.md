@@ -26,6 +26,7 @@
 | 15 | §2.3 (RF06, RF08) e §5.4.4 | reputação pelo **domínio**, nunca pela URL inteira | fatia 14 |
 | 16 | §5.4.4 (cache) | Redis → tabela no Postgres; prazo do Google respeitado | fatia 14 |
 | 17 | §2.4 (RNF01) e §1.6 | pior caso do tempo de resposta com a reputação | fatia 14 |
+| 18 | §2.4 (RNF07) | o serviço deixa de dormir; o que sustenta os 95% e o que não é medido | fatia 15 |
 
 ---
 
@@ -280,3 +281,22 @@ somando os tetos de cada etapa: **texto ≈ 20,3 s** (era ≈ 18,8 s) e **print 
 **Por quê:** o RFC previa RDAP (3 s) e reputação (5 s) em paralelo com as heurísticas. O RDAP não
 foi implementado (o sistema não faz consulta de DNS nem de registro, ADR-0022), e a reputação ficou
 com 3 s. Os tetos só podem baixar: o sistema não sobe com valor maior (ADR-0028).
+
+### 18 — §2.4 (RNF07), disponibilidade
+
+O RNF07 ("disponível no mínimo 95% do tempo") não muda. Muda o que o sustenta, e fica dito o que
+não se pode afirmar:
+
+> A aplicação roda numa máquina virtual que fica ligada o tempo todo (Azure, região do Chile). O
+> serviço não dorme por falta de uso. As paradas previstas são curtas: alguns segundos a cada
+> publicação de versão e um reinício de madrugada quando uma atualização de segurança pede. A
+> disponibilidade **não é medida**: não há monitor externo.
+
+**Por quê:** até a fatia 15 a aplicação estava no plano gratuito do Render, em que o backend
+dormia depois de 15 minutos sem uso e o primeiro acesso esperava até cerca de 60 segundos
+(ADR-0017). O serviço respondia, mas com espera. O Portfolio Playbook não aceita o Render como
+ambiente produtivo, e a hospedagem passou para uma VM (ADR-0029). O requisito continua sem
+medição: 95% em 30 dias permite 36 horas fora do ar, e nada no projeto conta essas horas. A VM é
+uma só, sem réplica: se ela cair, o site cai até alguém religar, e o que protege os dados é a
+cópia diária, guardada por 7 dias. A hospedagem depende de um crédito estudantil finito; quando
+ele acaba, a assinatura é desativada.

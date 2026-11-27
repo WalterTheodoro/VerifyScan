@@ -10,7 +10,9 @@ texto da mensagem, o print, um link analisado, e-mail, senha, IP, id de usuário
 
 Uma linha JSON por log, na saída do processo.
 
-- **Em produção:** painel do Render → serviço do backend → **Logs**.
+- **Em produção, na VM da Azure:** pelo run-command, sem SSH: `Na-VM logs backend`, ou com o id
+  da requisição como filtro. O passo a passo está em [`deploy.md`](deploy.md#ver-os-logs).
+- **No Render, até o corte:** painel do Render → serviço do backend → **Logs**.
 - **Localmente:** o terminal do `uvicorn`. Com `LOG_FORMAT=texto` no `.env`, saem legíveis.
 
 ```json
@@ -28,8 +30,8 @@ Uma linha JSON por log, na saída do processo.
 ### Seguir uma requisição
 
 Toda resposta do backend traz o cabeçalho `X-Request-ID`. No navegador: ferramentas de
-desenvolvedor → Rede → o pedido → cabeçalhos da resposta. Procure esse valor nos logs do Render
-para ver todas as linhas daquela requisição.
+desenvolvedor → Rede → o pedido → cabeçalhos da resposta. Procure esse valor nos logs para ver
+todas as linhas daquela requisição: na VM, `Na-VM logs backend <id>`.
 
 ### Eventos
 
@@ -52,6 +54,10 @@ para ver todas as linhas daquela requisição.
 ```powershell
 curl.exe -H "Authorization: Bearer $env:METRICS_TOKEN" https://SEU-BACKEND.onrender.com/metrics
 ```
+
+**Na VM da Azure o `/metrics` não é alcançável de fora:** o backend não é público, e o Caddy só
+repassa o que o frontend atende. Consultar as métricas lá está pendente (ADR-0029). O comando
+acima vale para o Render, até o corte.
 
 Localmente, com o backend de pé e o `METRICS_TOKEN` do `.env` carregado na variável:
 
@@ -80,7 +86,8 @@ query da chamada; por isso o log do cliente HTTP (`httpx`, `httpcore`) fica desl
 do evento do Sentry corta no `?` o nome do trecho de uma chamada HTTP (ADR-0028).
 
 **Limitações:** os contadores ficam na memória do processo. Zeram quando o backend reinicia (no
-Render gratuito, a cada sono por ociosidade), e com mais de um worker cada um conta o seu. O
+Render gratuito, a cada sono por ociosidade; na VM, a cada deploy), e com mais de um worker cada
+um conta o seu. O
 medidor do gasto só é atualizado quando há análise com IA; o valor certo está sempre no banco
 (`gasto_diario_ia`). Ainda não há painel: fica para depois da decisão de hospedagem.
 
@@ -91,19 +98,25 @@ rota e a versão (`release`). **Não mostra a mensagem da exceção**: ela é re
 porque pode citar o que a pessoa mandou.
 
 Para ir de um erro aos logs: abra o erro → **Request** → cabeçalho `X-Request-ID` → procure esse
-valor nos logs do Render.
+valor nos logs.
 
 Desempenho (10% das requisições): **Performance** / **Traces**.
+
+**Falha do backup ou da restauração (ADR-0029).** A VM manda um evento ao projeto do backend:
+"O backup do banco falhou: …" ou "A restauração do banco falhou: …", com um motivo curto,
+ambiente `producao` e a marca `origem: vm`. Não leva pilha, IP, nome de máquina nem a saída de
+erro do Postgres. Falhas com o mesmo motivo ficam na mesma ocorrência: marque-a como resolvida
+depois de consertar, para a próxima avisar de novo.
 
 ### Ligar
 
 | Onde | Variável | Efeito |
 |---|---|---|
-| backend (Render) | `SENTRY_DSN` | liga o Sentry no backend |
+| backend | `SENTRY_DSN` | liga o Sentry no backend. Na VM vem do cofre (`SENTRY-DSN`), e é o mesmo que o aviso de falha do backup usa |
 | backend | `SENTRY_ENVIRONMENT` | nome do ambiente (vazio: `APP_ENV`) |
 | backend | `SENTRY_TRACES_SAMPLE_RATE` | fração de requisições medidas (padrão 0.1) |
-| backend | `APP_VERSION` | versão em cada erro (vazio: `RENDER_GIT_COMMIT`, que o Render define) |
-| frontend (Render) | `NEXT_PUBLIC_SENTRY_DSN` | liga o Sentry no navegador e no servidor do Next, a rota do túnel e a seção do aviso de privacidade. **Lida no build** |
+| backend | `APP_VERSION` | versão em cada erro. Na VM, o SHA do commit publicado; vazio: `RENDER_GIT_COMMIT`, que o Render define |
+| frontend | `NEXT_PUBLIC_SENTRY_DSN` | liga o Sentry no navegador e no servidor do Next, a rota do túnel e a seção do aviso de privacidade. **Lida no build** |
 | frontend | `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | nome do ambiente |
 | frontend | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | envio dos source maps no build; sem eles o build passa igual e a pilha sai minificada |
 
