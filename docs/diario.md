@@ -3282,3 +3282,65 @@ Quatro itens, pedidos pelo Walter para o PR do corte, feitos um por vez.
   (lista no ADR-0029).
 - **Lição:** a de ontem valeu de novo, e agora do lado certo: a frase "o log não tem IP" só foi
   corrigida depois de provocar a linha e ler o log, antes e depois do filtro.
+
+## 2026-11-27 — Hospedagem na Azure: o corte
+
+A produção passou a ser a VM às 15:23 (12:23 de Brasília), quando terminou a cópia feita com o
+Render já suspenso. Os horários são UTC.
+
+- **Teste do site novo, pelo Walter** (11:01 a 11:05, navegador automatizado, só observação):
+  página inicial com HTTPS, `/health`, página inexistente, aviso de privacidade falando da
+  Azure, texto e print sem conta, entrar, histórico, texto com conta e sair. Tudo passou.
+- **O que o relatório do teste não traz:** conta antiga entrando (usou conta nova), a cota de
+  dois IPs diferentes, o nome do cookie e apagar uma análise. Estavam na lista do corte.
+- **Primeira rodada final da migração** (14:51:35 a 14:52:16, 41 s o comando inteiro), depois de
+  o Walter avisar que tinha suspendido os dois serviços do Render: `MIGRACAO_OK`, 8 tabelas
+  iguais (300 análises, 242 indicadores, 7 contas, 3 dias de gasto da IA; o resto vazio),
+  Alembic em `0008`. As contagens da origem eram as mesmas das 03:44.
+- **A rodada apagou o que o teste gravou na VM** (a conta nova e as análises dele). É o esperado:
+  ela substitui o banco.
+- **O Render ainda respondia depois dessa rodada.** Fui conferir de fora só depois, às 14:59: os
+  dois endereços antigos devolveram 200, e o `/health` do backend antigo, `postgres: ok`. A
+  primeira tentativa passou de 40 s sem resposta, que é o comportamento de serviço dormindo, e
+  não de serviço suspenso. Avisei o Walter na hora: a migração tinha passado, mas o Neon ainda
+  podia receber escrita. Os meus três pedidos foram ao `/health`, que só lê.
+- **A suspensão de verdade e a rodada que vale.** O Walter suspendeu de novo. Às 15:22:40 os
+  três pedidos (`/health` do backend, página inicial e `/health` pelo frontend) devolveram 503,
+  "Service Suspended", com o cabeçalho `x-render-routing: suspend-by-user`. Só então rodei a
+  migração outra vez (15:22:49 a 15:23:55, 66 s o comando inteiro): `MIGRACAO_OK`, as mesmas 8
+  tabelas e os mesmos números, Alembic em `0008`. Depois dela, `/health` 200 e a página inicial
+  no ar no endereço novo.
+- **O que essa segunda rodada garante:** a cópia foi feita com a origem parada, então o que
+  estava no Neon está na VM, tenha ou não mudado entre as duas rodadas. As contagens iguais
+  dizem a mais que nada novo entrou naquela meia hora: uma análise, uma entrada ou um uso da IA
+  teriam criado linha.
+- **A reputação de links não está funcionando na VM.** O relatório diz que as três análises
+  avisaram que as bases externas não foram consultadas. O log do backend (últimas 5 000 linhas)
+  não tem nenhuma linha `reputacao_indisponivel`, e chave ausente não gera linha, só métrica.
+  Tudo aponta para as duas chaves fora do cofre; não li os valores para confirmar.
+- **O texto da página inicial** dizia que as listas de sites perigosos "ainda não são
+  consultadas", o que deixou de ser verdade na fatia da reputação e ninguém corrigiu. Agora diz
+  que o nome do site é procurado nas duas listas, que o resultado avisa quando a consulta não
+  pode ser feita, e que não estar nas listas não torna um site seguro. A página é gerada no
+  build e não sabe se as chaves existem: por isso a frase vale nos dois casos, com o aviso do
+  resultado cobrindo o caso sem chave. Sem teste: a página inicial não tem arquivo de teste, e
+  não criei um só para uma frase.
+- **Documentos:** o README perdeu os dez passos do Render e ganhou uma seção curta de
+  configuração (onde se muda uma cota na VM, que era o que os passos tinham de útil); o
+  `docs/deploy.md` registra o corte e o que falta; o `docs/observabilidade.md` e o
+  `.env.example` deixaram de citar o Render como ambiente. Os ADRs antigos ficam como estão:
+  são história. O ADR-0029 ganhou o adendo.
+- **Um risco que só apareceu ao escrever o guia:** enquanto o segredo temporário do Neon existir
+  no cofre, a ação de migrar troca o banco de produção pelos dados antigos. Apagar o segredo
+  deixou de ser limpeza e virou trava.
+- **Rodado:** no frontend, `npm run lint` limpo e `npm test` com **200** testes passando (nenhum
+  deles lê a frase trocada). O backend e os scripts da VM não mudaram nesta rodada.
+- **Não verificado:** as correções da entrada anterior continuam sem rodar na VM; entram no
+  deploy deste PR.
+- **Pendente:** o Walter entrar com uma conta antiga, apagar o segredo do Neon e, se quiser a
+  reputação, preencher as duas chaves no cofre. Depois: a limpeza do código que era só do Render
+  (aviso de privacidade, as três variáveis, a espera pelo backend e o próprio `migrar_neon.py`),
+  a troca de tamanho da VM depois do Demo Day e a mensagem do Sentry na subida do frontend.
+- **Lição:** "suspendi" é uma frase sobre um painel; "não responde" é uma medida. A rodada final
+  devia ter começado por um pedido aos dois endereços antigos, e não terminado com ele. Custou
+  uma rodada a mais e meia hora em que a origem ainda aceitava escrita.

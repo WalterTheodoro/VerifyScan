@@ -192,3 +192,52 @@ rodou de verdade:
 Rodou na VM: o preparo (Docker, atualizações, swap), a leitura do cofre com a identidade, o SSH
 desligado, a recusa do deploy com o cofre vazio e o evento de teste do aviso, aceito pelo Sentry.
 O que o primeiro deploy e o corte mostrarem entra aqui como adendo.
+
+## Adendo — 27/11/2026: o primeiro deploy e o corte
+
+A produção passou a ser a VM neste dia. Os horários são UTC; o detalhe está no diário.
+
+**O que a lista acima dizia não ter rodado, e rodou:**
+
+- **Primeiro deploy** (02:33 a 02:36): uma execução só, com o login da Azure a partir do Actions
+  e o certificado emitido de primeira. Os pacotes das imagens nasceram públicos, porque herdam a
+  visibilidade do repositório; a falha que o guia previa não aconteceu.
+- **Backup automático** (06:00:28): `BACKUP_OK`, com o arquivo no armazenamento.
+- **Restauração** (10:41), com esse backup: `RESTAURACAO_OK`, e o `/health` fora por cerca de
+  5 s, medido de fora.
+- **Migração**, três rodadas (03:44, 14:51 e 15:22): `MIGRACAO_OK` em todas, 8 tabelas iguais
+  dos dois lados (300 análises, 242 indicadores, 7 contas) e Alembic em `0008`. A origem tinha
+  as mesmas contagens nas três.
+
+**O corte foi às 15:23.** O Walter testou o site novo (página inicial, HTTPS, `/health`, aviso de
+privacidade, texto e print sem conta, entrar, histórico, texto com conta, sair) e tudo passou.
+A rodada das 14:51 era para ser a final, mas, conferidos de fora às 14:59, os dois endereços do
+Render ainda respondiam 200. Depois de suspensos de novo, passaram a devolver 503 "Service
+Suspended" (15:22:40), e a rodada das 15:22:49 a 15:23:55 é a que vale: foi feita com a origem
+parada. O endereço oficial passou a ser o da VM no README e nos documentos.
+
+**O que o primeiro deploy mudou na decisão:**
+
+- O filtro do log do Caddy apaga também o campo `remote` (acima, em "O log do Caddy não leva dado do pedido").
+- O frontend sobe com um tipo de aviso do Node desligado: em cada pedido repassado ao backend a
+  resposta tem 11 ouvintes legítimos, 1 acima do limite que dispara o aviso, e o log ficava só
+  com isso. O custo é um vazamento de ouvintes de verdade deixar de avisar.
+- A restauração mostra as contagens no fim, com a mesma consulta da migração.
+
+**Continua não verificado:**
+
+- **Uma conta antiga entrando no site novo.** O teste usou uma conta nova. As 7 contas vieram,
+  pela contagem; ninguém entrou com uma delas ainda.
+- **A cota por IP com dois IPs reais**, que o teste do CI não cobre: o relatório do teste do site
+  novo não traz essa conferência, nem o nome do cookie.
+- **A reputação de links na VM.** As três análises do teste avisaram que as bases externas não
+  foram consultadas, e o log do backend não tem nenhuma linha de falha delas. É o que se espera
+  quando as duas chaves não estão no cofre; os valores do cofre não foram lidos para confirmar.
+- **As correções do PR do corte na VM** (filtro do Caddy, aviso do frontend, contagens da
+  restauração): rodaram em casa e entram no deploy deste PR.
+- O aviso do orçamento por e-mail e a gratuidade do B2ats_v2, como antes.
+
+**Pendente:** apagar o segredo `NEON-DATABASE-URL` (enquanto ele existir, a ação de migrar troca
+o banco de produção pelos dados antigos), apagar os serviços do Render e o projeto do Neon
+depois de alguns dias, e a limpeza do código listada em "Depois do corte, sai", à qual se soma o
+próprio `migrar_neon.py`.
