@@ -22,8 +22,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 # Só os dois arquivos de dependência primeiro: mudar código não refaz esta camada.
 # --locked falha se o uv.lock estiver desatualizado, como no CI. --no-dev deixa de fora pytest,
 # ruff, mypy e o Playwright. --no-install-project: o código entra por cópia, no estágio final.
+# --no-build: só pacotes prontos. Nenhum script de construção de dependência roda na imagem; se um
+# dia uma delas só existir como código-fonte, o build para aqui em vez de executá-lo (ADR-0027).
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project --no-build
 
 # ── 2. execução ──────────────────────────────────────────────────────────────────────────────
 FROM python:3.12-slim
