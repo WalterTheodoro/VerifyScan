@@ -386,14 +386,10 @@ VerifyScan/
 
 ## Produção
 
-A produção está de mudança do Render para a Azure
-([ADR-0029](docs/adr/ADR-0029-hospedagem-na-azure.md)). Até o corte, o endereço oficial ainda é o
-do Render; o da Azure já existe e é para onde tudo vai.
-
-### Azure (o destino)
-
-Uma VM no Chile com Docker Compose: Caddy (HTTPS automático), frontend, backend e Postgres 16. Só
-as portas 80 e 443 são abertas; não há SSH.
+Uma VM na Azure, no Chile, com Docker Compose: Caddy (HTTPS automático), frontend, backend e
+Postgres 16 ([ADR-0029](docs/adr/ADR-0029-hospedagem-na-azure.md)). Só as portas 80 e 443 são
+abertas; não há SSH. Até 27/11/2026 a produção ficava no Render, com o banco no Neon; os dados
+vieram de lá nesse dia.
 
 - **Endereço:** <https://verifyscan.chilecentral.cloudapp.azure.com>
 - **Deploy:** sozinho, depois do CI verde na `master` (`.github/workflows/deploy.yml`). Se a versão
@@ -408,93 +404,21 @@ Como publicar, voltar uma versão, ver os logs, restaurar um backup e migrar os 
 **Toda migração precisa ser aditiva**: a volta de versão não desfaz migração. Remover ou renomear
 coluna leva dois deploys.
 
-### Render (até o corte)
+### Configuração
 
-Backend no plano gratuito do Render; banco no Neon gratuito (decisão e custos no
-`docs/adr/ADR-0011`). Esta parte sai do README quando o Render for desligado. Os passos são
-manuais, feitos uma vez, nos painéis:
+Os segredos vêm do cofre, e o resto está escrito em `infra/compose.yml`. O que esse arquivo não
+define fica no default do `Settings`, que já é o de produção: cotas, teto de gasto, tempos
+limite, sessão e histórico de 7 dias. As variáveis e o limite de cada uma estão comentados no
+`.env.example`.
 
-1. **Criar o projeto no Neon** na região **AWS us-west-2** (a mesma do Render em Oregon), com
-   **Postgres 16** — igual ao `docker compose` e ao CI.
-2. **Copiar a connection string com "Connection pooling" DESLIGADO.** O host não pode ter
-   `-pooler`: a API é um processo de longa duração com pool próprio, e a migração precisa da
-   conexão direta. Cole como vem (`postgresql://...?sslmode=require&channel_binding=require`) — a
-   aplicação troca o dialeto para `postgresql+psycopg://` sozinha.
-3. **No Render, colocar essa string em `DATABASE_URL`.** A mesma variável serve à API e ao Alembic.
-4. **Trocar o build command do Render** para:
+Para mudar um desses valores (subir `IA_COTA_SEM_CONTA` no Demo Day, em que todo mundo sai pelo
+mesmo IP, por exemplo), acrescente a variável ao serviço `backend` do `infra/compose.yml` e
+publique: ela vale a partir do deploy seguinte. Desligar a IA é no mesmo arquivo, trocando
+`IA_ATIVADA` para `"false"`.
 
-   ```
-   pip install uv && uv sync --frozen && uv run --frozen alembic upgrade head
-   ```
-
-   A migração roda no build porque o *pre-deploy command* do Render é só dos planos pagos. Por
-   isso toda migração precisa ser aditiva; remover ou renomear coluna leva dois deploys.
-5. **Deixar `REDIS_URL` sem valor.** O Redis fica desativado até a Fase 4, e o `/health` responde
-   `redis: desativado` com status `ok`.
-6. **Autenticação (ADR-0013): nada a definir.** Os defaults já são os de produção:
-   `COOKIE_SECURE=true` (não precisa ser definida — e nunca deve ir como `false` no Render),
-   `SESSAO_DIAS=7` e `TIMEOUT_AUTENTICACAO_S=5`. As variáveis `JWT_*` que existiam no
-   `.env.example` saíram: a sessão é opaca, em banco, e não há segredo de assinatura. Se elas
-   estiverem no painel do Render, podem ser apagadas.
-   O histórico (ADR-0015) também já vem no default de produção: `HISTORICO_DIAS=7`, por quantos
-   dias a análise feita logado fica ligada à conta, com a mensagem (ADR-0018). As migrações
-   `0003` a `0005` rodam sozinhas no build. `TEXTO_MAX_CARACTERES` não pode passar de 5000: o
-   CHECK da `0004` limita o texto guardado, e o backend não sobe com valor maior.
-7. **Análise com IA (ADR-0020).** No serviço **VerifyScan** (o backend) → **Environment**:
-   - `IA_ATIVADA=true` — liga a chamada ao Claude. Sem ela (ou com `false`), a análise sai só com
-     as regras, e é assim que se desliga a IA sem novo deploy de código;
-   - `ANTHROPIC_API_KEY` — a chave da API, **como segredo** (o Render não a mostra depois de
-     salva). Obrigatória com a IA ligada: sem ela, o backend não sobe;
-   - opcionais, com estes defaults: `IA_MODELO=claude-haiku-5-5`, `IA_TIMEOUT_S=15` (máximo 15 —
-     o backend não sobe com mais), `IA_MAX_TOKENS=700`;
-   - `LOG_LEVEL=INFO` já é o default: é ele que mostra, nos logs do Render, a latência e os tokens
-     de cada análise com IA. O texto da mensagem e a resposta da IA nunca vão para o log.
-   - **Reputação de links (ADR-0028), opcional:** `SAFE_BROWSING_API_KEY` e
-     `VIRUSTOTAL_API_KEY`, **como segredos**. Sem uma delas, aquela base não é consultada e a
-     análise com link avisa que a verificação externa não foi possível. Só o domínio dos links
-     é enviado; o que vai ao VirusTotal passa a constar na base dele.
-
-   A migração `0005` roda no build, como as outras.
-8. **Print da conversa (ADR-0023).** Usa a mesma chave e o mesmo `IA_ATIVADA`: com a IA desligada,
-   a análise de print responde 503, e a de texto segue normal. Opcionais, com estes defaults (o
-   backend não sobe com valor maior que o máximo): `IA_TIMEOUT_LEITURA_S=10` (máximo 10),
-   `IA_TIMEOUT_ANALISE_IMAGEM_S=10` (máximo 10), `IA_MAX_TOKENS_LEITURA=2500` e
-   `IMAGEM_MAX_BYTES=5242880` (máximo 7500000). Nos logs vão só bytes, dimensões, latência, tokens
-   e o motivo do plano B: nunca a imagem, a transcrição nem o contexto. A migração `0006` roda no
-   build.
-9. **Limites de uso, teto de gasto e login (ADR-0024).** No backend → **Environment**, **antes do
-   merge** (o `alembic upgrade` do build lê o `Settings` e quebra sem eles):
-   - `IP_HMAC_SEGREDO`, como segredo: a chave do HMAC do IP de quem não tem conta. Gere uma vez e
-     não troque: trocar zera as cotas do dia;
-   - `PROXY_SEGREDO`, como segredo, com o **mesmo valor** do frontend (item 10);
-   - opcionais, com estes defaults:
-     - `IA_COTA_SEM_CONTA=5` (até 200), `IA_COTA_COM_CONTA=25` (até 500);
-     - `IA_TETO_GASTO_DIARIO_USD=1.00` (até 20);
-     - `IA_PRECO_ENTRADA_USD_POR_MILHAO=0.10` e `IA_PRECO_SAIDA_USD_POR_MILHAO=0.50`;
-     - `TIMEOUT_COTA_S=1.5` (até 5; acima de ~2,8 s o pior caso do print passa dos 30 s);
-     - `LOGIN_FALHAS_POR_CONTA=10`, `LOGIN_FALHAS_POR_IP=30`, `LOGIN_JANELA_MINUTOS=15`,
-       `CADASTROS_POR_IP_POR_DIA=5` e `ARGON2_SIMULTANEOS=2` (só podem baixar).
-
-   Num evento em que todo mundo sai pelo mesmo IP (o Demo Day), suba `IA_COTA_SEM_CONTA` naquela
-   data. A migração `0007` roda no build. **Backend e frontend desta fatia sobem juntos:** sem o
-   IP repassado pelo frontend, todo visitante sem conta cai no IP do frontend e divide uma cota só.
-10. **Frontend no Render (ADR-0014).** Definir, no serviço do frontend, antes do build:
-   - `API_URL_INTERNA=https://verifyscan.onrender.com` — para onde o Next repassa `/api/*` e
-     `/health`. É lida no build; sem ela, o build falha;
-   - `NEXT_PUBLIC_CONTATO_PRIVACIDADE` — o e-mail que aparece em `/privacidade` para pedir a
-     exclusão da conta (o caminho de quem esqueceu a senha; com a senha, a exclusão é feita em
-     Minha conta → Meus dados). Sem ela, a página diz "contato em configuração";
-   - `NEXT_PUBLIC_URL_DESPERTAR=https://verifyscan.onrender.com` — o endereço público do
-     backend. O navegador faz um GET direto a `/health` nele, só para acordá-lo: pelo proxy, o
-     Render responde 502 e não acorda o backend (adendo do ADR-0017). Também é lida no build. Sem
-     ela, o build passa, mas o primeiro acesso em produção não acorda o backend;
-   - `PROXY_SEGREDO`, como segredo, com o mesmo valor do backend (ADR-0024). O `proxy.ts` o lê em
-     execução, mas o build de produção quebra sem ele.
-
-   **`NEXT_PUBLIC_API_URL` pode sair do painel:** o código não a lê mais.
-
-**Não aponte monitor de uptime nem keep-alive para `/health`**: ele faz `SELECT 1` e manteria o
-compute do Neon ligado o mês inteiro, estourando a cota gratuita (conta no ADR-0011).
+A reputação de links (ADR-0028) só funciona com `SAFE-BROWSING-API-KEY` e `VIRUSTOTAL-API-KEY`
+preenchidos no cofre. Sem uma delas, aquela base não é consultada, e a análise com link avisa que
+a verificação externa não foi possível.
 
 ---
 
@@ -519,15 +443,10 @@ confira o valor de `API_URL_INTERNA` em `frontend/.env.local`. Mudança nessa va
 reiniciar o `npm run dev` — e, no build de produção, rodar o `npm run build` de novo: as rewrites
 ficam gravadas no build.
 
-**Em produção, o primeiro acesso mostra "O servidor está acordando".**
-Só no Render: na VM da Azure o backend não dorme (ADR-0029), e lá essa tela indica que o site
-está fora; veja "Problemas comuns" em [`docs/deploy.md`](docs/deploy.md).
-É o esperado no plano gratuito: o backend do Render dorme depois de 15 min sem uso e leva até
-~60 s para acordar. A tela tenta de novo sozinha por até 90 s; envios (análise, entrar, cadastro)
-esperam o backend responder e saem uma vez só (ADR-0017). Se passar de 90 s, confira no painel do
-Render se o serviço do backend subiu e se `NEXT_PUBLIC_URL_DESPERTAR` está definida no frontend:
-sem ela, ninguém acorda o backend. Não crie monitor nem keep-alive para evitar a espera: as
-cotas gratuitas não comportam (ADR-0011).
+**Em produção, a tela mostra "O servidor está acordando".**
+Na VM o backend não dorme (ADR-0029): essa tela quer dizer que ele não está respondendo. Durante
+um deploy isso dura alguns segundos, e a tela tenta de novo sozinha por até 90 s (ADR-0017). Se
+não passar, veja "Problemas comuns" em [`docs/deploy.md`](docs/deploy.md).
 
 **`uv sync` reclama que o `uv.lock` está desatualizado.**
 Alguém mexeu no `pyproject.toml`. Rode `uv lock` e commite o `uv.lock` junto.

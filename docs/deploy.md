@@ -3,8 +3,8 @@
 Como a produção na Azure é publicada, conferida e consertada. As decisões e os porquês estão no
 [ADR-0029](adr/ADR-0029-hospedagem-na-azure.md).
 
-> **Estado em 26/11/2026:** a infraestrutura está criada, mas a produção ainda responde pelo
-> Render. O endereço abaixo passa a ser o oficial no [corte](#o-corte).
+> **Desde 27/11/2026 a produção é esta.** Até esse dia ela ficava no Render, com o banco no Neon;
+> o que foi feito na troca está em [O corte](#o-corte).
 
 | O quê | Onde |
 |---|---|
@@ -76,7 +76,7 @@ Depois disso, cada ação é uma linha:
 | `Na-VM logs backend` | as últimas linhas do log de um serviço |
 | `Na-VM backup` | faz um backup agora |
 | `Na-VM restaurar` | restaura o backup mais recente (**apaga o banco atual**) |
-| `Na-VM migrar_neon` | copia os dados do Neon para a VM |
+| `Na-VM migrar_neon` | copiava os dados do Neon para a VM; sem o segredo temporário, recusa |
 | `Na-VM alerta` | manda um evento de teste ao Sentry |
 | `Na-VM deploy` | publica o commit de `$sha` (o normal é o workflow fazer isso) |
 
@@ -160,7 +160,7 @@ No portal: o cofre → **Objetos → Segredos** → o segredo → **+ Nova vers�
 | Nome no cofre | De onde vem | Obrigatório |
 |---|---|---|
 | `POSTGRES-PASSWORD` | gerada uma vez, só com letras, números, `-` e `_`. **Só vale na primeira subida do banco:** trocar depois quebra a conexão | sim |
-| `IP-HMAC-SEGREDO` | o mesmo valor do Render. **Não trocar:** zera as cotas do dia | sim |
+| `IP-HMAC-SEGREDO` | gerado uma vez (é o mesmo valor que estava no Render). **Não trocar:** zera as cotas do dia | sim |
 | `PROXY-SEGREDO` | gerado uma vez | sim |
 | `ANTHROPIC-API-KEY` | console da Anthropic | sim |
 | `EMAIL-ACME` | um e-mail seu, para o emissor do certificado | sim |
@@ -180,8 +180,9 @@ no próximo commit.
 
 ## Migrar os dados do Neon
 
-Duas rodadas: uma para validar o site novo com dados de verdade, e outra logo antes do corte.
-Cada rodada **substitui** o que está no banco da VM.
+**Já foi feita, e não é para rodar de novo.** Os dados vieram do Neon em 27/11/2026: uma rodada
+para validar o site novo com dados de verdade e a do [corte](#o-corte), que foi feita duas vezes.
+Fica aqui como registro de como foi.
 
 1. No portal, no cofre: **+ Gerar/Importar**, nome `NEON-DATABASE-URL`, valor = a string
    **direta** do Neon (host sem `-pooler`).
@@ -190,12 +191,13 @@ Cada rodada **substitui** o que está no banco da VM.
    versão do Alembic. Tem de terminar com `MIGRACAO_OK`.
 4. Depois da última rodada, apagar o segredo `NEON-DATABASE-URL` do cofre.
 
-O site da VM fica parado durante a cópia. Se a contagem do Neon mudar no meio (alguém usou o site
-do Render naquele instante), a migração reprova e é só rodar de novo. A string do Neon não
-aparece na saída nem em mensagem de erro.
+Cada rodada **substitui** o que está no banco da VM. Por isso o passo 4 não é só limpeza:
+**enquanto o segredo existir, `Na-VM migrar_neon` troca o banco de produção pelos dados antigos
+do Neon.** Sem o segredo, a ação responde `MIGRACAO_RECUSADA` e não toca em nada.
 
-O código no ar na VM tem de estar na mesma versão do Alembic do Neon: faça a migração logo depois
-de um deploy da `master`, com o Render publicado no mesmo commit.
+O site da VM fica parado durante a cópia. Se a contagem da origem muda no meio, a migração
+reprova. A string do Neon não aparece na saída nem em mensagem de erro. O código no ar na VM tem
+de estar na mesma versão do Alembic da origem.
 
 ## A infraestrutura (Bicep)
 
@@ -239,25 +241,36 @@ nascem privados e a VM deixa de conseguir baixá-los.
 
 ## O corte
 
-O Render fica no ar até a VM estar validada. Nesta ordem:
+Foi em 27/11/2026. O Render ficou no ar até a VM estar validada. O que foi feito, na ordem:
 
-1. **Rodada de validação:** `Na-VM migrar_neon`, e o teste do site novo:
+1. **Rodada de validação:** `Na-VM migrar_neon`, e o teste do site novo. A lista do que conferir:
    - texto, link e print, com e sem conta;
    - criar conta, entrar, ver o histórico, apagar uma análise, sair;
    - o cookie se chama `__Host-vs_sessao` (ferramentas do navegador → Aplicativo → Cookies);
    - a cota de quem não tem conta, de **dois IPs diferentes** (Wi-Fi e 4G): cada um tem a sua, e
      o "Restam N" de um não muda com o uso do outro;
    - a página `/privacidade` fala da Azure, no Chile.
-2. **Rodada do corte:** `Na-VM migrar_neon` de novo, e conferir as contagens.
-3. Trocar o endereço no README e nos documentos, e divulgar o novo.
-4. Apagar o segredo `NEON-DATABASE-URL`.
-5. Suspender os serviços no Render (o Walter) e, depois de alguns dias sem precisar voltar, o
-   projeto no Neon.
+2. **Suspender os dois serviços no Render** (o Walter), para o Neon não receber mais escrita, e
+   **conferir de fora** que pararam: `verifyscan.onrender.com/health` e
+   `verifyscan-app.onrender.com` passaram a devolver 503, "Service Suspended". Sem essa
+   conferência a primeira tentativa de rodada final foi feita com o Render ainda respondendo, e
+   teve de ser repetida.
+3. **Rodada do corte:** `Na-VM migrar_neon` de novo, das 15:22:49 às 15:23:55 UTC (12:23 de
+   Brasília). Resultado: `MIGRACAO_OK`, 8 tabelas iguais dos dois lados (300 análises, 242
+   indicadores, 7 contas, 3 dias de gasto da IA; o resto vazio) e Alembic em `0008`. O que o
+   teste do passo 1 tinha gravado na VM saiu nessa rodada: ela substitui o banco.
+4. Trocar o endereço no README e nos documentos.
 
-Quem estava logado no Render precisa entrar de novo no endereço novo. O que for gravado no Render
-entre a rodada do corte e a suspensão não vai para a VM: faça os passos 2 a 5 em seguida.
+O que falta, depois do deploy desta troca:
 
-Depois do corte sai do código o que era só do Render (lista no fim do ADR-0029).
+- entrar com uma conta que já existia no site antigo e ver o histórico dela;
+- apagar o segredo `NEON-DATABASE-URL` (o porquê está em
+  [Migrar os dados do Neon](#migrar-os-dados-do-neon));
+- depois de alguns dias sem precisar voltar, apagar os serviços no Render e o projeto no Neon;
+- tirar do código o que era só do Render (lista no fim do ADR-0029).
+
+Quem estava logado no site antigo precisa entrar de novo no endereço novo: o cookie é do
+endereço.
 
 ## Problemas comuns
 
