@@ -45,12 +45,39 @@ class Docker:
     ) -> bytes:
         self.comandos.append((comando, entrada))
         if self.quebra is not None and self.quebra in comando:
-            raise ComandoFalhou(1, "erro")
+            raise ComandoFalhou(1, "erro do Postgres com MARCA-DE-DADO")
         return self.dump if "pg_dump" in comando else b""
 
 
 def _antigo(dias: float) -> tuple[datetime, bytes]:
     return AGORA - timedelta(days=dias), b"velho"
+
+
+class Avisos:
+    """No lugar do aviso ao Sentry: guarda os motivos que seriam enviados."""
+
+    def __init__(self) -> None:
+        self.motivos: list[str] = []
+
+    def __call__(self, motivo: str) -> None:
+        self.motivos.append(motivo)
+
+
+def _backup(docker: Docker, armazenamento: Armazenamento, avisos: Avisos | None = None) -> int:
+    return backup.fazer_backup(
+        AGORA, executar=docker, armazenamento=armazenamento, avisar=avisos or Avisos()
+    )
+
+
+def _restaurar(
+    nome: str | None,
+    docker: Docker,
+    armazenamento: Armazenamento,
+    avisos: Avisos | None = None,
+) -> int:
+    return restaurar.restaurar(
+        nome, executar=docker, armazenamento=armazenamento, avisar=avisos or Avisos()
+    )
 
 
 # ─── backup ───────────────────────────────────────────────────────────────────────────────
@@ -60,7 +87,7 @@ def test_backup_manda_o_dump_com_a_data_no_nome() -> None:
     armazenamento = Armazenamento()
     docker = Docker()
 
-    codigo = backup.fazer_backup(AGORA, executar=docker, armazenamento=armazenamento)
+    codigo = _backup(docker, armazenamento)
 
     assert codigo == 0
     assert armazenamento.blobs["verifyscan-20261210T060000Z.dump"][1] == DUMP
@@ -80,7 +107,7 @@ def test_backup_apaga_o_que_tem_7_dias_ou_mais_e_so_isso() -> None:
         }
     )
 
-    backup.fazer_backup(AGORA, executar=Docker(), armazenamento=armazenamento)
+    _backup(Docker(), armazenamento)
 
     assert sorted(armazenamento.blobs) == [
         "outro-arquivo.txt",  # não é nosso: não é tocado
@@ -99,10 +126,48 @@ def test_backup_que_falha_nao_apaga_nenhum_antigo(falha: str) -> None:
         quebra="pg_dump" if falha == "pg_dump falhou" else None,
     )
 
-    codigo = backup.fazer_backup(AGORA, executar=docker, armazenamento=armazenamento)
+    codigo = _backup(docker, armazenamento)
 
     assert codigo != 0
     assert list(armazenamento.blobs) == ["verifyscan-velho.dump"]
+
+
+@pytest.mark.parametrize("falha", ["dump vazio", "pg_dump falhou", "envio recusado"])
+def test_backup_que_falha_avisa_com_o_motivo_resumido(falha: str) -> None:
+    armazenamento = Armazenamento()
+    armazenamento.recusa_envio = falha == "envio recusado"
+    docker = Docker(
+        dump=b"" if falha == "dump vazio" else DUMP,
+        quebra="pg_dump" if falha == "pg_dump falhou" else None,
+    )
+    avisos = Avisos()
+
+    _backup(docker, armazenamento, avisos)
+
+    assert len(avisos.motivos) == 1
+    # O que o Postgres escreveu no erro pode citar dado: fica no log da VM, não vai no aviso.
+    assert "MARCA-DE-DADO" not in avisos.motivos[0]
+
+
+def test_limpeza_que_falha_tambem_avisa() -> None:
+    class SemListar(Armazenamento):
+        def listar_blobs(self, conta: str, container: str) -> list[Blob]:
+            raise ErroDoAzure("O armazenamento respondeu 503 (GET).")
+
+    avisos = Avisos()
+
+    codigo = _backup(Docker(), SemListar(), avisos)
+
+    assert codigo != 0
+    assert len(avisos.motivos) == 1 and "limpeza" in avisos.motivos[0]
+
+
+def test_backup_que_da_certo_nao_avisa() -> None:
+    avisos = Avisos()
+
+    assert _backup(Docker(), Armazenamento(), avisos) == 0
+
+    assert avisos.motivos == []
 
 
 # ─── restauração ──────────────────────────────────────────────────────────────────────────
@@ -117,7 +182,7 @@ def test_restaurar_sem_nome_usa_o_backup_mais_recente() -> None:
     )
     docker = Docker()
 
-    codigo = restaurar.restaurar(None, executar=docker, armazenamento=armazenamento)
+    codigo = _restaurar(None, docker, armazenamento)
 
     assert codigo == 0
     comando, entrada = next((c, e) for c, e in docker.comandos if "pg_restore" in c)
@@ -130,7 +195,7 @@ def test_restaurar_para_o_site_antes_e_o_religa_depois() -> None:
     armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
     docker = Docker()
 
-    restaurar.restaurar("verifyscan-x.dump", executar=docker, armazenamento=armazenamento)
+    _restaurar("verifyscan-x.dump", docker, armazenamento)
 
     passos = [c[1] if c[1] in ("stop", "start") else "restore" for c, _ in docker.comandos]
     assert passos == ["stop", "restore", "start"]
@@ -140,7 +205,7 @@ def test_restauracao_que_falha_religa_o_site_mesmo_assim() -> None:
     armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
     docker = Docker(quebra="pg_restore")
 
-    codigo = restaurar.restaurar(None, executar=docker, armazenamento=armazenamento)
+    codigo = _restaurar(None, docker, armazenamento)
 
     assert codigo != 0
     assert docker.comandos[-1][0][:2] == ["docker", "start"]
@@ -149,7 +214,28 @@ def test_restauracao_que_falha_religa_o_site_mesmo_assim() -> None:
 def test_restaurar_backup_que_nao_existe_nao_para_o_site() -> None:
     docker = Docker()
 
-    codigo = restaurar.restaurar("nao-existe.dump", executar=docker, armazenamento=Armazenamento())
+    codigo = _restaurar("nao-existe.dump", docker, Armazenamento())
 
     assert codigo != 0
     assert docker.comandos == []
+
+
+def test_restauracao_que_falha_avisa_sem_o_erro_do_postgres() -> None:
+    armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
+    avisos = Avisos()
+
+    _restaurar(None, Docker(quebra="pg_restore"), armazenamento, avisos)
+
+    assert len(avisos.motivos) == 1
+    assert "MARCA-DE-DADO" not in avisos.motivos[0]
+
+
+def test_restauracao_que_da_certo_ou_e_recusada_nao_avisa() -> None:
+    """Nome de backup errado é engano de quem pediu, e a resposta já sai na hora para ele."""
+    armazenamento = Armazenamento({"verifyscan-x.dump": (AGORA, b"x")})
+    avisos = Avisos()
+
+    _restaurar(None, Docker(), armazenamento, avisos)
+    _restaurar("nao-existe.dump", Docker(), armazenamento, avisos)
+
+    assert avisos.motivos == []

@@ -8,17 +8,25 @@ backup: tudo o que foi gravado depois dele se perde.
 
 O site é parado durante a restauração (ninguém grava no meio) e religado no fim, mesmo se ela
 falhar. A restauração roda numa transação só: se falhar no meio, o banco fica como estava.
+
+Se falhar, avisa pelo Sentry (`vm/alerta.py`). Backup que não existe não é falha: é recusa, e a
+resposta já sai na hora para quem pediu.
 """
 
 import sys
 
 from vm import config
+from vm.alerta import Avisar, com_aviso
 from vm.azure import Azure, ErroDoAzure
 from vm.backup import PREFIXO, Armazenamento
 from vm.sistema import POSTGRES, SITE, ComandoFalhou, Executar, dizer, executar_de_verdade
 
+O_QUE = "A restauração do banco falhou"
 
-def restaurar(nome: str | None, *, executar: Executar, armazenamento: Armazenamento) -> int:
+
+def restaurar(
+    nome: str | None, *, executar: Executar, armazenamento: Armazenamento, avisar: Avisar
+) -> int:
     conta, container = config.CONTA_DE_ARMAZENAMENTO, config.CONTAINER_DE_BACKUPS
     try:
         backups = [
@@ -32,8 +40,9 @@ def restaurar(nome: str | None, *, executar: Executar, armazenamento: Armazename
             return 2
         dump = armazenamento.baixar_blob(conta, container, nome)
     except ErroDoAzure as erro:
-        dizer(f"RESTAURACAO_RECUSADA: {erro}")
-        return 2
+        dizer(f"RESTAURACAO_FALHOU: nada foi tocado. {erro}")
+        avisar(str(erro))
+        return 1
 
     dizer(f"Restaurando {nome} ({len(dump)} bytes). O site fica parado durante a restauração.")
     executar(["docker", "stop", *SITE], {}, None)
@@ -56,7 +65,9 @@ def restaurar(nome: str | None, *, executar: Executar, armazenamento: Armazename
             dump,
         )
     except ComandoFalhou as erro:
+        # O erro do Postgres fica no log da VM, para quem pediu; ao aviso vai só o código.
         dizer(f"RESTAURACAO_FALHOU: o banco ficou como estava. {erro.erro.strip()}")
+        avisar(f"o pg_restore saiu com o código {erro.codigo}.")
         return 1
     finally:
         executar(["docker", "start", *SITE], {}, None)
@@ -67,7 +78,14 @@ def restaurar(nome: str | None, *, executar: Executar, armazenamento: Armazename
 def main() -> int:
     # O primeiro argumento é o SHA, que o `entrar.sh` sempre passa; o segundo, o nome do backup.
     nome = sys.argv[2] if len(sys.argv) > 2 else None
-    return restaurar(nome, executar=executar_de_verdade, armazenamento=Azure())
+    azure = Azure()
+    return com_aviso(
+        O_QUE,
+        lambda avisar: restaurar(
+            nome, executar=executar_de_verdade, armazenamento=azure, avisar=avisar
+        ),
+        cofre=azure,
+    )
 
 
 if __name__ == "__main__":

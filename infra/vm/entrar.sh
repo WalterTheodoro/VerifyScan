@@ -26,7 +26,7 @@ fi
 
 # Só as ações que existem. Cada uma é um módulo de infra/vm/, com o mesmo nome.
 case "$acao" in
-  deploy | backup | restaurar | migrar_neon) ;;
+  deploy | backup | restaurar | migrar_neon | alerta) ;;
   *)
     echo "RECUSADO: ação desconhecida."
     exit 2
